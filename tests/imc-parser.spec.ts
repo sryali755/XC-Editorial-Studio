@@ -1,0 +1,187 @@
+import { test, expect } from "@playwright/test";
+import { parseIMCBrief } from "../lib/imc-parser";
+import { extractUpstream, getUpstream } from "../lib/upstream";
+import { emptyPreparation, preparationService } from "../lib/preparation";
+
+const fields = {
+  campaign: "Fall household campaign",
+  objective: "Increase consideration without changing the offer.",
+  audience: "Busy households",
+  product: "Home internet",
+  channels: "Web, email",
+  constraints: "Use existing approved claims only.",
+  reason_to_believe: "Support and connectivity for everyday life.",
+  research:
+    "First observation.\nSecond observation — preserve the exact wording.",
+  brief_type: "Growth",
+  campaign_tier: "Targeted",
+  kpis: "Consideration and qualified visits",
+  brand_messaging: "Keep the everyday connected.",
+  messaging_approval: "Pending Brand review",
+  message_hierarchy: "Human benefit first.\nProduct proof second.",
+  brand_guidelines: "Harmony v3",
+  eligibility: "Serviceable households",
+  exclusions: "Intentionally excluded. — no extra audience exclusions",
+  substantiation: "Evidence reference 12",
+  disclaimers: "Offer terms apply.",
+};
+test("extracts all 19 snake_case fields and retains multiline text before agent use", async () => {
+  const text = Object.entries(fields)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join("\n");
+  const parsed = parseIMCBrief(text);
+  expect(Object.keys(parsed.fields)).toEqual(Object.keys(fields));
+  for (const [key, value] of Object.entries(fields)) {
+    const result = parsed.fields[key as keyof typeof fields];
+    expect(result.sourceValue).toBe(value);
+    expect(result.value).toBe(value);
+    expect(result.present).toBe(true);
+    expect(result.status).toBe(
+      key === "exclusions" ? "Intentionally excluded" : "Supplied",
+    );
+  }
+  const before = JSON.stringify(parsed);
+  const upstream = extractUpstream(parsed);
+  const outputs = await Promise.all(
+    (["reasonToBelieve", "research", "sparks"] as const).map((agentId) =>
+      preparationService.generate({
+        agentId,
+        parsedIMC: parsed,
+        upstream,
+        previous: [],
+        guidance: "",
+      }),
+    ),
+  );
+  expect(outputs[0].text).toContain(fields.reason_to_believe);
+  expect(outputs[1].text).toContain(fields.research);
+  expect(outputs[1].text).not.toContain("No labeled research supplied");
+  expect(JSON.stringify(parsed)).toBe(before);
+  expect(Object.isFrozen(parsed.fields.reason_to_believe)).toBe(true);
+});
+test("supports heading, bold, bulleted and table labels without truncating evidence", () => {
+  const parsed = parseIMCBrief(
+    "## Reason to Believe\nOriginal claim.\nSupporting line.\n\n**Research:**\nHistorical performance: supplied result.\n- Source: https://example.test/evidence\n\n- **Campaign name**: Autumn\n| Brand messaging | Exact message |\n| messaging_approval | Pending |\n### Disclaimers\nIntentionally excluded.\n## Unrelated appendix\nNot part of disclaimers",
+  );
+  expect(parsed.fields.reason_to_believe.value).toBe(
+    "Original claim.\nSupporting line.",
+  );
+  expect(parsed.fields.research.value).toBe(
+    "Historical performance: supplied result.\n- Source: https://example.test/evidence",
+  );
+  expect(parsed.fields.campaign.value).toBe("Autumn");
+  expect(parsed.fields.brand_messaging.value).toBe("Exact message");
+  expect(parsed.fields.messaging_approval.value).toBe("Pending");
+  expect(parsed.fields.disclaimers.status).toBe("Intentionally excluded");
+  expect(parsed.fields.disclaimers.value).toBe("Intentionally excluded.");
+});
+test("checks the complete document before marking absent fields and preserves duplicate occurrences", () => {
+  const parsed = parseIMCBrief(
+    "Campaign: First name\nObjective:\nAudience: Households\nResearch: Intentionally excluded\nResearch: Later explicitly supplied evidence.\nCampaign: Revised name\nSubstantiation: No claim evidence is supplied, pending review.",
+  );
+  expect(parsed.fields.objective).toMatchObject({
+    status: "Not supplied",
+    present: true,
+    value: "",
+  });
+  expect(parsed.fields.product).toMatchObject({
+    status: "Not supplied",
+    present: false,
+    value: "",
+  });
+  expect(parsed.fields.audience.value).toBe("Households");
+  expect(parsed.fields.research.status).toBe("Supplied");
+  expect(parsed.fields.research.occurrences).toEqual([
+    "Intentionally excluded",
+    "Later explicitly supplied evidence.",
+  ]);
+  expect(parsed.fields.campaign.value).toBe("First name\n\nRevised name");
+  expect(parsed.fields.substantiation.status).toBe("Supplied");
+});
+test("parses JSON and repairs legacy Not supplied statuses using actual parsed content", async () => {
+  const parsed = parseIMCBrief(JSON.stringify(fields));
+  expect(parsed.fields.research.value).toBe(fields.research);
+  expect(() => parseIMCBrief("{invalid json")).toThrow("invalid");
+  const source = JSON.stringify(fields);
+  const legacy = extractUpstream(parseIMCBrief(""));
+  const repaired = getUpstream({
+    ...emptyPreparation,
+    sourceSnapshot: source,
+    upstream: legacy,
+  });
+  expect(repaired.fields.originalRTB.sourceValue).toBe(
+    fields.reason_to_believe,
+  );
+  expect(repaired.fields.originalRTB.status).toBe("Supplied");
+  expect(repaired.fields.research.value).toBe(fields.research);
+  expect(repaired.fields.exclusions.status).toBe("Intentionally excluded");
+  const output = await preparationService.generate({
+    agentId: "research",
+    parsedIMC: parsed,
+    upstream: legacy,
+    previous: [],
+    guidance: "",
+  });
+  expect(output.text).toContain(fields.research);
+  expect(legacy.fields.research.status).toBe("Not supplied");
+});
+test("the parsed record is visible before preparation completes and remains unchanged by refinement", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const text = Object.entries(fields)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join("\n");
+  await page
+    .getByRole("textbox", { name: "IMC output brief", exact: false })
+    .fill(text);
+  await page
+    .getByRole("button", { name: "Prepare XC Input Pack", exact: true })
+    .click();
+  await expect(page.locator(".parsed-imc")).toBeVisible();
+  await expect(page.locator(".spark-option")).toHaveCount(6);
+  await page.locator(".parsed-imc > summary").click();
+  await expect(
+    page
+      .locator(".parsed-imc")
+      .getByText(fields.reason_to_believe, { exact: true }),
+  ).toBeVisible();
+  const before = await page.evaluate(
+    () =>
+      JSON.parse(sessionStorage.getItem("xc-strategy-session-v1")!).preparation
+        .parsedIMC,
+  );
+  await page
+    .getByRole("article", { name: "Review & Adapt Upstream RTB" })
+    .getByRole("button", { name: "Regenerate this agent" })
+    .click();
+  await expect(
+    page
+      .getByRole("article", { name: "Review & Adapt Upstream RTB" })
+      .locator(".card-top"),
+  ).toContainText("V1");
+  const after = await page.evaluate(
+    () =>
+      JSON.parse(sessionStorage.getItem("xc-strategy-session-v1")!).preparation
+        .parsedIMC,
+  );
+  expect(after).toEqual(before);
+  await page.reload();
+  await page.locator(".parsed-imc > summary").click();
+  await expect(page.locator(".parsed-field-grid")).toContainText(
+    fields.research,
+  );
+});
+test("invalid structured input cannot run preparation agents", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page
+    .getByRole("textbox", { name: "IMC output brief", exact: false })
+    .fill('{"research":');
+  await page
+    .getByRole("button", { name: "Prepare XC Input Pack", exact: true })
+    .click();
+  await expect(page.locator(".error")).toContainText("invalid");
+  await expect(page.locator(".prepared-text")).toHaveCount(0);
+});
