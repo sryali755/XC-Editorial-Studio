@@ -1,161 +1,121 @@
-import { carryUpstream } from "./upstream";
 import { personas } from "./demo";
+import { runAgent } from "./ai/client";
+import { selectedFoundation } from "./ai/context";
+import { renderBrief } from "./ai/format";
+import type { AgentType } from "./ai/schemas";
 import type {
   AgentOutput,
   AgentPersona,
   AgentVersion,
   BriefPayload,
-  GeneratedBrief,
   StrategyInputPack,
   SynthesisRequest,
 } from "./types";
-const wait = () => new Promise((resolve) => setTimeout(resolve, 650));
-const lines: Record<string, string[]> = {
-  humor: [
-    "Less buffering. More main-character energy.",
-    "Your home has enough drama. Your connection shouldn’t.",
-    "Big plans. Small screens. Zero room for a plot twist.",
-    "Let life be unpredictable. Not your connection.",
-  ],
-  culture: [
-    "For all the worlds under one roof.",
-    "Together looks different in every room.",
-    "Life happens everywhere. Connection brings it home.",
-    "One home. A thousand ways to belong.",
-  ],
-  audience: [
-    "More time living. Less time thinking about your connection.",
-    "A connection that makes room for your kind of life.",
-    "Keep the everyday moving, on your terms.",
-    "Feel at home in every connected moment.",
-  ],
-  market: [
-    "Beyond connected devices. A connected life.",
-    "Make everyday possibility the real measure of connection.",
-    "A better connection starts with what it makes possible.",
-    "The difference isn’t just online. It’s in your everyday.",
-  ],
-  brand: [
-    "A connection you count on. A life you make your own.",
-    "Keep what matters connected.",
-    "Built around the moments that make a home.",
-    "Move life forward, one connection at a time.",
-  ],
-};
-function candidate(
+
+type PerspectiveType = Extract<
+  AgentType,
+  "humor" | "culture" | "audience" | "market" | "brand"
+>;
+async function perspective(
   persona: AgentPersona,
   pack: StrategyInputPack,
-  number: number,
-  guidance = "",
-) {
-  const pool = lines[persona.id];
-  let index = number % pool.length;
-  if (/playful|funny|wit/i.test(guidance)) index = 1;
-  if (/short|concise/i.test(guidance))
-    return `${pack.product || "Your connection"}. More life.`;
-  return (
-    pool[index] +
-    (number >= pool.length ? ` ${pack.campaignName || "Life, connected"}.` : "")
-  );
+  versions: AgentVersion[],
+  guidance: string,
+  currentVersion?: AgentVersion,
+): Promise<AgentVersion> {
+  const number = versions.length
+    ? Math.max(...versions.map((v) => v.number)) + 1
+    : 0;
+  const current = currentVersion ?? versions[0];
+  const direction = guidance.trim();
+  const response = await runAgent({
+    agentType: persona.id as PerspectiveType,
+    context: selectedFoundation(pack),
+    guidance: direction,
+    versionNumber: number,
+    ...(current
+      ? {
+          previousVersion: {
+            number: current.number,
+            text: current.text,
+            ...(current.data ? { data: current.data } : {}),
+          },
+        }
+      : {}),
+  });
+  return {
+    ...response,
+    id: crypto.randomUUID(),
+    number,
+    text: response.data.briefLines[0].line,
+    guidance:
+      direction ||
+      (current
+        ? "New direction without additional guidance"
+        : "Initial perspective"),
+    createdAt: response.generatedAt,
+  };
 }
-export interface StrategyService {
-  generatePerspectives(pack: StrategyInputPack): Promise<AgentOutput[]>;
-  refine(
-    persona: AgentPersona,
-    pack: StrategyInputPack,
-    versions: AgentVersion[],
-    guidance: string,
-  ): Promise<AgentVersion>;
-  synthesize(request: SynthesisRequest): Promise<string>;
-}
-// Deterministic demo copy, not live AI. Replace this adapter with approved persona services later.
-export const strategyService: StrategyService = {
-  async generatePerspectives(pack) {
-    await wait();
-    return personas.map((p) => {
-      const v = {
-        id: crypto.randomUUID(),
-        number: 0,
-        text: candidate(p, pack, 0),
-        guidance: "Initial perspective",
-        createdAt: new Date().toISOString(),
-      };
-      return { agentId: p.id, versions: [v], currentVersionId: v.id };
+export const strategyService = {
+  async generatePerspectives(pack: StrategyInputPack): Promise<AgentOutput[]> {
+    return Promise.all(
+      personas.map(async (persona) => {
+        try {
+          const version = await perspective(persona, pack, [], "");
+          return {
+            agentId: persona.id,
+            versions: [version],
+            currentVersionId: version.id,
+          };
+        } catch (error) {
+          return {
+            agentId: persona.id,
+            versions: [],
+            currentVersionId: "",
+            error:
+              error instanceof Error
+                ? error.message
+                : "This perspective failed. Please retry.",
+          };
+        }
+      }),
+    );
+  },
+  refine: perspective,
+  synthesize(request: SynthesisRequest) {
+    return runAgent({
+      agentType: "synthesis",
+      context: {
+        foundation: selectedFoundation(request.strategyInputPack),
+        lines: request.lines,
+        weights: request.weights,
+      },
     });
   },
-  async refine(persona, pack, versions, guidance) {
-    await wait();
-    const number = Math.max(...versions.map((v) => v.number)) + 1;
-    return {
-      id: crypto.randomUUID(),
-      number,
-      text: candidate(persona, pack, number, guidance),
-      guidance,
-      createdAt: new Date().toISOString(),
-    };
-  },
-  async synthesize({ lines: selected, weights }) {
-    await wait();
-    const ranked = [...selected].sort(
-      (a, b) => (weights[b.id] ?? 50) - (weights[a.id] ?? 50),
-    );
-    return `${ranked[0].text.replace(/[.!?]$/, "")} — ${ranked[1].text.charAt(0).toLowerCase() + ranked[1].text.slice(1)}`;
-  },
 };
-export interface BriefService {
-  generateXCBrief(payload: BriefPayload): Promise<GeneratedBrief>;
+export async function generateXCBrief(payload: BriefPayload) {
+  const approved = payload.approvedBriefLine;
+  if (
+    !approved.approvedAt ||
+    !approved.briefLine.trim() ||
+    approved.approvedBy !== "Kevin"
+  )
+    throw new Error("Explicit strategy approval is required.");
+  // Always use the approved snapshot, even if an unrelated working pack later changes.
+  const strategyInputPack = approved.strategyInputPack;
+  const response = await runAgent({
+    agentType: "finalBrief",
+    context: {
+      foundation: selectedFoundation(strategyInputPack),
+      approvedStrategy: {
+        briefLine: approved.briefLine,
+        approvedBy: approved.approvedBy,
+        approvedAt: approved.approvedAt,
+        source: approved.source,
+        approvalState: "Approved",
+      },
+      executionDirection: payload.executionDirection,
+    },
+  });
+  return renderBrief(response, { ...payload, strategyInputPack });
 }
-export const mockBriefService: BriefService = {
-  async generateXCBrief({
-    strategyInputPack: p,
-    approvedBriefLine: a,
-    executionDirection: e,
-  }) {
-    if (!a.approvedAt || !a.briefLine.trim() || a.approvedBy !== "Kevin")
-      throw new Error("Explicit strategy approval is required.");
-    await wait();
-    return {
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      campaign: p.campaignName || "Untitled campaign",
-      mock: true,
-      sections: [
-        { title: "Strategic Direction", content: p.objective },
-        { title: "Approved Brief Line", content: a.briefLine },
-        { title: "Original upstream RTB", content: p.reasonToBelieve },
-        {
-          title: "Proposed XC adaptation — not upstream-approved",
-          content: p.proposedRTB || "No separate adaptation recorded.",
-        },
-        ...carryUpstream(p),
-        { title: "Audience", content: p.audience },
-        { title: "Messaging Direction", content: e.messaging },
-        {
-          title: "Required Assets",
-          content: `${e.assetCount} assets — ${e.requiredAssets}`,
-        },
-        { title: "Web Deliverables", content: e.desktop },
-        { title: "Mobile Deliverables", content: e.mobile },
-        { title: "Placement", content: `${e.channels}\n${e.placements}` },
-        { title: "Copy Requirements", content: e.copy },
-        {
-          title: "Specifications / Constraints",
-          content: `${e.formats}\n${e.constraints}\n${p.constraints}`,
-        },
-        { title: "Timing", content: e.timing },
-        { title: "Supporting Data & Research", content: p.research },
-        { title: "Strategic Sparks", content: p.sparks },
-        {
-          title: "Research Emphasis / Additional Direction",
-          content: p.researchFocus || "No additional emphasis supplied.",
-        },
-      ],
-    };
-  },
-};
-// TODO: Invoke the approved Writer Playbook/API through a server-side adapter here.
-// Confirm invocation, auth, XC template, job status and artifact/PDF return contract.
-// Keep credentials server-side. The same Playbook must remain runnable within Writer.
-// No Writer endpoint or API contract is assumed by this prototype.
-export const generateXCBrief = (payload: BriefPayload) =>
-  mockBriefService.generateXCBrief(payload);

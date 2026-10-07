@@ -144,13 +144,12 @@ export function AgentCard({
   busy: boolean;
 }) {
   const [guidance, setGuidance] = useState("");
-  const current = output.versions.find(
-    (v) => v.id === output.currentVersionId,
-  )!;
+  const current = output.versions.find((v) => v.id === output.currentVersionId);
   return (
     <article
       className={"agent-card " + persona.color}
       aria-label={persona.name}
+      aria-busy={busy}
     >
       <div className="agent-heading">
         <span className="persona-symbol">{persona.icon}</span>
@@ -165,19 +164,36 @@ export function AgentCard({
         <h3>How this agent thinks</h3>
         <p>{persona.thinking}</p>
       </div>
-      <div className="current-output">
-        <div className="output-meta">
-          <span>BRIEF-LINE CANDIDATE</span>
-          <span className="version-label">V{current.number} · Current</span>
+      {output.error && (
+        <div className="error agent-error" role="alert">
+          {output.error}
         </div>
-        <BriefLineOutput text={current.text} />
-        <VersionActions
-          version={current}
-          persona={persona}
-          selected={selected}
-          onSelect={onSelect}
-        />
-      </div>
+      )}
+      {current ? (
+        <div className="current-output">
+          <div className="output-meta">
+            <span>BRIEF-LINE CANDIDATE</span>
+            <span className="version-label">V{current.number} · Current</span>
+          </div>
+          <BriefLineOutput text={current.text} />
+          {current.data && "briefLines" in current.data && (
+            <details className="candidate-rationale">
+              <summary>Why this direction</summary>
+              <p>{current.data.briefLines[0].rationale}</p>
+            </details>
+          )}
+          <VersionActions
+            version={current}
+            persona={persona}
+            selected={selected}
+            onSelect={onSelect}
+          />
+        </div>
+      ) : (
+        <p className="muted">
+          No candidate generated yet. Retry this perspective to continue.
+        </p>
+      )}
       <form
         className="refinement"
         onSubmit={async (e) => {
@@ -186,21 +202,23 @@ export function AgentCard({
         }}
       >
         <label className="field">
-          <span>Guide this perspective</span>
+          <span>Guide this perspective (optional)</span>
           <textarea
             aria-label={`Refinement for ${persona.name}`}
-            placeholder="e.g. Make this more playful…"
+            placeholder="Leave blank for a fresh angle, or add direction…"
             rows={3}
             value={guidance}
+            disabled={busy}
             onChange={(e) => setGuidance(e.target.value)}
           />
         </label>
-        <button
-          className="button refine-button"
-          disabled={busy || !guidance.trim()}
-        >
+        <button type="submit" className="button refine-button" disabled={busy}>
           <Sparkles size={15} />
-          {busy ? "Exploring a new direction…" : "Generate another version"}
+          {busy
+            ? "Exploring a new direction…"
+            : output.error
+              ? "Retry this perspective"
+              : "Generate another version"}
         </button>
       </form>
       <VersionHistory

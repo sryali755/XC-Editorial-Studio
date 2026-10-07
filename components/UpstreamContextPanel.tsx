@@ -149,6 +149,14 @@ export default function UpstreamContextPanel({
                             }
                           />
                         </label>
+                        {def.key !== "originalRTB" && field.sourceValue && (
+                          <details className="source-preserved">
+                            <summary>
+                              Original upstream text · preserved
+                            </summary>
+                            <p>{field.sourceValue}</p>
+                          </details>
+                        )}
                       </>
                     ) : (
                       <>

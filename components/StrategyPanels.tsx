@@ -1,3 +1,7 @@
+import { demoExecution } from "@/lib/demo";
+import { useRef, useState } from "react";
+import { briefFilename, buildBriefDocument } from "@/lib/brief-document";
+import BriefDocumentPreview from "./BriefDocumentPreview";
 import UpstreamContextPanel from "./UpstreamContextPanel";
 import { ArrowRight, Check, FileText } from "lucide-react";
 import type {
@@ -10,6 +14,8 @@ export function Field({
   value,
   onChange,
   helper,
+  placeholder,
+  disabled = false,
   rows = 3,
   required = false,
 }: {
@@ -17,6 +23,8 @@ export function Field({
   value: string;
   onChange: (v: string) => void;
   helper?: string;
+  placeholder?: string;
+  disabled?: boolean;
   rows?: number;
   required?: boolean;
 }) {
@@ -31,6 +39,8 @@ export function Field({
         rows={rows}
         required={required}
         value={value}
+        placeholder={placeholder}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
       />
     </label>
@@ -51,7 +61,7 @@ export function StrategyInputSummary({ pack }: { pack: StrategyInputPack }) {
       </summary>
       <div className="summary-grid">
         {Object.entries(pack)
-          .filter(([key]) => key !== "upstream" && key !== "parsedIMC")
+          .filter(([, value]) => typeof value === "string")
           .map(([key, value]) => (
             <div key={key}>
               <h3>
@@ -106,13 +116,39 @@ export function ExecutionDirectionForm({
           <h2>Execution direction</h2>
           <p>Give Creative a clear picture of what to create.</p>
         </div>
-        <span className="tag">Kevin / XC</span>
+        <button
+          type="button"
+          className="button small"
+          disabled={busy}
+          onClick={() =>
+            onChange({
+              ...demoExecution,
+              channels: value.channels || demoExecution.channels,
+              messaging: value.messaging || demoExecution.messaging,
+              copy: value.copy || demoExecution.copy,
+              constraints: value.constraints || demoExecution.constraints,
+              timing: value.timing || demoExecution.timing,
+              creativeDirection:
+                value.creativeDirection ||
+                "Explore everyday moments through the approved strategy.",
+            })
+          }
+        >
+          Load sample execution details
+        </button>
       </div>
+      <p className="context-note">
+        Known channels, messaging and restrictions are carried from your
+        approved input pack. Confirm them and add the remaining creative
+        requirements. Empty fields show examples to guide you. Use “Load sample
+        execution details” to fill the form with editable sample values.
+      </p>
       <div className="context-grid">
         <Field
           required
           label="Required assets"
           value={value.requiredAssets}
+          placeholder={`e.g. ${demoExecution.requiredAssets}`}
           onChange={(v) => onChange({ ...value, requiredAssets: v })}
         />
         <label className="field">
@@ -122,7 +158,8 @@ export function ExecutionDirectionForm({
             type="number"
             min={1}
             max={1000}
-            value={value.assetCount}
+            placeholder={`e.g. ${demoExecution.assetCount}`}
+            value={value.assetCount || ""}
             onChange={(e) =>
               onChange({ ...value, assetCount: Number(e.target.value) })
             }
@@ -135,6 +172,7 @@ export function ExecutionDirectionForm({
             "desktop",
             "mobile",
             "messaging",
+            "creativeDirection",
             "copy",
             "formats",
             "timing",
@@ -151,13 +189,18 @@ export function ExecutionDirectionForm({
                 "Desktop requirements",
                 "Mobile requirements",
                 "Messaging direction",
+                "Creative direction",
                 "Copy requirements",
                 "Formats",
                 "Timing",
                 "Additional constraints",
               ][i]
             }
-            value={value[key]}
+            value={value[key] ?? ""}
+            placeholder={`e.g. ${
+              demoExecution[key] ??
+              "Show everyday moments through the approved strategy, with warm imagery and a clear product focus."
+            }`}
             onChange={(v) => onChange({ ...value, [key]: v })}
           />
         ))}
@@ -193,16 +236,41 @@ export function GeneratedBriefPreview({
   onBack: () => void;
   busy: boolean;
 }) {
-  function download() {
-    const text = `XC CREATIVE BRIEF — DEMONSTRATION\n${brief.campaign}\n\n${brief.sections.map((s) => `${s.title.toUpperCase()}\n${s.content || "To be confirmed"}`).join("\n\n")}`;
-    const url = URL.createObjectURL(
-      new Blob([text], { type: "text/plain;charset=utf-8" }),
-    );
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "XC-Creative-Brief.txt";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const [downloading, setDownloading] = useState<"pdf" | "docx" | null>(null);
+  const [downloadError, setDownloadError] = useState("");
+  const downloadLock = useRef(false);
+  const documentModel = buildBriefDocument(brief);
+  async function download(format: "pdf" | "docx") {
+    if (busy || downloadLock.current) return;
+    downloadLock.current = true;
+    setDownloading(format);
+    setDownloadError("");
+    try {
+      // Load each document generator only when that format is requested.
+      const blob =
+        format === "pdf"
+          ? await (
+              await import("@/lib/export-brief-pdf")
+            ).createBriefPdf(documentModel)
+          : await (
+              await import("@/lib/export-brief-word")
+            ).createBriefWord(documentModel);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = briefFilename(brief.campaign, format);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      setDownloadError(
+        `The ${format === "pdf" ? "PDF" : "Word"} download could not be created. Your brief is saved; please try again.`,
+      );
+    } finally {
+      downloadLock.current = false;
+      setDownloading(null);
+    }
   }
   return (
     <>
@@ -217,50 +285,36 @@ export function GeneratedBriefPreview({
           <button className="button" disabled={busy} onClick={onRegenerate}>
             {busy ? "Regenerating…" : "Regenerate"}
           </button>
-          <button className="button primary" onClick={download}>
-            Download Brief <FileText size={16} />
+          <button
+            className="button primary"
+            disabled={busy || !!downloading}
+            onClick={() => download("pdf")}
+          >
+            {downloading === "pdf" ? "Preparing PDF…" : "Download PDF"}{" "}
+            <FileText size={16} />
+          </button>
+          <button
+            className="button"
+            disabled={busy || !!downloading}
+            onClick={() => download("docx")}
+          >
+            {downloading === "docx" ? "Preparing Word…" : "Download Word"}{" "}
+            <FileText size={16} />
           </button>
           <button className="button" onClick={() => window.print()}>
             Print / Save PDF
           </button>
         </div>
       </div>
-      <article className="brief-paper">
-        <div className="paper-top">
-          <span className="wordmark">
-            XC<span> / CREATIVE</span>
-          </span>
-          <span className="tag">MOCK BRIEF · FOR REVIEW</span>
+      {downloadError && (
+        <div className="error brief-download-error" role="alert">
+          {downloadError}
         </div>
-        <p className="eyebrow">STRATEGY → CREATIVE</p>
-        <h1>{brief.campaign}</h1>
-        <p className="paper-subtitle">XC creative brief</p>
-        <div className="brief-sections">
-          {brief.sections.map((section, i) => (
-            <section
-              className={
-                section.title === "Approved Brief Line"
-                  ? "approved-section"
-                  : ""
-              }
-              key={section.title}
-            >
-              <span className="mono">{String(i + 1).padStart(2, "0")}</span>
-              <div>
-                <h2>{section.title}</h2>
-                <p>{section.content || "To be confirmed"}</p>
-              </div>
-            </section>
-          ))}
-        </div>
-        <footer>
-          Illustrative content · Human-approved strategy · Final XC template
-          pending confirmation
-        </footer>
-      </article>
+      )}
+      <BriefDocumentPreview document={documentModel} />
       <p className="center muted">
-        Download provides a text brief. Use Print / Save PDF for a
-        browser-generated PDF.
+        Download the designed PDF or an editable Word document. Both include the
+        full brief shown above.
       </p>
     </>
   );

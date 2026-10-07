@@ -1,4 +1,17 @@
+import type { AgentData, AgentResponse, AgentDataMap } from "./ai/schemas";
+export interface GenerationMetadata {
+  provider?: "mock" | "openai" | "manual";
+  model?: string;
+  generatedAt?: string;
+  data?: AgentData;
+}
 export interface StrategyInputPack {
+  selectedSparks?: {
+    id: string;
+    text: string;
+    versionId: string;
+    version: number;
+  }[];
   parsedIMC?: ParsedIMCBrief;
   upstream?: UpstreamContext;
   proposedRTB?: string;
@@ -22,7 +35,7 @@ export interface AgentPersona {
   color: string;
   icon: string;
 }
-export interface AgentVersion {
+export interface AgentVersion extends GenerationMetadata {
   id: string;
   number: number;
   text: string;
@@ -30,6 +43,7 @@ export interface AgentVersion {
   createdAt: string;
 }
 export interface AgentOutput {
+  error?: string;
   agentId: string;
   versions: AgentVersion[];
   currentVersionId: string;
@@ -47,6 +61,8 @@ export interface SynthesisRequest {
   weights: Record<string, number>;
 }
 export interface ApprovedStrategy {
+  approvalState?: "Approved";
+  sourcePerspectives?: SelectedBriefLine[];
   briefLine: string;
   strategyInputPack: StrategyInputPack;
   approvedAt: string;
@@ -54,6 +70,7 @@ export interface ApprovedStrategy {
   source: string;
 }
 export interface ExecutionDirection {
+  creativeDirection?: string;
   requiredAssets: string;
   assetCount: number;
   channels: string;
@@ -66,12 +83,12 @@ export interface ExecutionDirection {
   timing: string;
   constraints: string;
 }
-export interface GeneratedBrief {
+export interface GeneratedBrief extends GenerationMetadata {
   id: string;
   createdAt: string;
   campaign: string;
   sections: { title: string; content: string }[];
-  mock: true;
+  mock: boolean;
 }
 export interface BriefPayload {
   strategyInputPack: StrategyInputPack;
@@ -79,6 +96,10 @@ export interface BriefPayload {
   executionDirection: ExecutionDirection;
 }
 export interface StrategySession {
+  synthesisResults?: AgentResponse<AgentDataMap["synthesis"]>[];
+  executionSourcePack?: StrategyInputPack;
+  finalSourceLines?: SelectedBriefLine[];
+  synthesisSources?: SelectedBriefLine[][];
   preparation: PreparationState;
   step: number;
   pack: StrategyInputPack;
@@ -96,9 +117,11 @@ export interface StrategySession {
 export type PreparationAgentId = "reasonToBelieve" | "research" | "sparks";
 export interface PreparationVersion extends AgentVersion {
   sourceBrief: string;
-  sparks: { id: string; text: string }[];
+  sparks: { id: string; text: string; title?: string; rationale?: string }[];
 }
 export interface PreparationOutput {
+  error?: string;
+  guidance?: string;
   agentId: PreparationAgentId;
   versions: PreparationVersion[];
   currentVersionId: string;

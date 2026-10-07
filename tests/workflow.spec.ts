@@ -4,7 +4,7 @@ async function prepareSample(page: import("@playwright/test").Page) {
   await page
     .getByRole("button", { name: "Prepare XC Input Pack", exact: true })
     .click();
-  await expect(page.locator(".spark-option")).toHaveCount(6);
+  await expect(page.locator(".dynamic-pack .spark-option")).toHaveCount(6);
   await page.getByRole("checkbox").first().check();
 }
 test("IMC import, independent preparation histories, selected context and persistence", async ({
@@ -49,7 +49,7 @@ test("IMC import, independent preparation histories, selected context and persis
     name: "Strategic Sparks Agent",
     exact: true,
   });
-  await expect(rtb.locator(".prepared-text")).toContainText(
+  await expect(rtb.locator(".original-rtb-card")).toContainText(
     "Supplied product proof.",
   );
   await expect(
@@ -74,13 +74,15 @@ test("IMC import, independent preparation histories, selected context and persis
     .getByRole("textbox", { name: /Guide Review & Adapt Upstream RTB/ })
     .fill("Focus on household reassurance.");
   await rtb.getByRole("button", { name: "Regenerate this agent" }).click();
-  await expect(rtb.locator(".card-top")).toContainText("V1 · Current");
-  await expect(research.locator(".prepared-text")).toHaveText(researchBefore);
+  await expect(rtb.locator(".card-top")).toContainText("V2 · Current");
+  await expect(research.locator(".prepared-text")).toHaveText(researchBefore, {
+    useInnerText: true,
+  });
   await expect(page.getByRole("checkbox").nth(1)).toBeChecked();
   await rtb.locator(".prep-history > summary").click();
-  await rtb.getByRole("button", { name: "Make V0 current" }).click();
+  await rtb.getByRole("button", { name: "Make V1 current" }).click();
   await rtb.getByRole("button", { name: "Regenerate this agent" }).click();
-  await expect(rtb.locator(".card-top")).toContainText("V2 · Current");
+  await expect(rtb.locator(".card-top")).toContainText("V3 · Current");
   await expect(rtb.locator(".history-version")).toHaveCount(3);
   await page.reload();
   await expect(page.getByRole("checkbox").nth(1)).toBeChecked();
@@ -104,7 +106,7 @@ test("IMC import, independent preparation histories, selected context and persis
   ).toBeInViewport();
   await page.getByRole("button", { name: /Strategy input pack/ }).click();
   await sparks.getByRole("button", { name: "Regenerate this agent" }).click();
-  await expect(sparks.locator(".card-top")).toContainText("V1 · Current");
+  await expect(sparks.locator(".card-top")).toContainText("V2 · Current");
   await expect(page.getByRole("checkbox").nth(1)).not.toBeChecked();
   await expect(
     page.getByRole("button", { name: "Generate Strategic Perspectives" }),
@@ -122,9 +124,9 @@ test("IMC import, independent preparation histories, selected context and persis
   await page
     .getByRole("button", { name: "Prepare XC Input Pack", exact: true })
     .click();
-  await expect(rtb.locator(".card-top")).toContainText("V3 · Current");
+  await expect(rtb.locator(".card-top")).toContainText("V4 · Current");
   await rtb.locator(".prep-history > summary").click();
-  await rtb.getByRole("button", { name: "Make V0 current" }).click();
+  await rtb.getByRole("button", { name: "Make V1 current" }).click();
   await page.getByRole("checkbox").first().check();
   await expect(
     page.getByRole("button", { name: "Generate Strategic Perspectives" }),
@@ -195,6 +197,9 @@ test("independent versions, selection, synthesis, approval, execution and downlo
     page.getByText("Approved by Kevin", { exact: true }),
   ).toBeVisible();
   await page
+    .getByRole("button", { name: "Load sample execution details" })
+    .click();
+  await page
     .getByLabel("Required assets")
     .fill("Homepage hero and two social tiles");
   await page
@@ -204,9 +209,9 @@ test("independent versions, selection, synthesis, approval, execution and downlo
     "Homepage hero and two social tiles",
   );
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download Brief" }).click();
+  await page.getByRole("button", { name: "Download PDF" }).click();
   expect((await downloadPromise).suggestedFilename()).toBe(
-    "XC-Creative-Brief.txt",
+    "Xfinity-Creative-Brief-Life-connected.pdf",
   );
   await page
     .getByRole("button", { name: "Back to Strategy", exact: false })
@@ -228,7 +233,7 @@ test("desktop, laptop and mobile layouts stay within viewport", async ({
     await page.setViewportSize({ width, height: 1000 });
     await page.goto("/");
     await expect(
-      page.getByRole("heading", { name: "A stronger starting point." }),
+      page.getByRole("heading", { name: "Prepare the Inputs" }),
     ).toBeVisible();
     expect(
       await page.evaluate(

@@ -1,3 +1,8 @@
+import {
+  ResearchOutput,
+  SourceFields,
+  SparkChoices,
+} from "./PreparationOutputs";
 import { parseIMCBrief } from "@/lib/imc-parser";
 import ParsedIMCPreview from "./ParsedIMCPreview";
 import UpstreamContextPanel from "./UpstreamContextPanel";
@@ -6,7 +11,6 @@ import {
   getParsedIMC,
   sourceContext,
   extractUpstream,
-  fieldText,
 } from "@/lib/upstream";
 import { useRef, useState, type SetStateAction } from "react";
 import {
@@ -14,14 +18,12 @@ import {
   FileText,
   RefreshCw,
   Sparkles,
-  Check,
   Database,
 } from "lucide-react";
 import TextFileImport from "./TextFileImport";
 import { Field } from "./StrategyPanels";
 import type {
   PreparationAgentId,
-  PreparationOutput,
   PreparationState,
   PreparationVersion,
 } from "@/lib/types";
@@ -42,6 +44,8 @@ function PreparationCard({
   onRefine,
   onRestore,
   onSave,
+  onToggleSpark,
+  onGuidance,
   busy,
   disabled,
 }: {
@@ -50,6 +54,8 @@ function PreparationCard({
   onRefine: (guidance: string) => void;
   onRestore: (version: PreparationVersion) => void;
   onSave: (text: string) => void;
+  onToggleSpark: (id: string) => void;
+  onGuidance: (text: string) => void;
   busy: boolean;
   disabled: boolean;
 }) {
@@ -57,7 +63,7 @@ function PreparationCard({
   const current = currentPreparation(state, id);
   const upstream = getUpstream(state);
   const output = state.outputs.find((o) => o.agentId === id);
-  const [guidance, setGuidance] = useState("");
+  const guidance = output?.guidance ?? "";
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   return (
@@ -70,7 +76,9 @@ function PreparationCard({
         <span className="icon-tile">{definition.symbol}</span>
         <span className="tag">
           {busy
-            ? "Preparing…"
+            ? current
+              ? "Regenerating…"
+              : "Generating…"
             : current
               ? `V${current.number} · Current`
               : "Awaiting brief"}
@@ -91,17 +99,17 @@ function PreparationCard({
             <Database size={13} /> Proposed research sources
           </summary>
           <div className="source-list">
-            {researchSources.map((name) => (
-              <div key={name}>
-                <span>{name}</span>
+            {researchSources.map((source) => (
+              <div key={source.name}>
+                <span>
+                  <b>{source.name}</b>
+                  <span className="source-purpose">{source.purpose}</span>
+                </span>
                 <small>Not connected</small>
               </div>
             ))}
           </div>
-          <p>
-            Names from the discussion; access and connector availability are
-            unconfirmed. All retrieval is mocked.
-          </p>
+          <p>Potential sources only. No live data has been retrieved.</p>
         </details>
       )}
       {id === "reasonToBelieve" && current && (
@@ -109,7 +117,7 @@ function PreparationCard({
           <span className="eyebrow">ORIGINAL UPSTREAM RTB · PRESERVED</span>
           <p>
             {upstream.fields.originalRTB.sourceValue ||
-              "Not supplied in the IMC brief"}
+              "Not supplied in upstream brief"}
           </p>
           <small>
             GTM owns the strategic foundation. Proposed XC framing below does
@@ -122,12 +130,27 @@ function PreparationCard({
           {current
             ? id === "reasonToBelieve"
               ? "PROPOSED XC ADAPTATION · NOT APPROVED"
-              : "PREPARED OUTPUT · MOCK"
+              : current.provider === "openai"
+                ? "PREPARED OUTPUT · AI PROPOSAL"
+                : current.provider === "manual"
+                  ? "PREPARED OUTPUT · EDITED"
+                  : "PREPARED OUTPUT · MOCK"
             : "OUTPUT WILL APPEAR HERE"}
         </span>
         {current ? (
           <>
-            <p className="prepared-text">{current.text}</p>
+            {id === "sparks" ? (
+              <SparkChoices
+                version={current}
+                selectedIds={state.selectedSparkIds}
+                disabled={disabled || busy}
+                onToggle={onToggleSpark}
+              />
+            ) : id === "research" ? (
+              <ResearchOutput text={current.text} data={current.data} />
+            ) : (
+              <p className="prepared-text">{current.text}</p>
+            )}
             <small className="version-label">
               V{current.number} · {current.guidance}
             </small>
@@ -139,6 +162,18 @@ function PreparationCard({
           </p>
         )}
       </div>
+      {output?.error && (
+        <div className="error agent-error" role="alert">
+          <p>{output.error}</p>
+          <button
+            className="button small"
+            disabled={disabled || busy}
+            onClick={() => onRefine(guidance)}
+          >
+            Retry this agent
+          </button>
+        </div>
+      )}
       {current && (
         <>
           <div className="prep-edit">
@@ -186,10 +221,12 @@ function PreparationCard({
           >
             <Field
               label={`Guide ${definition.name}`}
+              disabled={disabled || busy}
               value={guidance}
-              onChange={setGuidance}
+              onChange={onGuidance}
               rows={2}
               helper="Add context or steer this agent independently."
+              placeholder="Add context or steer this agent independently."
             />
             <button
               className="button refine-button"
@@ -255,8 +292,17 @@ export default function PreparationWorkspace({
     !!state.sourceSnapshot &&
     state.sourceSnapshot.trim() !== state.upstreamDraft.trim();
   const pack = compileInputPack(state);
-  const sparks = currentPreparation(state, "sparks")?.sparks ?? [];
+  const sparkVersion = currentPreparation(state, "sparks");
+  const upstream = getUpstream(state);
   const working = busy.length > 0 || generating;
+  function toggleSpark(id: string) {
+    onChange((s) => ({
+      ...s,
+      selectedSparkIds: s.selectedSparkIds.includes(id)
+        ? s.selectedSparkIds.filter((selected) => selected !== id)
+        : [...s.selectedSparkIds, id],
+    }));
+  }
   function begin(key: string) {
     if (locks.current.has(key)) return false;
     locks.current.add(key);
@@ -275,75 +321,103 @@ export default function PreparationWorkspace({
       ...s,
       outputs: s.outputs.map((o) =>
         o.agentId === id
-          ? { ...o, currentVersionId: v.id, versions: [v, ...o.versions] }
+          ? {
+              ...o,
+              error: undefined,
+              currentVersionId: v.id,
+              versions: [v, ...o.versions],
+            }
           : o,
       ),
       selectedSparkIds: id === "sparks" ? [] : s.selectedSparkIds,
     }));
   }
+  function agentError(id: PreparationAgentId, error: unknown) {
+    onChange((s) => ({
+      ...s,
+      outputs: s.outputs.map((o) =>
+        o.agentId === id
+          ? {
+              ...o,
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "This agent failed. Please retry.",
+            }
+          : o,
+      ),
+    }));
+  }
   async function prepare() {
-    if (working || !state.upstreamDraft.trim() || !begin("all")) return;
+    if (working || !state.upstreamDraft.trim() || !begin("initial")) return;
     const source = state.upstreamDraft;
     try {
-      // Parsing completes once, before Promise.all invokes any preparation adapter.
       const parsedIMC = parseIMCBrief(source);
       const upstream =
         source === state.sourceSnapshot
           ? getUpstream({ ...state, parsedIMC })
           : extractUpstream(parsedIMC);
-      onChange((s) => ({ ...s, parsedIMC }));
-      const outputs: PreparationOutput[] = await Promise.all(
-        preparationAgents.map(async (a) => {
-          const old = state.outputs.find((o) => o.agentId === a.id);
-          const version = await preparationService.generate({
-            agentId: a.id,
-            parsedIMC,
-            previous: old?.versions ?? [],
-            guidance: "",
-            upstream,
-          });
-          return {
-            agentId: a.id,
-            currentVersionId: version.id,
-            versions: [version, ...(old?.versions ?? [])],
-          };
-        }),
-      );
       onChange((s) => ({
         ...s,
-        sourceSnapshot: source,
-        outputs,
-        context: sourceContext(upstream),
         parsedIMC,
         upstream,
+        sourceSnapshot: source,
+        context: sourceContext(upstream),
         selectedSparkIds: [],
+        outputs: preparationAgents.map((agent) => ({
+          agentId: agent.id,
+          versions: [],
+          currentVersionId: "",
+          ...s.outputs.find((o) => o.agentId === agent.id),
+          error: undefined,
+        })),
       }));
+      await Promise.allSettled(
+        preparationAgents.map(async (agent) => {
+          begin(agent.id);
+          try {
+            const old = state.outputs.find((o) => o.agentId === agent.id);
+            const version = await preparationService.generate({
+              agentId: agent.id,
+              parsedIMC,
+              upstream,
+              previous: old?.versions ?? [],
+              currentVersion: currentPreparation(state, agent.id),
+              guidance: "",
+            });
+            commitVersion(agent.id, version);
+          } catch (error) {
+            agentError(agent.id, error);
+          } finally {
+            end(agent.id);
+          }
+        }),
+      );
     } catch (error) {
       setError(
         error instanceof Error
           ? error.message
-          : "The input pack could not be prepared. Previous outputs are preserved. Please retry.",
+          : "The IMC brief could not be parsed. Please retry.",
       );
     } finally {
-      end("all");
+      end("initial");
     }
   }
   async function refine(id: PreparationAgentId, guidance: string) {
-    if (stale || generating || locks.current.has("all") || !begin(id)) return;
+    if (stale || generating || !begin(id)) return;
     try {
       const output = state.outputs.find((o) => o.agentId === id)!;
-      const v = await preparationService.generate({
+      const version = await preparationService.generate({
         agentId: id,
         parsedIMC: getParsedIMC(state),
         previous: output.versions,
+        currentVersion: currentPreparation(state, id),
         guidance,
         upstream: getUpstream(state),
       });
-      commitVersion(id, v);
-    } catch {
-      setError(
-        "This agent could not be refreshed. Previous versions are preserved. Please retry.",
-      );
+      commitVersion(id, version);
+    } catch (error) {
+      agentError(id, error);
     } finally {
       end(id);
     }
@@ -373,23 +447,26 @@ export default function PreparationWorkspace({
       id: crypto.randomUUID(),
       number: Math.max(...old.versions.map((v) => v.number)) + 1,
       text,
+      data: undefined,
+      provider: "manual",
+      model: undefined,
+      generatedAt: undefined,
       guidance: "Edited by Kevin",
       createdAt: new Date().toISOString(),
       sparks: ideas,
     });
   }
-  const mismatched = state.outputs.some(
-    (o) =>
-      o.versions.find((v) => v.id === o.currentVersionId)?.sourceBrief !==
-      state.sourceSnapshot,
-  );
+  const mismatched = state.outputs.some((o) => {
+    const current = o.versions.find((v) => v.id === o.currentVersionId);
+    return current && current.sourceBrief !== state.sourceSnapshot;
+  });
   return (
     <>
       <section className="panel upstream-panel">
         <div className="section-title">
           <div>
             <span className="eyebrow">START HERE · GTM + BRAND → IMC → XC</span>
-            <h2>Bring in the IMC output brief</h2>
+            <h2>IMC Output Brief</h2>
             <p>
               One upstream brief supplies the same starting context to all three
               preparation agents.
@@ -407,7 +484,7 @@ export default function PreparationWorkspace({
             rows={6}
             value={state.upstreamDraft}
             disabled={working}
-            placeholder="Paste the IMC brief here. For this mock, labeled fields such as Campaign:, Objective:, Audience:, Product:, Channels:, Reason to believe: and Research: populate the corresponding sections."
+            placeholder="Paste the IMC brief here. Labeled fields such as Campaign:, Objective:, Audience:, Product:, Channels:, Reason to believe: and Research: populate the corresponding sections."
             onChange={(e) =>
               onChange((s) => ({ ...s, upstreamDraft: e.target.value }))
             }
@@ -441,14 +518,14 @@ export default function PreparationWorkspace({
             onClick={prepare}
           >
             <Sparkles size={15} />
-            {busy.includes("all")
+            {busy.includes("initial")
               ? "Preparing three agents…"
               : "Prepare XC Input Pack"}
           </button>
         </div>
         <p className="notice">
-          The brief is parsed into 19 fields before any preparation agent runs.
-          Original text and explicit exclusions are preserved. No external
+          Shared campaign context is extracted before any preparation agent
+          runs. Original text and explicit exclusions are preserved. No external
           research is performed.
         </p>
         {stale && (
@@ -467,11 +544,15 @@ export default function PreparationWorkspace({
       <div className="preparation-flow">
         <span>IMC output brief</span>
         <ArrowRight size={15} />
-        <span>Parsed IMC fields</span>
+        <span>Shared campaign context</span>
         <ArrowRight size={15} />
-        <span>3 preparation agents</span>
+        <span>3 agents · review & refine</span>
         <ArrowRight size={15} />
         <strong>Dynamic XC Input Pack</strong>
+        <ArrowRight size={15} />
+        <span>Select sparks</span>
+        <ArrowRight size={15} />
+        <span>5 strategic perspectives</span>
       </div>
       {error && (
         <div className="error" role="alert">
@@ -487,8 +568,17 @@ export default function PreparationWorkspace({
             onRefine={(g) => refine(a.id, g)}
             onRestore={(v) => restore(a.id, v)}
             onSave={(text) => save(a.id, text)}
-            busy={busy.includes(a.id) || busy.includes("all")}
-            disabled={stale || generating || busy.includes("all")}
+            onToggleSpark={toggleSpark}
+            onGuidance={(guidance) =>
+              onChange((s) => ({
+                ...s,
+                outputs: s.outputs.map((o) =>
+                  o.agentId === a.id ? { ...o, guidance } : o,
+                ),
+              }))
+            }
+            busy={busy.includes(a.id)}
+            disabled={stale || generating}
           />
         ))}
       </div>
@@ -501,9 +591,9 @@ export default function PreparationWorkspace({
             <span className="eyebrow">YOUR WORKING FOUNDATION</span>
             <h2>Dynamic XC Input Pack</h2>
             <p>
-              Upstream RTB, separate XC proposals, research, requirements and
-              only the sparks you select. This is what the five perspectives
-              will receive.
+              This is the current working context that will travel with the
+              strategic perspectives. It updates as the preparation agents are
+              refined.
             </p>
           </div>
           <span className="tag">
@@ -525,94 +615,130 @@ export default function PreparationWorkspace({
           </div>
         ) : (
           <>
-            <UpstreamContextPanel
-              value={getUpstream(state)}
-              disabled={working || stale}
-              onChange={(key, field) =>
-                onChange((s) => ({
-                  ...s,
-                  upstream: {
-                    fields: { ...getUpstream(s).fields, [key]: field },
-                  },
-                }))
-              }
-            />
+            <section
+              className="foundation-section campaign-foundation"
+              aria-label="Campaign Context"
+            >
+              <div className="pack-section-title">
+                <h3>A. Campaign Context</h3>
+                <span className="tag">Extracted from IMC</span>
+              </div>
+              <SourceFields
+                upstream={upstream}
+                keys={[
+                  "campaignName",
+                  "objective",
+                  "audience",
+                  "product",
+                  "channel",
+                  "constraints",
+                  "briefType",
+                  "campaignTier",
+                  "kpis",
+                ]}
+              />
+            </section>
             <div className="pack-evidence">
-              <section>
+              <section aria-label="Upstream RTB">
+                <h3>B. Upstream RTB</h3>
+                <p className="eyebrow">ORIGINAL RTB · PRESERVED</p>
+                <p>
+                  {upstream.fields.originalRTB.sourceValue ||
+                    "Not supplied in upstream brief"}
+                </p>
+                <span className="tag">
+                  {upstream.fields.originalRTB.status}
+                </span>
+                <p className="context-note">
+                  Review note:{" "}
+                  {upstream.fields.originalRTB.note ||
+                    "No review note supplied."}
+                </p>
+              </section>
+              <section aria-label="Current XC RTB proposal">
                 <div className="pack-section-title">
-                  <h3>Original upstream RTB</h3>
+                  <h3>C. Current XC RTB Proposal</h3>
                   <span className="tag">
-                    V{currentPreparation(state, "reasonToBelieve")?.number}
+                    V{currentPreparation(state, "reasonToBelieve")?.number} ·
+                    Not approved
                   </span>
                 </div>
-                <p>{fieldText(getUpstream(state).fields.originalRTB)}</p>
-                <h3 className="proposal-title">
-                  Proposed XC adaptation · not approved
-                </h3>
                 <p>{pack.proposedRTB}</p>
               </section>
-              <section>
-                <div className="pack-section-title">
-                  <h3>Supporting Data & Research</h3>
-                  <span className="tag">
-                    V{currentPreparation(state, "research")?.number}
-                  </span>
-                </div>
-                <p>{pack.research}</p>
-              </section>
             </div>
-            <div className="pack-sparks">
-              <div className="section-title">
-                <div>
-                  <h3>Select the strategic sparks to carry forward</h3>
-                  <p>
-                    Choose one or more. Unselected ideas are excluded from the
-                    round-table context.
-                  </p>
-                </div>
-                <span className="count">
-                  {state.selectedSparkIds.length} / {sparks.length}
+            <section
+              className="foundation-section"
+              aria-label="Supporting Data & Research"
+            >
+              <div className="pack-section-title">
+                <h3>D. Supporting Data & Research</h3>
+                <span className="tag">
+                  V{currentPreparation(state, "research")?.number} · Current
                 </span>
               </div>
-              <div className="spark-options">
-                {sparks.map((spark, i) => (
-                  <label
-                    className={
-                      "spark-option " +
-                      (state.selectedSparkIds.includes(spark.id)
-                        ? "checked"
-                        : "")
-                    }
-                    key={spark.id}
-                  >
-                    <input
-                      type="checkbox"
-                      disabled={working || stale}
-                      checked={state.selectedSparkIds.includes(spark.id)}
-                      onChange={() =>
-                        onChange((s) => ({
-                          ...s,
-                          selectedSparkIds: s.selectedSparkIds.includes(
-                            spark.id,
-                          )
-                            ? s.selectedSparkIds.filter((id) => id !== spark.id)
-                            : [...s.selectedSparkIds, spark.id],
-                        }))
-                      }
-                    />
-                    <span>
-                      <small>IDEA STARTER {i + 1}</small>
-                      {spark.text}
-                    </span>
-                    <Check size={15} />
-                  </label>
-                ))}
-              </div>
+              <ResearchOutput
+                text={pack.research}
+                data={currentPreparation(state, "research")?.data}
+              />
+            </section>
+            <section
+              className="pack-sparks foundation-section"
+              aria-label="Strategic Sparks"
+            >
+              <h3>E. Strategic Sparks</h3>
+              <p className="context-note">
+                Select the strategic sparks to carry forward. Only selected idea
+                starters reach the five perspectives; these are possibilities,
+                not facts.
+              </p>
+              {sparkVersion && (
+                <SparkChoices
+                  version={sparkVersion}
+                  selectedIds={state.selectedSparkIds}
+                  disabled={busy.includes("sparks") || generating || stale}
+                  onToggle={toggleSpark}
+                />
+              )}
               <p className="context-note">
                 Regenerating, editing or restoring sparks clears their selection
                 so you can review the new current version.
               </p>
-            </div>
+            </section>
+            <section
+              className="foundation-section"
+              aria-label="Brand, Planning & Execution Requirements"
+            >
+              <h3>F. Brand / Planning / Execution Requirements</h3>
+              <SourceFields
+                upstream={upstream}
+                keys={[
+                  "brandMessaging",
+                  "messagingApproval",
+                  "messageHierarchy",
+                  "brandGuidelines",
+                  "eligibility",
+                  "exclusions",
+                  "substantiation",
+                  "disclaimers",
+                  "partnerApproval",
+                ]}
+              />
+            </section>
+            <details className="review-upstream">
+              <summary>Review upstream details & add clarification</summary>
+              <UpstreamContextPanel
+                value={upstream}
+                disabled={working || stale}
+                onChange={(key, field) =>
+                  onChange((s) => ({
+                    ...s,
+                    upstream: {
+                      fields: { ...getUpstream(s).fields, [key]: field },
+                    },
+                  }))
+                }
+              />
+            </details>
             <label className="field">
               <span>Research emphasis / additional direction</span>
               <small>
@@ -621,12 +747,12 @@ export default function PreparationWorkspace({
               </small>
               <textarea
                 rows={2}
-                disabled={working || stale}
+                disabled={generating || stale}
                 value={state.focus}
                 onChange={(e) =>
                   onChange((s) => ({ ...s, focus: e.target.value }))
                 }
-                placeholder="e.g. Focus on the social context and the two selected ideas."
+                placeholder="Tell every round-table agent what to pay attention to, such as a particular social insight."
               />
             </label>
             {mismatched && (

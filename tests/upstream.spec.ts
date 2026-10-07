@@ -19,6 +19,7 @@ test("upstream decisions survive refinement, reload, approval, and brief generat
     .fill("XC proposed framing — household reassurance.");
   await rtb.getByRole("button", { name: "Save as new version" }).click();
   await expect(rtb.locator(".original-rtb-card p")).toHaveText(original);
+  await page.locator(".review-upstream > summary").click();
   await page
     .getByLabel("Required disclaimers detail", { exact: true })
     .fill("Offer terms apply.");
@@ -61,6 +62,9 @@ test("upstream decisions survive refinement, reload, approval, and brief generat
     .getByLabel("FINAL BRIEF LINE", { exact: true })
     .fill("A life that feels connected.");
   await page.getByRole("button", { name: "Approve & Continue" }).click();
+  await page
+    .getByRole("button", { name: "Load sample execution details" })
+    .click();
   await page
     .getByRole("button", { name: "Generate XC Brief", exact: true })
     .click();

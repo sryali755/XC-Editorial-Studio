@@ -168,6 +168,59 @@ function classify(occurrences: string[]): ParsedIMCField {
   });
 }
 
+// Decode a field/value CSV or a header-row CSV, including quoted multiline values.
+function csvFields(text: string): [string, string][] | null {
+  const content = text.replace(/^Source: [^\n]*\n/, "");
+  const first = content.split(/\r?\n/, 1)[0];
+  if (!first.includes(",")) return null;
+  const firstLabel = first.split(",", 1)[0].trim().replace(/^"|"$/g, "");
+  if (!labels.has(normalize(firstLabel)) && !/^(field|key)$/i.test(firstLabel))
+    return null;
+  const rows: string[][] = [];
+  let row: string[] = [],
+    value = "",
+    quoted = false;
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    if (char === '"') {
+      if (quoted && content[i + 1] === '"') {
+        value += '"';
+        i++;
+      } else quoted = !quoted;
+    } else if (!quoted && (char === "," || char === "\n" || char === "\r")) {
+      row.push(value);
+      value = "";
+      if (char !== ",") {
+        rows.push(row);
+        row = [];
+        if (char === "\r" && content[i + 1] === "\n") i++;
+      }
+    } else value += char;
+  }
+  if (quoted)
+    throw new Error(
+      "The CSV brief has an unclosed quoted value. Check the file before preparing.",
+    );
+  if (value || row.length) rows.push([...row, value]);
+  const header = rows[0];
+  if (header.length > 1 && header.every((cell) => labels.has(normalize(cell))))
+    return rows
+      .slice(1)
+      .flatMap((record) =>
+        header.map(
+          (label, i) =>
+            [labels.get(normalize(label))!, record[i] ?? ""] as [
+              string,
+              string,
+            ],
+        ),
+      );
+  return rows.flatMap(([label, ...cells]) => {
+    const key = labels.get(normalize(label));
+    return key ? [[key, cells.join(",")] as [string, string]] : [];
+  });
+}
+
 /** Deterministic extraction of labeled text, Markdown headings/tables, or a JSON object.
  * Values retain their original wording and internal line breaks; labels and their delimiters
  * are removed. Unlabeled prose is never guessed into a field.
@@ -177,7 +230,10 @@ export function parseIMCBrief(sourceText: string): ParsedIMCBrief {
   const append = (key: string, text: string) =>
     found.set(key, [...(found.get(key) ?? []), text]);
   const trimmed = sourceText.trim();
-  if (trimmed.startsWith("{")) {
+  const csv = csvFields(trimmed);
+  if (csv) {
+    for (const [key, value] of csv) append(key, value);
+  } else if (trimmed.startsWith("{")) {
     let obj: unknown;
     try {
       obj = JSON.parse(trimmed);

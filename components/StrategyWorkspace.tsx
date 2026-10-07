@@ -1,4 +1,5 @@
 "use client";
+import type { AIStatus } from "@/lib/ai/schemas";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -10,7 +11,7 @@ import {
   Layers3,
   Sparkles,
 } from "lucide-react";
-import { demoExecution } from "@/lib/demo";
+import { emptyExecution, prefillExecution } from "@/lib/execution";
 import { generateXCBrief, strategyService } from "@/lib/services";
 import type {
   AgentPersona,
@@ -42,14 +43,21 @@ const initial: StrategySession = {
   outputs: [],
   selected: [],
   synthesis: [],
+  synthesisResults: [],
+  synthesisSources: [],
+  finalSourceLines: [],
   finalLine: "",
   finalSource: "",
   approved: null,
-  execution: demoExecution,
+  execution: emptyExecution,
   brief: null,
 };
 const storageKey = "xc-strategy-session-v1";
-export default function StrategyWorkspace() {
+export default function StrategyWorkspace({
+  aiStatus,
+}: {
+  aiStatus: AIStatus;
+}) {
   const [session, setSession] = useState<StrategySession>(initial);
   const [preparing, setPreparing] = useState(false);
   const [ready, setReady] = useState(false);
@@ -72,7 +80,6 @@ export default function StrategyWorkspace() {
           Array.isArray(parsed.synthesis)
         ) {
           // Hydrate the browser-only demonstration session after the server render.
-          // eslint-disable-next-line react-hooks/set-state-in-effect
           setSession({
             ...initial,
             ...parsed,
@@ -90,7 +97,6 @@ export default function StrategyWorkspace() {
     if (!ready) return;
     try {
       sessionStorage.setItem(storageKey, JSON.stringify(session));
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSaved(true);
     } catch {
       setSaved(false);
@@ -123,13 +129,16 @@ export default function StrategyWorkspace() {
   async function generate() {
     if (preparing || !preparationReady(session.preparation)) return;
     await run("perspectives", async () => {
-      const sharedPack = structuredClone(session.pack);
+      const sharedPack = structuredClone(compileInputPack(session.preparation));
       const outputs = await strategyService.generatePerspectives(sharedPack);
       update({
         sharedPack,
         outputs,
         selected: [],
         synthesis: [],
+        synthesisResults: [],
+        synthesisSources: [],
+        finalSourceLines: [],
         finalLine: "",
         finalSource: "",
         approved: null,
@@ -152,6 +161,7 @@ export default function StrategyWorkspace() {
         session.sharedPack,
         output.versions,
         guidance,
+        output.versions.find((v) => v.id === output.currentVersionId),
       );
       setSession((s) => ({
         ...s,
@@ -160,15 +170,27 @@ export default function StrategyWorkspace() {
             ? {
                 ...o,
                 versions: [version, ...o.versions],
+                error: undefined,
                 currentVersionId: version.id,
               }
             : o,
         ),
       }));
-    } catch {
-      setError(
-        "This perspective could not be refined. Your previous versions are preserved. Please retry.",
-      );
+    } catch (error) {
+      setSession((s) => ({
+        ...s,
+        outputs: s.outputs.map((o) =>
+          o.agentId === persona.id
+            ? {
+                ...o,
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : "This perspective failed. Please retry.",
+              }
+            : o,
+        ),
+      }));
     } finally {
       locks.current.delete(persona.id);
       setAgentBusy((b) => b.filter((id) => id !== persona.id));
@@ -182,10 +204,15 @@ export default function StrategyWorkspace() {
         : [...s.selected, line],
     }));
   }
-  function chooseFinal(text: string, source: string) {
+  function chooseFinal(
+    text: string,
+    source: string,
+    sourceLines: SelectedBriefLine[] = [],
+  ) {
     update({
       finalLine: text,
       finalSource: source,
+      finalSourceLines: structuredClone(sourceLines),
       approved: null,
       brief: null,
     });
@@ -203,13 +230,13 @@ export default function StrategyWorkspace() {
     });
   }
   const titles = [
-    "A stronger starting point.",
+    "Prepare the Inputs",
     "Five perspectives. One shared ambition.",
     "From direction to deliverables.",
     "A clearer handoff to Creative.",
   ];
   const descriptions = [
-    "Start with the IMC brief. Three preparation agents help you shape a focused input pack for the five strategic perspectives.",
+    "Start with the IMC output brief. The same upstream context will be used by the preparation agents to create the working foundation for XC strategy.",
     "Explore different angles, guide each perspective and choose the brief line that moves the strategy forward.",
     "Your strategy is approved. Add the practical details that turn a strong line into an actionable creative brief.",
     "Your approved strategy and execution direction, brought together in one review-ready document.",
@@ -297,9 +324,11 @@ export default function StrategyWorkspace() {
                 <CircleHelp size={15} /> About this prototype
               </summary>
               <p>
-                All AI outputs and campaign evidence are simulated. Writer is
-                not connected. Work is saved in this browser tab when storage is
-                available.
+                {aiStatus.mode === "mock"
+                  ? "AI outputs are simulated."
+                  : "AI responses are generated live."}{" "}
+                Writer and enterprise research connectors are not connected.
+                Work is saved in this browser tab when storage is available.
               </p>
             </details>
             <div className="sidebar-footer">
@@ -340,9 +369,18 @@ export default function StrategyWorkspace() {
             </span>
           </div>
           <div className="mock-note">
-            <span className="mock-label">DEMO MODE</span>Illustrative campaign
-            content and simulated AI responses. No live Writer connection.
+            <span className="mock-label">
+              {aiStatus.mode === "mock" ? "DEMO MODE" : "PROTOTYPE MODE"}
+            </span>
+            {aiStatus.mode === "mock"
+              ? "Illustrative campaign content and simulated AI responses. No live Writer connection."
+              : "Live AI-generated responses. Writer and enterprise research connectors are not yet connected."}
           </div>
+          {aiStatus.error && (
+            <div className="error" role="alert">
+              {aiStatus.error}
+            </div>
+          )}
           {error && (
             <div className="error" role="alert">
               {error}
@@ -418,7 +456,7 @@ export default function StrategyWorkspace() {
                 onClear={() => update({ selected: [] })}
                 onCombine={() => setBlending(true)}
                 onUse={(s) =>
-                  chooseFinal(s.text, `${s.personaName} · V${s.version}`)
+                  chooseFinal(s.text, `${s.personaName} · V${s.version}`, [s])
                 }
               />
               {blending && (
@@ -427,14 +465,25 @@ export default function StrategyWorkspace() {
                   busy={busy === "synthesis"}
                   onGenerate={(weights) =>
                     run("synthesis", async () => {
-                      const text = await strategyService.synthesize({
+                      const result = await strategyService.synthesize({
                         strategyInputPack: session.sharedPack!,
                         lines: session.selected,
                         weights,
                       });
                       setSession((s) => ({
                         ...s,
-                        synthesis: [text, ...s.synthesis],
+                        synthesis: [
+                          result.data.synthesizedLines[0].line,
+                          ...s.synthesis,
+                        ],
+                        synthesisResults: [
+                          result,
+                          ...(s.synthesisResults ?? []),
+                        ],
+                        synthesisSources: [
+                          structuredClone(session.selected),
+                          ...(s.synthesisSources ?? []),
+                        ],
                       }));
                     })
                   }
@@ -457,6 +506,7 @@ export default function StrategyWorkspace() {
                           chooseFinal(
                             text,
                             `Synthesis ${session.synthesis.length - i}`,
+                            session.synthesisSources?.[i] ?? [],
                           )
                         }
                       >
@@ -469,11 +519,28 @@ export default function StrategyWorkspace() {
               <ApprovalGate
                 value={session.finalLine}
                 source={session.finalSource}
-                onChange={(v) => chooseFinal(v, "Manually edited by Kevin")}
+                onChange={(v) =>
+                  chooseFinal(
+                    v,
+                    "Manually edited by Kevin",
+                    session.finalSourceLines,
+                  )
+                }
                 onApprove={() => {
                   if (!session.finalLine.trim()) return;
                   update({
+                    execution: prefillExecution(
+                      session.execution,
+                      session.sharedPack!,
+                      session.executionSourcePack ??
+                        session.approved?.strategyInputPack,
+                    ),
+                    executionSourcePack: structuredClone(session.sharedPack!),
                     approved: {
+                      approvalState: "Approved",
+                      sourcePerspectives: structuredClone(
+                        session.finalSourceLines ?? [],
+                      ),
                       briefLine: session.finalLine.trim(),
                       strategyInputPack: structuredClone(session.sharedPack!),
                       approvedAt: new Date().toISOString(),
@@ -494,8 +561,18 @@ export default function StrategyWorkspace() {
                 <span className="approval-seal">
                   <Check size={15} /> Approved by Kevin
                 </span>
-                <span className="eyebrow">APPROVED BRIEF LINE</span>
+                <span className="eyebrow">APPROVED STRATEGY RECORD</span>
                 <blockquote>“{session.approved.briefLine}”</blockquote>
+                <p>Source: {session.approved.source}</p>
+                <p>
+                  Selected sparks:{" "}
+                  {session.approved.strategyInputPack.selectedSparks?.length ??
+                    session.approved.strategyInputPack.sparks
+                      .split("\n")
+                      .filter(Boolean).length}{" "}
+                  · Supporting research and campaign context saved with this
+                  approval.
+                </p>
                 <button className="text-button" onClick={() => navigate(1)}>
                   Review strategy <ArrowRight size={14} />
                 </button>
@@ -533,7 +610,7 @@ export default function StrategyWorkspace() {
           </footer>
           <div className="sr-only" role="status" aria-live="polite">
             {busy
-              ? "Generating mock response"
+              ? "Generating response"
               : agentBusy.length
                 ? "Refining perspective"
                 : "Ready"}

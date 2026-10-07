@@ -1,17 +1,15 @@
+import { runAgent } from "./ai/client";
+import { preparationText } from "./ai/format";
 import {
   getParsedIMC,
   getUpstream,
   fieldText,
   sourceContext,
-  reconcileUpstream,
 } from "./upstream";
 import type {
   PreparationAgentId,
   PreparationState,
-  PreparationVersion,
   StrategyInputPack,
-  UpstreamContext,
-  ParsedIMCBrief,
 } from "./types";
 
 export const emptyContext = {
@@ -68,7 +66,7 @@ export const preparationAgents: {
     name: "Review & Adapt Upstream RTB",
     thinking:
       "Preserve the GTM-provided RTB and its hierarchy. Suggest XC framing separately; flag gaps without adding new claims or replacing upstream strategy.",
-    output: "An XC adaptation proposal, separate from the original RTB.",
+    output: "Original upstream RTB + optional XC adaptation proposal.",
     color: "purple",
     symbol: "01",
   },
@@ -92,12 +90,15 @@ export const preparationAgents: {
   },
 ];
 export const researchSources = [
-  "Tableau",
-  "iSpot",
-  "ACE",
-  "Datorama",
-  "Brand Hub",
-  "Product / audience research",
+  { name: "Tableau", purpose: "Historical performance" },
+  { name: "iSpot", purpose: "Creative/media performance" },
+  { name: "ACE", purpose: "Creative effectiveness/testing" },
+  { name: "Datorama", purpose: "Digital campaign performance" },
+  { name: "Brand Hub", purpose: "Approved claims / brand principles" },
+  {
+    name: "Product / Audience Research",
+    purpose: "Supporting customer/product evidence",
+  },
 ];
 export function currentPreparation(
   state: PreparationState,
@@ -109,6 +110,14 @@ export function currentPreparation(
 export function compileInputPack(state: PreparationState): StrategyInputPack {
   const sparks = currentPreparation(state, "sparks");
   const upstream = getUpstream(state);
+  const selectedSparks =
+    sparks?.sparks
+      .filter((spark) => state.selectedSparkIds.includes(spark.id))
+      .map((spark) => ({
+        ...spark,
+        versionId: sparks.id,
+        version: sparks.number,
+      })) ?? [];
   return {
     ...sourceContext(upstream),
     upstream,
@@ -119,18 +128,17 @@ export function compileInputPack(state: PreparationState): StrategyInputPack {
         ? (currentPreparation(state, "reasonToBelieve")?.text ?? "")
         : `No adaptation carried forward. Upstream RTB: ${fieldText(upstream.fields.originalRTB)}.`,
     research: currentPreparation(state, "research")?.text ?? "",
-    sparks:
-      sparks?.sparks
-        .filter((s) => state.selectedSparkIds.includes(s.id))
-        .map((s) => s.text)
-        .join("\n") ?? "",
+    selectedSparks,
+    sparks: selectedSparks.map((spark) => spark.text).join("\n"),
     researchFocus: state.focus,
-    preparationSource: "IMC brief → three preparation agents · Mock outputs",
+    preparationSource:
+      "IMC brief → three preparation agents · Selected current outputs",
   };
 }
 export function preparationReady(state: PreparationState) {
   const pack = compileInputPack(state);
   return (
+    preparationAgents.every((agent) => !!currentPreparation(state, agent.id)) &&
     !state.outputs.some(
       (o) =>
         o.versions.find((v) => v.id === o.currentVersionId)?.sourceBrief !==
@@ -143,78 +151,62 @@ export function preparationReady(state: PreparationState) {
     !!pack.sparks.trim()
   );
 }
-export interface PreparationService {
-  generate(request: {
+
+export const preparationService = {
+  async generate({
+    agentId,
+    parsedIMC,
+    previous,
+    guidance,
+    upstream,
+    currentVersion,
+  }: {
     agentId: PreparationAgentId;
-    parsedIMC: ParsedIMCBrief;
-    previous: PreparationVersion[];
+    parsedIMC: import("./types").ParsedIMCBrief;
+    previous: import("./types").PreparationVersion[];
     guidance: string;
-    upstream: UpstreamContext;
-  }): Promise<PreparationVersion>;
-}
-// TODO: Replace with approved preparation Playbooks and authenticated server-side connectors.
-// No live research, vector database, retrieval or Writer invocation is implemented here.
-export const preparationService: PreparationService = {
-  async generate({ agentId, parsedIMC, previous, guidance, upstream }) {
-    if (
-      !parsedIMC ||
-      parsedIMC.schemaVersion !== 1 ||
-      !parsedIMC.sourceText.trim()
-    )
+    upstream: import("./types").UpstreamContext;
+    currentVersion?: import("./types").PreparationVersion;
+  }): Promise<import("./types").PreparationVersion> {
+    if (!parsedIMC?.sourceText.trim())
       throw new Error(
         "Parse the IMC brief before running a preparation agent.",
       );
-    await new Promise((resolve) => setTimeout(resolve, 650));
-    const source = reconcileUpstream(parsedIMC, upstream);
-    const context = sourceContext(source);
     const number = previous.length
       ? Math.max(...previous.map((v) => v.number)) + 1
-      : 0;
-    const product =
-      source.fields.product.status === "Supplied"
-        ? context.product
-        : "the supplied offer";
-    const audience =
-      source.fields.audience.status === "Supplied"
-        ? context.audience
-        : "the priority audience (confirm from the brief)";
-    let text = "";
-    let ideas: string[] = [];
-    if (agentId === "reasonToBelieve") {
-      const original = source.fields.originalRTB;
-      text =
-        original.status === "Supplied"
-          ? `${original.value}\n\nProposed XC framing: connect the supplied RTB to the needs of ${audience}. Preserve the upstream message hierarchy and approved claims.\n\nProposal only — no upstream approval is granted by this agent or by Kevin’s brief-line approval.`
-          : `Upstream RTB: ${fieldText(original)}.\n\nNo replacement RTB has been generated. Preserve this upstream decision; clarify with the GTM owner if a change is needed.`;
-    }
-    if (agentId === "research")
-      text = `SUPPLIED EVIDENCE\n${fieldText(source.fields.research)}\n\nAUDIENCE CONTEXT\n${audience}\n\nRESEARCH TO VALIDATE\nHistorical performance: Tableau / Datorama.\nCreative testing and response: iSpot / ACE.\nApproved claims and brand principles: Brand Hub.\n\nEVIDENCE GAPS\nAll connectors are unconnected. No external data was retrieved, and no performance results are asserted.`;
-    if (agentId === "sparks") {
-      ideas = [
-        `What if ${product} played a quieter role, so everyday life could take the lead?`,
-        `Explore the tension between a connected household and everyone's individual world.`,
-        `What everyday friction could ${product} help the audience move beyond?`,
-        `Consider belonging as a human benefit, rather than a technology feature.`,
-        `Could a familiar household moment make the campaign promise easier to understand?`,
-        `Explore how the audience defines value beyond specifications.`,
-      ];
-      if (number > 0)
-        ideas = ideas.map(
-          (idea, i) =>
-            `${idea} ${guidance ? `Explore through this guidance: ${guidance}.` : `Alternative ${number}: consider ${i % 2 ? "a shared ritual" : "a small everyday moment"}.`}`,
-        );
-      text = ideas.map((idea, i) => `${i + 1}. ${idea}`).join("\n\n");
-    }
-    if (agentId !== "sparks" && number > 0)
-      text += `\n\nREFINEMENT V${number}\n${guidance ? `Strategist emphasis: ${guidance}` : "Refresh the framing around the supplied objective and evidence gaps."}\nKeep this emphasis tied to the evidence above; validate any additional claims.`;
+      : 1;
+    const current = currentVersion ?? previous[0];
+    const response = await runAgent({
+      agentType: agentId === "reasonToBelieve" ? "rtb" : agentId,
+      context: { parsedIMC, upstream },
+      guidance,
+      versionNumber: number,
+      ...(current
+        ? {
+            previousVersion: {
+              number: current.number,
+              text: current.text,
+              ...(current.data ? { data: current.data } : {}),
+            },
+          }
+        : {}),
+    });
+    const id = crypto.randomUUID();
     return {
-      id: crypto.randomUUID(),
+      ...response,
+      id,
       number,
-      text,
+      text: preparationText(response.data),
       guidance: guidance || "Initial preparation from IMC brief",
-      createdAt: new Date().toISOString(),
+      createdAt: response.generatedAt,
       sourceBrief: parsedIMC.sourceText,
-      sparks: ideas.map((text) => ({ id: crypto.randomUUID(), text })),
+      sparks:
+        "sparks" in response.data
+          ? response.data.sparks.map((spark, index) => ({
+              ...spark,
+              id: `${id}:${index}`,
+            }))
+          : [],
     };
   },
 };

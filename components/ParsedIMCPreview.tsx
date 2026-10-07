@@ -8,8 +8,18 @@ export default function ParsedIMCPreview({
   parsed: ParsedIMCBrief;
   stale: boolean;
 }) {
-  const supplied = Object.values(parsed.fields).filter(
-    (f) => f.status === "Supplied",
+  const entries = [
+    ...imcSchema.map((def) => ({
+      key: def.key as string,
+      field: parsed.fields[def.key],
+    })),
+    {
+      key: "partner_approval_status",
+      field: parsed.supplemental.partnerApproval,
+    },
+  ].filter((entry) => !!entry.field);
+  const supplied = entries.filter(
+    (entry) => entry.field!.status === "Supplied",
   ).length;
   return (
     <details className="panel parsed-imc" aria-label="Parsed IMC fields">
@@ -21,7 +31,7 @@ export default function ParsedIMCPreview({
         <span className="tag">
           {stale
             ? "Source changed — parse again"
-            : `${supplied} supplied · ${imcSchema.length} fields checked`}
+            : `${supplied} supplied · ${entries.length} fields checked`}
         </span>
       </summary>
       <p className="context-note">
@@ -29,15 +39,15 @@ export default function ParsedIMCPreview({
         review notes do not change this record.
       </p>
       <div className="parsed-field-grid">
-        {imcSchema.map((def) => (
-          <section key={def.key} aria-label={`Parsed ${def.key}`}>
+        {entries.map(({ key, field }) => (
+          <section key={key} aria-label={`Parsed ${key}`}>
             <div>
-              <code>{def.key}</code>
-              <span className="tag">{parsed.fields[def.key].status}</span>
+              <code>{key}</code>
+              <span className="tag">{field!.status}</span>
             </div>
             <p>
-              {parsed.fields[def.key].sourceValue ||
-                (parsed.fields[def.key].present
+              {field!.sourceValue ||
+                (field!.present
                   ? "Field is present but empty."
                   : "Not supplied.")}
             </p>

@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { parseIMCBrief } from "../lib/imc-parser";
 import { extractUpstream, getUpstream } from "../lib/upstream";
-import { emptyPreparation, preparationService } from "../lib/preparation";
+import { emptyPreparation } from "../lib/preparation";
+import { mockPreparationService as preparationService } from "../lib/ai/mock-preparation";
 
 const fields = {
   campaign: "Fall household campaign",
@@ -53,7 +54,10 @@ test("extracts all 19 snake_case fields and retains multiline text before agent 
       }),
     ),
   );
-  expect(outputs[0].text).toContain(fields.reason_to_believe);
+  expect(upstream.fields.originalRTB.sourceValue).toBe(
+    fields.reason_to_believe,
+  );
+  expect(outputs[0].text).toContain("Proposed XC framing");
   expect(outputs[1].text).toContain(fields.research);
   expect(outputs[1].text).not.toContain("No labeled research supplied");
   expect(JSON.stringify(parsed)).toBe(before);
@@ -139,7 +143,7 @@ test("the parsed record is visible before preparation completes and remains unch
     .getByRole("button", { name: "Prepare XC Input Pack", exact: true })
     .click();
   await expect(page.locator(".parsed-imc")).toBeVisible();
-  await expect(page.locator(".spark-option")).toHaveCount(6);
+  await expect(page.locator(".dynamic-pack .spark-option")).toHaveCount(6);
   await page.locator(".parsed-imc > summary").click();
   await expect(
     page
@@ -159,7 +163,7 @@ test("the parsed record is visible before preparation completes and remains unch
     page
       .getByRole("article", { name: "Review & Adapt Upstream RTB" })
       .locator(".card-top"),
-  ).toContainText("V1");
+  ).toContainText("V2");
   const after = await page.evaluate(
     () =>
       JSON.parse(sessionStorage.getItem("xc-strategy-session-v1")!).preparation
