@@ -189,16 +189,16 @@ export function extractUpstream(
     fields: {
       ...Object.fromEntries(entries),
       ...Object.fromEntries(
-        Object.entries(parsed.supplemental).map(([key, value]) => [
-          key,
-          { ...value },
-        ]),
+        Object.entries(parsed.supplemental)
+          .filter(([key]) => key !== "brand")
+          .map(([key, value]) => [key, { ...value }]),
       ),
     } as UpstreamContext["fields"],
   };
 }
 export function getParsedIMC(state: PreparationState): ParsedIMCBrief {
   return state.parsedIMC?.schemaVersion === 1 &&
+    state.parsedIMC.parserVersion === 2 &&
     state.parsedIMC.sourceText === state.sourceSnapshot
     ? state.parsedIMC
     : parseIMCBrief(state.sourceSnapshot);
@@ -233,6 +233,13 @@ export function reconcileUpstream(
       const review = reviewed.fields[key];
       const original = extracted.fields[key];
       if (!review) continue;
+      // An older parser's extraction is not a human edit. Repair it from source.
+      if (
+        review.sourceValue !== original.sourceValue &&
+        review.value === review.sourceValue &&
+        review.status === original.status
+      )
+        continue;
       if (
         review.status === "Not supplied" &&
         original.status !== "Not supplied"

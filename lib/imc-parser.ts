@@ -92,39 +92,45 @@ export const imcSchema: {
     aliases: ["Required disclaimers"],
   },
 ];
-const supplementalSchema: { key: UpstreamKey; aliases: string[] }[] = [
-  { key: "learningAgenda", aliases: ["Learning agenda"] },
-  { key: "journeyDestinations", aliases: ["Journey destinations"] },
-  { key: "milestones", aliases: ["Milestones", "GTM milestones"] },
-  {
-    key: "partnerApproval",
-    aliases: [
-      "Partner approval",
-      "Partner approvals",
-      "Partner approval status",
-    ],
-  },
-  {
-    key: "sourceVersion",
-    aliases: [
-      "Document version",
-      "Source version",
-      "Upstream document version",
-    ],
-  },
-  {
-    key: "upstreamApproval",
-    aliases: [
-      "Upstream approval",
-      "Approval status",
-      "Upstream approval status",
-    ],
-  },
-  {
-    key: "sourceReferences",
-    aliases: ["Resources", "Source references", "Supporting source references"],
-  },
-];
+const supplementalSchema: { key: UpstreamKey | "brand"; aliases: string[] }[] =
+  [
+    { key: "brand", aliases: ["Brand name"] },
+    { key: "learningAgenda", aliases: ["Learning agenda"] },
+    { key: "journeyDestinations", aliases: ["Journey destinations"] },
+    { key: "milestones", aliases: ["Milestones", "GTM milestones"] },
+    {
+      key: "partnerApproval",
+      aliases: [
+        "Partner approval",
+        "Partner approvals",
+        "Partner approval status",
+      ],
+    },
+    {
+      key: "sourceVersion",
+      aliases: [
+        "Document version",
+        "Source version",
+        "Upstream document version",
+      ],
+    },
+    {
+      key: "upstreamApproval",
+      aliases: [
+        "Upstream approval",
+        "Approval status",
+        "Upstream approval status",
+      ],
+    },
+    {
+      key: "sourceReferences",
+      aliases: [
+        "Resources",
+        "Source references",
+        "Supporting source references",
+      ],
+    },
+  ];
 function normalize(label: string) {
   return label
     .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -330,6 +336,7 @@ export function parseIMCBrief(sourceText: string): ParsedIMCBrief {
   }
   return Object.freeze({
     schemaVersion: 1,
+    parserVersion: 2,
     sourceText,
     fields: Object.freeze(
       Object.fromEntries(

@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { parseIMCBrief } from "../lib/imc-parser";
 import { extractUpstream, getUpstream } from "../lib/upstream";
 import { emptyPreparation } from "../lib/preparation";
+import { getParsedIMC } from "../lib/upstream";
 import { mockPreparationService as preparationService } from "../lib/ai/mock-preparation";
 
 const fields = {
@@ -26,6 +27,41 @@ const fields = {
   substantiation: "Evidence reference 12",
   disclaimers: "Offer terms apply.",
 };
+test("brand metadata is extracted separately and legacy unedited campaign fields are repaired", () => {
+  const source =
+    "**Campaign:** Life Has Enough Drama\n\n**Brand:** Xfinity\nObjective: Encourage consideration\nResearch: One qualified observation.\nSupporting line.";
+  const parsed = parseIMCBrief(source);
+  expect(parsed.fields.campaign.sourceValue).toBe("Life Has Enough Drama");
+  expect(parsed.supplemental.brand?.sourceValue).toBe("Xfinity");
+  expect(parsed.fields.research.sourceValue).toBe(
+    "One qualified observation.\nSupporting line.",
+  );
+  expect(Object.keys(parsed.fields)).toHaveLength(19);
+  expect(parsed.sourceText).toBe(source);
+  for (const content of [
+    JSON.stringify({ campaign: "Autumn", brand: "Xfinity" }),
+    "field,value\ncampaign,Autumn\nbrand,Xfinity",
+    "| Campaign | Autumn |\n| Brand | Xfinity |",
+  ])
+    expect(parseIMCBrief(content).fields.campaign.sourceValue).toBe("Autumn");
+  const legacy = extractUpstream(source);
+  legacy.fields.campaignName.value = legacy.fields.campaignName.sourceValue =
+    "Life Has Enough Drama\n\n**Brand:** Xfinity";
+  const state = {
+    ...emptyPreparation,
+    sourceSnapshot: source,
+    upstream: legacy,
+    parsedIMC: { ...parsed, parserVersion: undefined },
+  };
+  expect(getParsedIMC(state).parserVersion).toBe(2);
+  expect(getUpstream(state).fields.campaignName.value).toBe(
+    "Life Has Enough Drama",
+  );
+  legacy.fields.campaignName.value = "A human-reviewed title";
+  expect(getUpstream(state).fields.campaignName.value).toBe(
+    "A human-reviewed title",
+  );
+});
 test("extracts all 19 snake_case fields and retains multiline text before agent use", async () => {
   const text = Object.entries(fields)
     .map(([k, v]) => `${k}: ${v}`)

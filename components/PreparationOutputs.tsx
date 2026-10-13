@@ -13,14 +13,24 @@ export function SparkChoices({
   selectedIds,
   disabled,
   onToggle,
+  onInspect,
+  keptIds = [],
+  onKeep,
+  onRevise,
 }: {
   version: PreparationVersion;
   selectedIds: string[];
   disabled: boolean;
   onToggle: (id: string) => void;
+  onInspect?: (id: string) => void;
+  keptIds?: string[];
+  onKeep?: (id: string) => void;
+  onRevise?: (id: string, intent: "explore" | "improve") => void;
 }) {
   return (
-    <div className="spark-selection">
+    <div
+      className={"spark-selection" + (onInspect ? " pack-spark-selection" : "")}
+    >
       <p className="selection-count" role="status">
         {
           version.sparks.filter((spark) => selectedIds.includes(spark.id))
@@ -30,25 +40,76 @@ export function SparkChoices({
       </p>
       <div className="spark-options">
         {version.sparks.map((spark, i) => (
-          <label
-            className={
-              "spark-option " +
-              (selectedIds.includes(spark.id) ? "checked" : "")
-            }
-            key={spark.id}
-          >
-            <input
-              type="checkbox"
-              disabled={disabled}
-              checked={selectedIds.includes(spark.id)}
-              onChange={() => onToggle(spark.id)}
-            />
-            <span>
-              <small>IDEA STARTER {i + 1}</small>
-              {spark.text}
-            </span>
-            <Check size={15} />
-          </label>
+          <div className="spark-choice" key={spark.id}>
+            <label
+              className={
+                "spark-option " +
+                (selectedIds.includes(spark.id) ? "checked" : "")
+              }
+            >
+              <input
+                type="checkbox"
+                disabled={disabled}
+                checked={selectedIds.includes(spark.id)}
+                onChange={() => onToggle(spark.id)}
+              />
+              <span>
+                <small>IDEA STARTER {i + 1}</small>
+                {spark.title && (
+                  <strong className="spark-title">{spark.title}</strong>
+                )}
+                <span className="spark-description">{spark.text}</span>
+              </span>
+              <Check size={15} />
+            </label>
+            {onKeep && onRevise && version.sparks.length === 6 && (
+              <div className="spark-actions">
+                <button
+                  type="button"
+                  className="button small"
+                  disabled={disabled}
+                  aria-pressed={keptIds.includes(spark.id)}
+                  onClick={() => onKeep(spark.id)}
+                >
+                  {keptIds.includes(spark.id)
+                    ? "Kept · Release"
+                    : "Keep this Spark"}
+                </button>
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={disabled || keptIds.includes(spark.id)}
+                  onClick={() => onRevise(spark.id, "improve")}
+                >
+                  Improve
+                </button>
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={disabled || keptIds.includes(spark.id)}
+                  onClick={() => onRevise(spark.id, "explore")}
+                >
+                  Replace
+                </button>
+              </div>
+            )}
+            {onInspect ? (
+              <button
+                className="pack-trace-button"
+                onClick={() => onInspect(spark.id)}
+                aria-label={`Trace this idea: ${spark.title || `Idea starter ${i + 1}`}`}
+              >
+                Trace this idea <span aria-hidden="true">↗</span>
+              </button>
+            ) : (
+              spark.rationale && (
+                <details className="spark-rationale">
+                  <summary>Why this spark · grounding & hypothesis</summary>
+                  <p>{spark.rationale}</p>
+                </details>
+              )
+            )}
+          </div>
         ))}
       </div>
     </div>

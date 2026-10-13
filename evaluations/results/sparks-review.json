@@ -1,0 +1,83 @@
+{
+  "reviewer": "Assistant provisional assessment",
+  "approval": "Pending human creative review",
+  "promptTemplateVersion": "xc-sparks-2.1",
+  "results": "sparks.json",
+  "limitations": [
+    "Synthetic fixtures do not establish quality on real campaign briefs.",
+    "No connected research or claim approval was added.",
+    "Duplicate checks validate structure and normalized text, not semantic originality."
+  ],
+  "cases": [
+    {
+      "label": "Initial household exploration",
+      "generatedAt": "2026-10-12T16:08:31.133Z",
+      "model": "gpt-5.5",
+      "titles": [
+        "The Activity Map",
+        "The Coordinator\u2019s View",
+        "Many Reasons Online",
+        "Plainspoken Choosing",
+        "The Gentle Interruptions",
+        "Behind The Click"
+      ],
+      "assessment": "Grounding and validation are explicit. Activity Map, Plainspoken Choosing and Behind The Click still share an activity-led framing; a creative reviewer should challenge overlap before selecting several of these."
+    },
+    {
+      "label": "Fresh alternatives without steering",
+      "generatedAt": "2026-10-12T16:09:49.197Z",
+      "model": "gpt-5.5",
+      "titles": [
+        "The Adult\u2019s Agenda",
+        "Rooms Change Jobs",
+        "Household Shorthand",
+        "The New Thing",
+        "Kind House Rules",
+        "Less Heroic Home"
+      ],
+      "assessment": "Adult ambition, a new online activity and shared-space etiquette add useful directions. Rooms Change Jobs and Less Heroic Home remain close to ordinary-life framing; exact uniqueness is not proof of semantic novelty."
+    },
+    {
+      "label": "Calendar steering with varied territories",
+      "generatedAt": "2026-10-12T16:10:17.933Z",
+      "model": "gpt-5.5",
+      "titles": [
+        "Hidden Coordinator",
+        "Calendar As Filter",
+        "Invitation, Not Assignment",
+        "The Protected Square",
+        "The Week Receipts",
+        "The Oddball Entry"
+      ],
+      "assessment": "Calendar steering is reflected throughout. Invitation, protected time, retrospective review and curiosity offer different questions, although recognition and activity-led evaluation revisit earlier interests."
+    },
+    {
+      "label": "Excluded RTB and missing research",
+      "generatedAt": "2026-10-12T16:10:44.399Z",
+      "model": "gpt-5.5",
+      "titles": [
+        "The Protected Hour",
+        "The Household Translator",
+        "Kind House Rules",
+        "Week Before Specs",
+        "Boring Is Welcome",
+        "The Forgotten Room"
+      ],
+      "assessment": "All six rationales explicitly preserve the excluded RTB. Protected time and practical-fixture metaphors still need review for unintended product implications; they remain non-approved hypotheses."
+    },
+    {
+      "label": "Business context with qualified evidence",
+      "generatedAt": "2026-10-12T16:11:06.165Z",
+      "model": "gpt-5.5",
+      "titles": [
+        "The Opening List",
+        "Before The Sign Turns",
+        "Plain-Word Handoffs",
+        "Device Roll Call",
+        "Orders Need Room",
+        "Ready As Respect"
+      ],
+      "assessment": "The shop context replaces household assumptions. The checklist remains one fictional interview, not population evidence. Opening List and Before The Sign Turns have related preparation scenes; selection should favor distinct strategic questions."
+    }
+  ]
+}

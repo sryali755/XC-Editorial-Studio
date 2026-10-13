@@ -1,6 +1,9 @@
 "use client";
 import type { AIStatus } from "@/lib/ai/schemas";
 import Link from "next/link";
+import { personas } from "@/lib/demo";
+import { defaultPersonality } from "@/lib/creative-controls";
+import { campaignDisplayName } from "@/lib/campaign-display";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -30,6 +33,7 @@ import {
   SelectedLinesTray,
 } from "./AgentRoundTable";
 import PreparationWorkspace from "./PreparationWorkspace";
+import SavedProjects from "./SavedProjects";
 import {
   compileInputPack,
   emptyPreparation,
@@ -130,7 +134,16 @@ export default function StrategyWorkspace({
     if (preparing || !preparationReady(session.preparation)) return;
     await run("perspectives", async () => {
       const sharedPack = structuredClone(compileInputPack(session.preparation));
-      const outputs = await strategyService.generatePerspectives(sharedPack);
+      const outputs = personas.map((persona) => ({
+        agentId: persona.id,
+        versions: [],
+        currentVersionId: "",
+        personality: defaultPersonality(),
+        steeringText: "",
+      }));
+      const pending = new Set(personas.map((p) => p.id));
+      for (const persona of personas) locks.current.add(persona.id);
+      setAgentBusy(personas.map((p) => p.id));
       update({
         sharedPack,
         outputs,
@@ -147,6 +160,22 @@ export default function StrategyWorkspace({
       });
       setBlending(false);
       window.scrollTo({ top: 0 });
+      try {
+        await strategyService.generatePerspectives(sharedPack, (output) => {
+          setSession((s) => ({
+            ...s,
+            outputs: s.outputs.map((old) =>
+              old.agentId === output.agentId ? output : old,
+            ),
+          }));
+          locks.current.delete(output.agentId);
+          pending.delete(output.agentId);
+          setAgentBusy((ids) => ids.filter((id) => id !== output.agentId));
+        });
+      } finally {
+        for (const id of pending) locks.current.delete(id);
+        setAgentBusy((ids) => ids.filter((id) => !pending.has(id)));
+      }
     });
   }
   async function refine(persona: AgentPersona, guidance: string) {
@@ -162,6 +191,8 @@ export default function StrategyWorkspace({
         output.versions,
         guidance,
         output.versions.find((v) => v.id === output.currentVersionId),
+        output.personality,
+        output.refinementMode,
       );
       setSession((s) => ({
         ...s,
@@ -249,6 +280,21 @@ export default function StrategyWorkspace({
           <span>STRATEGY STUDIO</span>
         </Link>
         <div className="top-right">
+          <SavedProjects
+            session={session}
+            disabled={!ready || !!busy || preparing || agentBusy.length > 0}
+            onOpen={(snapshot) => {
+              setSession({
+                ...initial,
+                ...snapshot,
+                step:
+                  snapshot.step > 1 && !snapshot.approved ? 1 : snapshot.step,
+              });
+              setError("");
+              setBlending(false);
+              window.scrollTo({ top: 0 });
+            }}
+          />
           <span className="demo-pill">
             <span /> Interactive prototype
           </span>
@@ -339,7 +385,8 @@ export default function StrategyWorkspace({
         <main id="main">
           <div className="breadcrumb">
             Workspace <ChevronRight size={12} />{" "}
-            {session.pack.campaignName || "Untitled campaign"}
+            {campaignDisplayName(session.pack.campaignName) ||
+              "Untitled campaign"}
             <span className="save-status">
               <span />
               {saved ? "Session saved in this tab" : "Browser session"}
@@ -427,7 +474,11 @@ export default function StrategyWorkspace({
                     time.
                   </p>
                 </div>
-                <span className="tag">Independent version histories</span>
+                <span className="tag" role="status">
+                  {busy === "perspectives"
+                    ? `${session.outputs.filter((o) => o.versions.length || o.error).length} of 5 ready`
+                    : "Independent version histories"}
+                </span>
               </div>
               <AgentRoundTable
                 outputs={session.outputs}
@@ -435,6 +486,14 @@ export default function StrategyWorkspace({
                 onSelect={select}
                 onRefine={refine}
                 busy={agentBusy}
+                onConfigure={(agentId, patch) =>
+                  setSession((s) => ({
+                    ...s,
+                    outputs: s.outputs.map((o) =>
+                      o.agentId === agentId ? { ...o, ...patch } : o,
+                    ),
+                  }))
+                }
                 onRestore={(agentId, id) =>
                   setSession((s) => ({
                     ...s,

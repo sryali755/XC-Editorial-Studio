@@ -1,4 +1,5 @@
 import type { GeneratedBrief } from "./types";
+import { campaignDisplayName } from "./campaign-display";
 
 export const briefTheme = {
   purple: "#6242C7",
@@ -63,6 +64,10 @@ const groups = [
 export function buildBriefDocument(brief: GeneratedBrief) {
   const sections = brief.sections.map((section, index) => ({
     ...section,
+    content:
+      section.title.trim().toLowerCase() === "campaign"
+        ? campaignDisplayName(section.content)
+        : section.content,
     id: `brief-section-${index}`,
   }));
   const approved = sections.find((s) => s.title === "Approved Brief Line");
@@ -80,7 +85,7 @@ export function buildBriefDocument(brief: GeneratedBrief) {
   });
   const date = new Date(brief.createdAt);
   return {
-    campaign: brief.campaign || "Untitled campaign",
+    campaign: campaignDisplayName(brief.campaign) || "Untitled campaign",
     date: Number.isNaN(date.getTime())
       ? "Date not supplied"
       : new Intl.DateTimeFormat("en-US", {
@@ -101,7 +106,7 @@ export type BriefDocument = ReturnType<typeof buildBriefDocument>;
 export const sectionContent = (section: BriefSection) =>
   section.content || "Not supplied.";
 export function briefFilename(campaign: string, extension: "pdf" | "docx") {
-  const name = campaign
+  const name = campaignDisplayName(campaign)
     .normalize("NFKD")
     .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-|-$/g, "")

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   outputSchemas,
+  generationRecordSchema,
   type AgentRequest,
   type AgentResponse,
   type AgentDataMap,
@@ -11,6 +12,8 @@ const envelope = z.object({
   model: z.string().optional(),
   generatedAt: z.iso.datetime(),
   data: z.unknown(),
+  generation: generationRecordSchema.optional(),
+  promptTemplateVersion: z.string().optional(),
 });
 export async function runAgent<T extends AgentType>(
   request: AgentRequest & { agentType: T },

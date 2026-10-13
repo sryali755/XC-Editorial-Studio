@@ -18,6 +18,7 @@ import {
 import { parseIMCBrief } from "../../lib/imc-parser";
 import { extractUpstream } from "../../lib/upstream";
 import { POST } from "../../app/api/ai/agent/route";
+import { agentPromptVersion } from "../../lib/ai/prompts";
 
 const originalEnvironment = {
   AI_MODE: process.env.AI_MODE,
@@ -115,6 +116,9 @@ test("mock provider supplies valid structured responses for all ten agents witho
     expect(requestSchema.safeParse(request).success).toBe(true);
     const response = await generateAgentResponse(request);
     expect(response.provider).toBe("mock");
+    expect(response.promptTemplateVersion).toBe(
+      agentPromptVersion(request.agentType),
+    );
     expect(
       outputSchemas[request.agentType].safeParse(response.data).success,
     ).toBe(true);
@@ -238,7 +242,7 @@ test("source preservation prevents model edits to original RTB, evidence and app
 });
 
 test("OpenAI SDK sends Responses JSON schemas and validates transport outputs without network", async () => {
-  process.env.OPENAI_MODEL = "test-configured-model";
+  process.env.OPENAI_MODEL = "gpt-5.5";
   let sent: Record<string, unknown> = {};
   const data = {
     originalRtb: "Original",
@@ -280,7 +284,7 @@ test("OpenAI SDK sends Responses JSON schemas and validates transport outputs wi
     },
   });
   expect(await generateOpenAI(prep("rtb"), sdk)).toEqual(data);
-  expect(sent.model).toBe("test-configured-model");
+  expect(sent.model).toBe("gpt-5.5");
   expect(sent.store).toBe(false);
   expect(sent.text).toMatchObject({
     format: { type: "json_schema", strict: true },

@@ -3,6 +3,10 @@ import { runAgent } from "./ai/client";
 import { selectedFoundation } from "./ai/context";
 import { renderBrief } from "./ai/format";
 import type { AgentType } from "./ai/schemas";
+import {
+  defaultPersonality,
+  type PersonalitySettings,
+} from "./creative-controls";
 import type {
   AgentOutput,
   AgentPersona,
@@ -22,6 +26,8 @@ async function perspective(
   versions: AgentVersion[],
   guidance: string,
   currentVersion?: AgentVersion,
+  personality: PersonalitySettings = defaultPersonality(),
+  refinementMode: "explore" | "improve" = "explore",
 ): Promise<AgentVersion> {
   const number = versions.length
     ? Math.max(...versions.map((v) => v.number)) + 1
@@ -33,6 +39,9 @@ async function perspective(
     context: selectedFoundation(pack),
     guidance: direction,
     versionNumber: number,
+    personality: { ...personality },
+    refinementMode,
+    priorCandidates: versions.slice(0, 50).map((v) => v.text),
     ...(current
       ? {
           previousVersion: {
@@ -57,27 +66,37 @@ async function perspective(
   };
 }
 export const strategyService = {
-  async generatePerspectives(pack: StrategyInputPack): Promise<AgentOutput[]> {
+  async generatePerspectives(
+    pack: StrategyInputPack,
+    onResult?: (output: AgentOutput) => void,
+  ): Promise<AgentOutput[]> {
     return Promise.all(
       personas.map(async (persona) => {
+        let output: AgentOutput;
         try {
           const version = await perspective(persona, pack, [], "");
-          return {
+          output = {
             agentId: persona.id,
             versions: [version],
             currentVersionId: version.id,
+            personality: defaultPersonality(),
+            steeringText: "",
           };
         } catch (error) {
-          return {
+          output = {
             agentId: persona.id,
             versions: [],
             currentVersionId: "",
+            personality: defaultPersonality(),
+            steeringText: "",
             error:
               error instanceof Error
                 ? error.message
                 : "This perspective failed. Please retry.",
           };
         }
+        onResult?.(output);
+        return output;
       }),
     );
   },

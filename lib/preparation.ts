@@ -83,8 +83,8 @@ export const preparationAgents: {
     id: "sparks",
     name: "Strategic Sparks Agent",
     thinking:
-      "Explore tensions and starting ideas from the same IMC context. Offer possibilities to evaluate, not new facts or final brief lines.",
-    output: "Individual idea starters for Kevin to select.",
+      "Find six distinct creative territories in the IMC objective, audience, RTB and supplied evidence. Explain each territory’s grounding and the hypothesis to validate.",
+    output: "Six titled idea starters with rationale for Kevin to select.",
     color: "coral",
     symbol: "03",
   },
@@ -160,6 +160,7 @@ export const preparationService = {
     guidance,
     upstream,
     currentVersion,
+    sparkRevision,
   }: {
     agentId: PreparationAgentId;
     parsedIMC: import("./types").ParsedIMCBrief;
@@ -167,6 +168,11 @@ export const preparationService = {
     guidance: string;
     upstream: import("./types").UpstreamContext;
     currentVersion?: import("./types").PreparationVersion;
+    sparkRevision?: {
+      targetId?: string;
+      keptIds: string[];
+      intent: "explore" | "improve";
+    };
   }): Promise<import("./types").PreparationVersion> {
     if (!parsedIMC?.sourceText.trim())
       throw new Error(
@@ -181,12 +187,25 @@ export const preparationService = {
       context: { parsedIMC, upstream },
       guidance,
       versionNumber: number,
+      ...(sparkRevision ? { sparkRevision } : {}),
       ...(current
         ? {
             previousVersion: {
               number: current.number,
               text: current.text,
-              ...(current.data ? { data: current.data } : {}),
+              ...(sparkRevision
+                ? {
+                    data: {
+                      sparks: current.sparks.map((spark) => ({
+                        ...spark,
+                        title: spark.title ?? "",
+                        rationale: spark.rationale ?? "",
+                      })),
+                    },
+                  }
+                : current.data
+                  ? { data: current.data }
+                  : {}),
             },
           }
         : {}),
@@ -197,14 +216,23 @@ export const preparationService = {
       id,
       number,
       text: preparationText(response.data),
-      guidance: guidance || "Initial preparation from IMC brief",
+      guidance: sparkRevision?.targetId
+        ? `${sparkRevision.intent === "improve" ? "Improved" : "Replaced"} one Spark. ${guidance}`.trim()
+        : guidance || "Initial preparation from IMC brief",
       createdAt: response.generatedAt,
       sourceBrief: parsedIMC.sourceText,
       sparks:
         "sparks" in response.data
           ? response.data.sparks.map((spark, index) => ({
               ...spark,
-              id: `${id}:${index}`,
+              id:
+                sparkRevision &&
+                current &&
+                (sparkRevision.targetId
+                  ? current.sparks[index].id !== sparkRevision.targetId
+                  : sparkRevision.keptIds.includes(current.sparks[index].id))
+                  ? current.sparks[index].id
+                  : `${id}:${index}`,
             }))
           : [],
     };

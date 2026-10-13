@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { currentPreparation } from "../lib/preparation";
 async function prepareSample(page: import("@playwright/test").Page) {
   await page.getByRole("button", { name: "Load sample IMC brief" }).click();
   await page
@@ -57,16 +58,13 @@ test("IMC import, independent preparation histories, selected context and persis
   ).toBeDisabled();
   const researchBefore = await research.locator(".prepared-text").innerText();
   await page.getByRole("checkbox").nth(1).check();
-  const selectedText = await page
-    .locator(".spark-option")
-    .nth(1)
-    .locator("span")
-    .innerText();
-  const omittedText = await page
-    .locator(".spark-option")
-    .nth(2)
-    .locator("span")
-    .innerText();
+  const preparation = await page.evaluate(
+    () =>
+      JSON.parse(sessionStorage.getItem("xc-strategy-session-v1")!).preparation,
+  );
+  const sparkVersion = currentPreparation(preparation, "sparks")!;
+  const selectedText = sparkVersion.sparks[1].text;
+  const omittedText = sparkVersion.sparks[2].text;
   await page
     .getByLabel("Research emphasis / additional direction", { exact: false })
     .fill("Focus on social context.");
@@ -90,12 +88,8 @@ test("IMC import, independent preparation histories, selected context and persis
     .getByRole("button", { name: "Generate Strategic Perspectives" })
     .click();
   await page.locator(".summary > summary").click();
-  await expect(page.locator(".summary-grid")).toContainText(
-    selectedText.replace(/^IDEA STARTER 2\s*/, ""),
-  );
-  await expect(page.locator(".summary-grid")).not.toContainText(
-    omittedText.replace(/^IDEA STARTER 3\s*/, ""),
-  );
+  await expect(page.locator(".summary-grid")).toContainText(selectedText);
+  await expect(page.locator(".summary-grid")).not.toContainText(omittedText);
   await expect(page.locator(".summary-grid")).toContainText(
     "Focus on social context.",
   );
@@ -132,9 +126,12 @@ test("IMC import, independent preparation histories, selected context and persis
     page.getByRole("button", { name: "Generate Strategic Perspectives" }),
   ).toBeDisabled();
   await expect(
-    page.getByText("A restored output uses an earlier IMC brief.", {
-      exact: false,
-    }),
+    page.getByText(
+      "Some preparation outputs are missing or use an earlier IMC",
+      {
+        exact: false,
+      },
+    ),
   ).toBeVisible();
 });
 test("independent versions, selection, synthesis, approval, execution and download", async ({

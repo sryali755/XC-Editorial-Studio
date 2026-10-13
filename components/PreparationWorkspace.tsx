@@ -1,11 +1,7 @@
-import {
-  ResearchOutput,
-  SourceFields,
-  SparkChoices,
-} from "./PreparationOutputs";
+import { ResearchOutput, SparkChoices } from "./PreparationOutputs";
 import { parseIMCBrief } from "@/lib/imc-parser";
 import ParsedIMCPreview from "./ParsedIMCPreview";
-import UpstreamContextPanel from "./UpstreamContextPanel";
+import DynamicInputPack from "./DynamicInputPack";
 import {
   getUpstream,
   getParsedIMC,
@@ -28,11 +24,9 @@ import type {
   PreparationVersion,
 } from "@/lib/types";
 import {
-  compileInputPack,
   currentPreparation,
   demoIMCBrief,
   preparationAgents,
-  preparationReady,
   preparationService,
   researchSources,
 } from "@/lib/preparation";
@@ -42,20 +36,26 @@ function PreparationCard({
   id,
   state,
   onRefine,
+  onRetry,
   onRestore,
   onSave,
   onToggleSpark,
   onGuidance,
+  onKeepSpark,
+  onReviseSpark,
   busy,
   disabled,
 }: {
   id: PreparationAgentId;
   state: PreparationState;
   onRefine: (guidance: string) => void;
+  onRetry: () => void;
   onRestore: (version: PreparationVersion) => void;
   onSave: (text: string) => void;
   onToggleSpark: (id: string) => void;
   onGuidance: (text: string) => void;
+  onKeepSpark: (id: string) => void;
+  onReviseSpark: (id: string, intent: "explore" | "improve") => void;
   busy: boolean;
   disabled: boolean;
 }) {
@@ -145,6 +145,9 @@ function PreparationCard({
                 selectedIds={state.selectedSparkIds}
                 disabled={disabled || busy}
                 onToggle={onToggleSpark}
+                keptIds={state.keptSparkIds}
+                onKeep={onKeepSpark}
+                onRevise={onReviseSpark}
               />
             ) : id === "research" ? (
               <ResearchOutput text={current.text} data={current.data} />
@@ -154,6 +157,13 @@ function PreparationCard({
             <small className="version-label">
               V{current.number} · {current.guidance}
             </small>
+            {id === "sparks" && (
+              <p className="context-note">
+                Keep protects an idea during regeneration; Improve or Replace
+                changes only that idea. Selecting a Spark carries its
+                explanation into the Round Table; it does not approve a claim.
+              </p>
+            )}
           </>
         ) : (
           <p className="muted">
@@ -168,7 +178,7 @@ function PreparationCard({
           <button
             className="button small"
             disabled={disabled || busy}
-            onClick={() => onRefine(guidance)}
+            onClick={onRetry}
           >
             Retry this agent
           </button>
@@ -230,7 +240,11 @@ function PreparationCard({
             />
             <button
               className="button refine-button"
-              disabled={disabled || busy}
+              disabled={
+                disabled ||
+                busy ||
+                (id === "sparks" && state.keptSparkIds?.length === 6)
+              }
             >
               <RefreshCw size={13} />
               {busy ? "Preparing a new version…" : "Regenerate this agent"}
@@ -247,6 +261,21 @@ function PreparationCard({
                   {current.id === v.id ? " · Current" : ""}
                 </span>
                 <p>{v.text}</p>
+                {id === "sparks" &&
+                  v.sparks.some((spark) => spark.rationale) && (
+                    <details className="spark-rationale">
+                      <summary>Grounding & hypotheses for this version</summary>
+                      {v.sparks.map((spark, index) => (
+                        <p key={spark.id}>
+                          <strong>
+                            {spark.title || `Idea starter ${index + 1}`}
+                          </strong>
+                          <br />
+                          {spark.rationale || "No rationale recorded."}
+                        </p>
+                      ))}
+                    </details>
+                  )}
                 <small>Guidance: {v.guidance}</small>
                 <details>
                   <summary>IMC source for this version</summary>
@@ -291,9 +320,6 @@ export default function PreparationWorkspace({
   const stale =
     !!state.sourceSnapshot &&
     state.sourceSnapshot.trim() !== state.upstreamDraft.trim();
-  const pack = compileInputPack(state);
-  const sparkVersion = currentPreparation(state, "sparks");
-  const upstream = getUpstream(state);
   const working = busy.length > 0 || generating;
   function toggleSpark(id: string) {
     onChange((s) => ({
@@ -324,21 +350,46 @@ export default function PreparationWorkspace({
           ? {
               ...o,
               error: undefined,
+              retryRequest: undefined,
               currentVersionId: v.id,
               versions: [v, ...o.versions],
             }
           : o,
       ),
-      selectedSparkIds: id === "sparks" ? [] : s.selectedSparkIds,
+      selectedSparkIds:
+        id === "sparks"
+          ? s.selectedSparkIds.filter((id) =>
+              v.sparks.some((spark) => spark.id === id),
+            )
+          : s.selectedSparkIds,
+      keptSparkIds:
+        id === "sparks"
+          ? s.keptSparkIds?.filter((id) =>
+              v.sparks.some((spark) => spark.id === id),
+            )
+          : s.keptSparkIds,
+      selectionNotice:
+        id === "sparks" && currentPreparation(s, "sparks")
+          ? `Sparks changed from V${currentPreparation(s, "sparks")!.number} to V${v.number}. ${s.selectedSparkIds.length && !s.selectedSparkIds.some((id) => v.sparks.some((spark) => spark.id === id)) ? "Previous selections were cleared. " : "Selections for unchanged ideas are preserved. "}Review and select the current ideas.`
+          : s.selectionNotice,
     }));
   }
-  function agentError(id: PreparationAgentId, error: unknown) {
+  function agentError(
+    id: PreparationAgentId,
+    error: unknown,
+    retryRequest?: {
+      guidance: string;
+      targetId?: string;
+      intent: "explore" | "improve";
+    },
+  ) {
     onChange((s) => ({
       ...s,
       outputs: s.outputs.map((o) =>
         o.agentId === id
           ? {
               ...o,
+              retryRequest,
               error:
                 error instanceof Error
                   ? error.message
@@ -364,6 +415,10 @@ export default function PreparationWorkspace({
         sourceSnapshot: source,
         context: sourceContext(upstream),
         selectedSparkIds: [],
+        keptSparkIds: [],
+        selectionNotice: s.selectedSparkIds.length
+          ? "Preparing the brief again cleared your Spark selections. Review the new ideas before continuing."
+          : undefined,
         outputs: preparationAgents.map((agent) => ({
           agentId: agent.id,
           versions: [],
@@ -403,7 +458,12 @@ export default function PreparationWorkspace({
       end("initial");
     }
   }
-  async function refine(id: PreparationAgentId, guidance: string) {
+  async function refine(
+    id: PreparationAgentId,
+    guidance: string,
+    targetId?: string,
+    intent: "explore" | "improve" = "explore",
+  ) {
     if (stale || generating || !begin(id)) return;
     try {
       const output = state.outputs.find((o) => o.agentId === id)!;
@@ -414,10 +474,19 @@ export default function PreparationWorkspace({
         currentVersion: currentPreparation(state, id),
         guidance,
         upstream: getUpstream(state),
+        ...(id === "sparks" && (targetId || state.keptSparkIds?.length)
+          ? {
+              sparkRevision: {
+                targetId,
+                keptIds: state.keptSparkIds ?? [],
+                intent,
+              },
+            }
+          : {}),
       });
       commitVersion(id, version);
     } catch (error) {
-      agentError(id, error);
+      agentError(id, error, { guidance, targetId, intent });
     } finally {
       end(id);
     }
@@ -426,9 +495,21 @@ export default function PreparationWorkspace({
     onChange((s) => ({
       ...s,
       outputs: s.outputs.map((o) =>
-        o.agentId === id ? { ...o, currentVersionId: version.id } : o,
+        o.agentId === id
+          ? {
+              ...o,
+              currentVersionId: version.id,
+              error: undefined,
+              retryRequest: undefined,
+            }
+          : o,
       ),
       selectedSparkIds: id === "sparks" ? [] : s.selectedSparkIds,
+      keptSparkIds: id === "sparks" ? [] : s.keptSparkIds,
+      selectionNotice:
+        id === "sparks"
+          ? `Sparks V${version.number} restored. ${s.selectedSparkIds.length ? "Previous selections were cleared. " : ""}Review and select the current ideas.`
+          : s.selectionNotice,
     }));
   }
   function save(id: PreparationAgentId, text: string) {
@@ -451,17 +532,14 @@ export default function PreparationWorkspace({
       provider: "manual",
       model: undefined,
       generatedAt: undefined,
+      promptTemplateVersion: undefined,
       guidance: "Edited by Kevin",
       createdAt: new Date().toISOString(),
       sparks: ideas,
     });
   }
-  const mismatched = state.outputs.some((o) => {
-    const current = o.versions.find((v) => v.id === o.currentVersionId);
-    return current && current.sourceBrief !== state.sourceSnapshot;
-  });
   return (
-    <>
+    <div className="preparation-workbench">
       <section className="panel upstream-panel">
         <div className="section-title">
           <div>
@@ -559,6 +637,22 @@ export default function PreparationWorkspace({
           {error}
         </div>
       )}
+      <div
+        className="section-title preparation-agents-heading"
+        id="preparation-agents"
+      >
+        <div>
+          <span className="eyebrow">REFINE YOUR FOUNDATION</span>
+          <h2>Preparation agents</h2>
+          <p>
+            Refine an output here. Your working pack updates with the current
+            version.
+          </p>
+        </div>
+        <a className="text-button" href="#dynamic-input-pack">
+          Review your input pack <ArrowRight size={14} />
+        </a>
+      </div>
       <div className="preparation-grid">
         {preparationAgents.map((a) => (
           <PreparationCard
@@ -566,9 +660,39 @@ export default function PreparationWorkspace({
             id={a.id}
             state={state}
             onRefine={(g) => refine(a.id, g)}
+            onRetry={() => {
+              const failed = state.outputs.find(
+                (o) => o.agentId === a.id,
+              )?.retryRequest;
+              void refine(
+                a.id,
+                failed?.guidance ??
+                  state.outputs.find((o) => o.agentId === a.id)?.guidance ??
+                  "",
+                failed?.targetId,
+                failed?.intent,
+              );
+            }}
             onRestore={(v) => restore(a.id, v)}
             onSave={(text) => save(a.id, text)}
             onToggleSpark={toggleSpark}
+            onKeepSpark={(id) =>
+              onChange((s) => ({
+                ...s,
+                keptSparkIds: s.keptSparkIds?.includes(id)
+                  ? s.keptSparkIds.filter((kept) => kept !== id)
+                  : [...(s.keptSparkIds ?? []), id],
+              }))
+            }
+            onReviseSpark={(id, intent) =>
+              refine(
+                "sparks",
+                state.outputs.find((o) => o.agentId === "sparks")?.guidance ??
+                  "",
+                id,
+                intent,
+              )
+            }
             onGuidance={(guidance) =>
               onChange((s) => ({
                 ...s,
@@ -582,211 +706,15 @@ export default function PreparationWorkspace({
           />
         ))}
       </div>
-      <section
-        className="panel dynamic-pack"
-        aria-label="Dynamic XC Input Pack"
-      >
-        <div className="section-title">
-          <div>
-            <span className="eyebrow">YOUR WORKING FOUNDATION</span>
-            <h2>Dynamic XC Input Pack</h2>
-            <p>
-              This is the current working context that will travel with the
-              strategic perspectives. It updates as the preparation agents are
-              refined.
-            </p>
-          </div>
-          <span className="tag">
-            {state.outputs.length
-              ? "Updates as you refine"
-              : "Awaiting preparation"}
-          </span>
-        </div>
-        {!state.outputs.length ? (
-          <div className="empty">
-            <FileText size={20} />
-            <p>
-              Your input pack starts here.
-              <small>
-                Prepare the IMC brief above, then review the results and choose
-                your idea starters.
-              </small>
-            </p>
-          </div>
-        ) : (
-          <>
-            <section
-              className="foundation-section campaign-foundation"
-              aria-label="Campaign Context"
-            >
-              <div className="pack-section-title">
-                <h3>A. Campaign Context</h3>
-                <span className="tag">Extracted from IMC</span>
-              </div>
-              <SourceFields
-                upstream={upstream}
-                keys={[
-                  "campaignName",
-                  "objective",
-                  "audience",
-                  "product",
-                  "channel",
-                  "constraints",
-                  "briefType",
-                  "campaignTier",
-                  "kpis",
-                ]}
-              />
-            </section>
-            <div className="pack-evidence">
-              <section aria-label="Upstream RTB">
-                <h3>B. Upstream RTB</h3>
-                <p className="eyebrow">ORIGINAL RTB · PRESERVED</p>
-                <p>
-                  {upstream.fields.originalRTB.sourceValue ||
-                    "Not supplied in upstream brief"}
-                </p>
-                <span className="tag">
-                  {upstream.fields.originalRTB.status}
-                </span>
-                <p className="context-note">
-                  Review note:{" "}
-                  {upstream.fields.originalRTB.note ||
-                    "No review note supplied."}
-                </p>
-              </section>
-              <section aria-label="Current XC RTB proposal">
-                <div className="pack-section-title">
-                  <h3>C. Current XC RTB Proposal</h3>
-                  <span className="tag">
-                    V{currentPreparation(state, "reasonToBelieve")?.number} ·
-                    Not approved
-                  </span>
-                </div>
-                <p>{pack.proposedRTB}</p>
-              </section>
-            </div>
-            <section
-              className="foundation-section"
-              aria-label="Supporting Data & Research"
-            >
-              <div className="pack-section-title">
-                <h3>D. Supporting Data & Research</h3>
-                <span className="tag">
-                  V{currentPreparation(state, "research")?.number} · Current
-                </span>
-              </div>
-              <ResearchOutput
-                text={pack.research}
-                data={currentPreparation(state, "research")?.data}
-              />
-            </section>
-            <section
-              className="pack-sparks foundation-section"
-              aria-label="Strategic Sparks"
-            >
-              <h3>E. Strategic Sparks</h3>
-              <p className="context-note">
-                Select the strategic sparks to carry forward. Only selected idea
-                starters reach the five perspectives; these are possibilities,
-                not facts.
-              </p>
-              {sparkVersion && (
-                <SparkChoices
-                  version={sparkVersion}
-                  selectedIds={state.selectedSparkIds}
-                  disabled={busy.includes("sparks") || generating || stale}
-                  onToggle={toggleSpark}
-                />
-              )}
-              <p className="context-note">
-                Regenerating, editing or restoring sparks clears their selection
-                so you can review the new current version.
-              </p>
-            </section>
-            <section
-              className="foundation-section"
-              aria-label="Brand, Planning & Execution Requirements"
-            >
-              <h3>F. Brand / Planning / Execution Requirements</h3>
-              <SourceFields
-                upstream={upstream}
-                keys={[
-                  "brandMessaging",
-                  "messagingApproval",
-                  "messageHierarchy",
-                  "brandGuidelines",
-                  "eligibility",
-                  "exclusions",
-                  "substantiation",
-                  "disclaimers",
-                  "partnerApproval",
-                ]}
-              />
-            </section>
-            <details className="review-upstream">
-              <summary>Review upstream details & add clarification</summary>
-              <UpstreamContextPanel
-                value={upstream}
-                disabled={working || stale}
-                onChange={(key, field) =>
-                  onChange((s) => ({
-                    ...s,
-                    upstream: {
-                      fields: { ...getUpstream(s).fields, [key]: field },
-                    },
-                  }))
-                }
-              />
-            </details>
-            <label className="field">
-              <span>Research emphasis / additional direction</span>
-              <small>
-                Tell every round-table agent what to pay attention to, such as a
-                particular social insight.
-              </small>
-              <textarea
-                rows={2}
-                disabled={generating || stale}
-                value={state.focus}
-                onChange={(e) =>
-                  onChange((s) => ({ ...s, focus: e.target.value }))
-                }
-                placeholder="Tell every round-table agent what to pay attention to, such as a particular social insight."
-              />
-            </label>
-            {mismatched && (
-              <p role="alert" className="notice">
-                A restored output uses an earlier IMC brief. Regenerate that
-                agent against the current brief before continuing.
-              </p>
-            )}
-            <div className="input-bottom">
-              <p>
-                {state.selectedSparkIds.length
-                  ? `${state.selectedSparkIds.length} selected idea starter(s) will travel with RTB, research and campaign context.`
-                  : "Select at least one idea starter to continue."}
-              </p>
-              <button
-                className="button primary"
-                disabled={working || !preparationReady(state) || mismatched}
-                onClick={onGenerate}
-              >
-                {generating
-                  ? "Preparing perspectives…"
-                  : "Generate Strategic Perspectives"}
-                <ArrowRight size={15} />
-              </button>
-            </div>
-            {hasSession && (
-              <p className="notice">
-                Your existing round table keeps its original context. Generating
-                perspectives again starts a fresh round table with this pack.
-              </p>
-            )}
-          </>
-        )}
-      </section>
-    </>
+      <DynamicInputPack
+        state={state}
+        onChange={onChange}
+        onToggleSpark={toggleSpark}
+        onGenerate={onGenerate}
+        working={working}
+        generating={generating}
+        hasSession={hasSession}
+      />
+    </div>
   );
 }

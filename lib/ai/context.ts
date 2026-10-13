@@ -24,12 +24,16 @@ export function selectedFoundation(pack: StrategyInputPack): Foundation {
     },
     currentResearch: pack.research,
     selectedSparks:
-      pack.selectedSparks?.map(({ id, text, versionId, version }) => ({
-        id,
-        text,
-        versionId,
-        version,
-      })) ??
+      pack.selectedSparks?.map(
+        ({ id, text, versionId, version, title, rationale }) => ({
+          id,
+          text,
+          versionId,
+          version,
+          ...(title ? { title } : {}),
+          ...(rationale ? { rationale } : {}),
+        }),
+      ) ??
       pack.sparks
         .split("\n")
         .filter(Boolean)

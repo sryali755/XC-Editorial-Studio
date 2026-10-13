@@ -24,6 +24,11 @@ async function openBrief(page: Page, long = false) {
     executionDirection: demoExecution,
   });
   brief.createdAt = "2026-10-07T16:00:00.000Z";
+  if (long) {
+    brief.campaign += "\n\n**Brand:** Xfinity";
+    const campaignSection = brief.sections.find((s) => s.title === "Campaign")!;
+    campaignSection.content += "\n\n**Brand:** Xfinity";
+  }
   brief.sections.push(
     {
       title: "Disclaimers",
@@ -92,6 +97,10 @@ test("PDF and editable Word downloads preserve the full brief across pages", asy
 }, testInfo) => {
   test.setTimeout(90_000);
   const { brief, apiCalls } = await openBrief(page, true);
+  await expect(page.locator(".brief-campaign")).toHaveText("Life, connected");
+  await expect(page.locator(".brief-paper")).not.toContainText(
+    "**Brand:** Xfinity",
+  );
   await expect(page.locator(".brief-strategy")).toContainText(
     brief.sections[2].content,
   );
@@ -159,13 +168,15 @@ test("PDF and editable Word downloads preserve the full brief across pages", asy
     Object.keys(files).some((path) => /word\/footer\d+\.xml/.test(path)),
   ).toBe(true);
   for (const section of brief.sections) {
-    expect(normalized(wordText)).toContain(
-      normalized(section.content || "Not supplied."),
-    );
-    expect(normalized(pdfText)).toContain(
-      normalized(section.content || "Not supplied."),
-    );
+    const expectedContent =
+      section.title === "Campaign"
+        ? "Life, connected"
+        : section.content || "Not supplied.";
+    expect(normalized(wordText)).toContain(normalized(expectedContent));
+    expect(normalized(pdfText)).toContain(normalized(expectedContent));
   }
+  expect(wordText).not.toContain("**Brand:** Xfinity");
+  expect(pdfText).not.toContain("**Brand:** Xfinity");
   const stored = await page.evaluate(
     () => JSON.parse(sessionStorage.getItem("xc-strategy-session-v1")!).brief,
   );

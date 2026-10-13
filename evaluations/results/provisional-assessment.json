@@ -1,0 +1,694 @@
+{
+  "reviewer": "Codex provisional creative assessment; not Kevin approval",
+  "reviewDate": "2026-10-12",
+  "scale": {
+    "1": "Misses the brief",
+    "2": "Substantial revision",
+    "3": "Usable with revision",
+    "4": "Strong for this fixture",
+    "5": "Exceptional for this fixture"
+  },
+  "limits": [
+    "Scores are subjective assistant judgments, not measured outcomes or approval.",
+    "Brand compliance means consistency with this fictional fixture only, not official Xfinity sign-off.",
+    "High intensity is not a quality guarantee. Cases include regeneration history, so this is not a controlled causal study.",
+    "No research, competitor facts or past campaign results were supplied; rationales must preserve that absence.",
+    "Match requestId before reusing these assessments after rerunning an evaluation."
+  ],
+  "dimensions": [
+    "Campaign relevance",
+    "Persona alignment",
+    "Originality",
+    "Clarity",
+    "Strategic usefulness",
+    "Brand compliance",
+    "User-control responsiveness"
+  ],
+  "candidates": [
+    {
+      "agent": "humor",
+      "case": "V0 · balanced",
+      "requestId": "de42fef3-5c3e-41f0-9eec-bbe324a5ed8e",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-roundtable-2.1",
+      "candidate": "When the laptop clocks out, the homework and cartoons are already waiting their turn.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 4,
+        "Originality": 3,
+        "Clarity": 4,
+        "Strategic usefulness": 4,
+        "Brand compliance": 4,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Recognizable anthropomorphism; check that taking turns reads as household activity rather than a network limitation.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "humor",
+      "case": "Restrained",
+      "requestId": "278caae8-ff2d-45e0-81ef-cc810839da2e",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-roundtable-2.1",
+      "candidate": "The living room has a shift schedule; the internet is where the handoffs happen.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 3,
+        "Originality": 3,
+        "Clarity": 4,
+        "Strategic usefulness": 3,
+        "Brand compliance": 4,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Appropriately understated, but less distinctive and strategically narrow.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "humor",
+      "case": "Adventurous",
+      "requestId": "eb72f1bc-35a0-4a7b-a8df-32f37826e846",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-roundtable-2.1",
+      "candidate": "At home, the baton is usually a tablet with snack crumbs on it.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 5,
+        "Originality": 4,
+        "Clarity": 5,
+        "Strategic usefulness": 4,
+        "Brand compliance": 4,
+        "User-control responsiveness": 5
+      },
+      "assessment": "Specific visual surprise fits the handoff spark; Kevin should assess whether the crumb image suits the campaign.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "humor",
+      "case": "Experimental",
+      "requestId": "33e306b2-5f5c-4e77-a82c-60df22487e5f",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-roundtable-2.1",
+      "candidate": "The coffee table chairs three committees: work, homework and “what are we watching?”",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 4,
+        "Originality": 4,
+        "Clarity": 4,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Committee metaphor is playful and usable, though not necessarily more useful than intensity 8.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "humor",
+      "case": "Steering only",
+      "requestId": "4e243a69-88e3-436c-b5e1-55cc87d580ab",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-roundtable-2.1",
+      "candidate": "The shared calendar has meetings, math homework and cartoons sharing one tiny Tuesday.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 4,
+        "Originality": 4,
+        "Clarity": 5,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 5
+      },
+      "assessment": "Calendar steering appears clearly in a concrete Tuesday scene.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "humor",
+      "case": "Controls + steering",
+      "requestId": "0d294fba-56b6-4af6-afc5-f38aeebfc756",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-roundtable-2.1",
+      "candidate": "The shared calendar is air traffic control for laptops, homework and movie night.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 4,
+        "Originality": 3,
+        "Clarity": 5,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 5
+      },
+      "assessment": "Clear response to both controls and steering; air traffic control is a familiar comparison.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "humor",
+      "case": "Unchanged configuration",
+      "requestId": "d97f7fec-b88f-48b6-a198-3e0abc1260d1",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-roundtable-2.1",
+      "candidate": "The shared calendar needs a seating chart for laptops, lessons and movie night.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 4,
+        "Originality": 4,
+        "Clarity": 4,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "A fresh seating-chart premise under unchanged settings; assess whether it is sufficiently distinct from air traffic control.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "culture",
+      "case": "V0 · balanced",
+      "requestId": "57fa8b04-ddcb-46b5-a434-fbe50b4de37b",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-culture-2.2",
+      "candidate": "A shared home has an invisible agenda: meetings, math, and movie night all asking for room.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 4,
+        "Originality": 3,
+        "Clarity": 4,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Names negotiation for space without asserting a current trend.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "culture",
+      "case": "Restrained",
+      "requestId": "7e8396c6-887a-4a46-886b-ec30c24dfdce",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-culture-2.2",
+      "candidate": "Show the tiny heads-ups that make work, homework and watching share a home.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 4,
+        "Originality": 3,
+        "Clarity": 5,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Small social behavior fits restrained cultural interpretation.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "culture",
+      "case": "Adventurous",
+      "requestId": "c549de5f-7c17-476a-8e8a-ec23faf02cdc",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-culture-2.2",
+      "candidate": "A household’s digital mudroom: everyone brings their online day inside and finds a place for it.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 4,
+        "Originality": 4,
+        "Clarity": 4,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Digital mudroom connects a familiar ritual to online life; no retrieved cultural evidence is claimed.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "culture",
+      "case": "Experimental",
+      "requestId": "85a9860b-731d-41f9-be4e-8876585a1600",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-culture-2.2",
+      "candidate": "Home internet as the family foyer, where each device arrives carrying a different day.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 3,
+        "Originality": 3,
+        "Clarity": 4,
+        "Strategic usefulness": 3,
+        "Brand compliance": 5,
+        "User-control responsiveness": 3
+      },
+      "assessment": "Foyer is close to the prior mudroom premise; high intensity did not improve originality here.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "culture",
+      "case": "Steering only",
+      "requestId": "509f9ec0-0bd1-4b1e-acb6-e9a549241ac0",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-culture-2.2",
+      "candidate": "Think of home internet as the extra calendar square for calls, classwork, and couch time.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 3,
+        "Originality": 3,
+        "Clarity": 4,
+        "Strategic usefulness": 3,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Calendar image follows steering but the social tension is less clear.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "culture",
+      "case": "Controls + steering",
+      "requestId": "7749fd1e-5b4a-4ee9-becf-c67e9b35062e",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-culture-2.2",
+      "candidate": "When the fridge calendar meets the browser tabs, work, homework, and watching negotiate the day.",
+      "scores": {
+        "Campaign relevance": 5,
+        "Persona alignment": 5,
+        "Originality": 4,
+        "Clarity": 4,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 5
+      },
+      "assessment": "Fridge calendar and browser tabs create a useful social-negotiation premise.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "culture",
+      "case": "Unchanged configuration",
+      "requestId": "9fe5945c-aa00-46a2-a97a-9e7e85f61f4a",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-culture-2.2",
+      "candidate": "The shared calendar’s secret row: work calls, homework, and couch time penciled in online.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 3,
+        "Originality": 3,
+        "Clarity": 4,
+        "Strategic usefulness": 3,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Fresh wording under unchanged settings, but the cultural insight remains tentative.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "audience",
+      "case": "V0 · balanced",
+      "requestId": "e6290de5-35c3-4054-8f76-5bea47e6e3e2",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-audience-2.2",
+      "candidate": "Start with the after-work handoff: one person trying to keep everyone’s next thing moving.",
+      "scores": {
+        "Campaign relevance": 5,
+        "Persona alignment": 5,
+        "Originality": 3,
+        "Clarity": 5,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Person and coordination responsibility now lead; relief is framed as a hypothesis in the rationale.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "audience",
+      "case": "Restrained",
+      "requestId": "f48ca470-f915-4aed-9754-45da9693fe5d",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-audience-2.2",
+      "candidate": "Start with the person fitting work, homework and downtime into the same evening.",
+      "scores": {
+        "Campaign relevance": 5,
+        "Persona alignment": 4,
+        "Originality": 2,
+        "Clarity": 5,
+        "Strategic usefulness": 3,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Clear practical focus; deliberately restrained but fairly generic.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "audience",
+      "case": "Adventurous",
+      "requestId": "367039ac-a801-4f94-8b7d-f69acda4555f",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-audience-2.2",
+      "candidate": "Picture the household referee who just wants everyone’s online plans to stop needing a ruling.",
+      "scores": {
+        "Campaign relevance": 5,
+        "Persona alignment": 5,
+        "Originality": 4,
+        "Clarity": 4,
+        "Strategic usefulness": 4,
+        "Brand compliance": 4,
+        "User-control responsiveness": 5
+      },
+      "assessment": "An unspoken wish gives the adult a stronger point of view; review the referee image for warmth.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "audience",
+      "case": "Experimental",
+      "requestId": "374f2059-99f3-4cd6-94f8-d0e42c12f5b0",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-audience-2.2",
+      "candidate": "When the house gets loud, start with the person quietly making room for everyone’s online life.",
+      "scores": {
+        "Campaign relevance": 5,
+        "Persona alignment": 5,
+        "Originality": 4,
+        "Clarity": 5,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Stronger emotional contrast without claiming the product resolves the emotional burden.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "audience",
+      "case": "Steering only",
+      "requestId": "3b4482e8-c964-4a95-8ad3-283f7e3536f7",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-audience-2.2",
+      "candidate": "Start with the person reading the shared calendar like a traffic map for everyone’s online plans.",
+      "scores": {
+        "Campaign relevance": 5,
+        "Persona alignment": 4,
+        "Originality": 3,
+        "Clarity": 4,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 5
+      },
+      "assessment": "Follows calendar steering while retaining a human subject.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "audience",
+      "case": "Controls + steering",
+      "requestId": "b3015425-5dd4-4f69-bcaa-7bf27b20915e",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-audience-2.2",
+      "candidate": "Start with the shared-calendar juggler facing a triple-booked Tuesday of everyone’s online plans.",
+      "scores": {
+        "Campaign relevance": 5,
+        "Persona alignment": 5,
+        "Originality": 3,
+        "Clarity": 4,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 5
+      },
+      "assessment": "Specific human workload and playful framing; avoid implying this is researched behavior.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "audience",
+      "case": "Unchanged configuration",
+      "requestId": "bcec7b61-0d2f-4db9-b2df-5460e4df8da9",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-audience-2.2",
+      "candidate": "Start with the person making color-coded calendar chaos feel a little less bossy.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 4,
+        "Originality": 4,
+        "Clarity": 4,
+        "Strategic usefulness": 3,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "New less-bossy-calendar angle; the link to the product is less explicit and may need refinement.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "market",
+      "case": "V0 · balanced",
+      "requestId": "d5d13ca5-d906-41d9-9d8a-bdb5e0bc6907",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-market-2.2",
+      "candidate": "Make home internet feel like the handoff point for work, homework, and winding down.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 3,
+        "Originality": 2,
+        "Clarity": 5,
+        "Strategic usefulness": 3,
+        "Brand compliance": 5,
+        "User-control responsiveness": 3
+      },
+      "assessment": "Relevant but still close to a generic product-role description; Kevin should push the buying criterion further.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "market",
+      "case": "Restrained",
+      "requestId": "de089146-1684-4feb-9e57-b50cdfd29482",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-market-2.2",
+      "candidate": "Frame Xfinity home internet as the common link across work, homework, and winding down.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 4,
+        "Originality": 2,
+        "Clarity": 5,
+        "Strategic usefulness": 3,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Clarifies role at low differentiation; low originality is expected but limits usefulness.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "market",
+      "case": "Adventurous",
+      "requestId": "14b7dbec-e33b-473c-80b9-87a1d397bd1c",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-market-2.2",
+      "candidate": "Evaluate home internet around the handoffs between work, homework, and downtime.",
+      "scores": {
+        "Campaign relevance": 5,
+        "Persona alignment": 4,
+        "Originality": 3,
+        "Clarity": 5,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Expresses an evaluation criterion without inventing competitor facts.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "market",
+      "case": "Experimental",
+      "requestId": "0e5b36fb-b9c1-4505-b9da-48ee747627a7",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-market-2.2",
+      "candidate": "Stop counting devices; start mapping the household handoffs they carry.",
+      "scores": {
+        "Campaign relevance": 5,
+        "Persona alignment": 5,
+        "Originality": 4,
+        "Clarity": 5,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 5
+      },
+      "assessment": "A concrete shift in the buying question; proposal rather than a substantiated category truth.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "market",
+      "case": "Steering only",
+      "requestId": "51b4a4fe-2ff6-494b-9f8d-56c4a8043356",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-market-2.2",
+      "candidate": "Let the shared calendar decide what home internet needs to carry.",
+      "scores": {
+        "Campaign relevance": 5,
+        "Persona alignment": 4,
+        "Originality": 4,
+        "Clarity": 4,
+        "Strategic usefulness": 4,
+        "Brand compliance": 4,
+        "User-control responsiveness": 5
+      },
+      "assessment": "Uses the calendar as an evaluation frame; clarify carry so it cannot imply performance guarantees.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "market",
+      "case": "Controls + steering",
+      "requestId": "c78d896d-41eb-459a-8e95-540b73335f6a",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-market-2.2",
+      "candidate": "Turn the shared calendar’s pileup into a map of what home internet helps connect.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 4,
+        "Originality": 3,
+        "Clarity": 4,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Connects steering to an exploration frame; positioning is less sharp than the experimental line.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "market",
+      "case": "Unchanged configuration",
+      "requestId": "6ccbaf77-e54b-4cbf-b81c-a20363888cd8",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-market-2.2",
+      "candidate": "Make the shared calendar the starting lineup for what home internet helps connect.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 3,
+        "Originality": 3,
+        "Clarity": 4,
+        "Strategic usefulness": 3,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Fresh alternative but drifts toward decorative imagery over a strategic choice.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "brand",
+      "case": "V0 · balanced",
+      "requestId": "f3a24281-8ffa-4035-a7ef-15575490e1c6",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-brand-2.2",
+      "candidate": "Treat the home like a shared calendar, with internet as the quiet handoff between plans.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 4,
+        "Originality": 3,
+        "Clarity": 4,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Rationale names the supplied human-first principle; quiet support is understandable but familiar.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "brand",
+      "case": "Restrained",
+      "requestId": "8cb6d370-b2ae-433a-8136-d1f7d869481a",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-brand-2.2",
+      "candidate": "Think of home as a shift change, where work, homework and shows take turns online.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 3,
+        "Originality": 2,
+        "Clarity": 4,
+        "Strategic usefulness": 3,
+        "Brand compliance": 3,
+        "User-control responsiveness": 3
+      },
+      "assessment": "Taking turns risks suggesting one-at-a-time access; revise before use.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "brand",
+      "case": "Adventurous",
+      "requestId": "97466627-f5b7-4114-98a4-43de7c291ec7",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-brand-2.2",
+      "candidate": "Start with the people cueing work, homework and showtime; internet plays stagehand.",
+      "scores": {
+        "Campaign relevance": 5,
+        "Persona alignment": 5,
+        "Originality": 4,
+        "Clarity": 5,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 5
+      },
+      "assessment": "Clear people-first/technology-supporting-role structure and an explicit supplied principle.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "brand",
+      "case": "Experimental",
+      "requestId": "f9b30de2-f7ab-49ef-befa-fbbc3bdb1988",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-brand-2.2",
+      "candidate": "Map the day on the fridge door, where work, homework and shows take turns online.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 3,
+        "Originality": 2,
+        "Clarity": 4,
+        "Strategic usefulness": 3,
+        "Brand compliance": 3,
+        "User-control responsiveness": 2
+      },
+      "assessment": "Reuses turn-taking and fridge imagery; high pattern exploration did not produce a useful structural departure. Revise before use.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "brand",
+      "case": "Steering only",
+      "requestId": "6125f60d-e0fc-4ea6-a9f7-03ebdba92dfc",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-brand-2.2",
+      "candidate": "Let the shared calendar doodle the day—work, homework, showtime—then invite each plan online.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 4,
+        "Originality": 4,
+        "Clarity": 4,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 5
+      },
+      "assessment": "Doodling is a more playful execution of the supplied human-first principle; check clarity.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "brand",
+      "case": "Controls + steering",
+      "requestId": "b5531a8b-65a5-4937-81da-811e3556bece",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-brand-2.2",
+      "candidate": "Let the household calendar call roll: meetings, math, movie night—all finding their place online.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 4,
+        "Originality": 3,
+        "Clarity": 4,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Responds to steering and keeps activities first, though the roll-call pattern is familiar.",
+      "approval": "Pending Kevin review"
+    },
+    {
+      "agent": "brand",
+      "case": "Unchanged configuration",
+      "requestId": "d0b554b0-8949-4a65-a0ba-7a5087bacac1",
+      "model": "gpt-5.5",
+      "promptTemplateVersion": "xc-brand-2.2",
+      "candidate": "When the calendar looks like confetti, let each plan find its online place.",
+      "scores": {
+        "Campaign relevance": 4,
+        "Persona alignment": 4,
+        "Originality": 4,
+        "Clarity": 4,
+        "Strategic usefulness": 4,
+        "Brand compliance": 5,
+        "User-control responsiveness": 4
+      },
+      "assessment": "Confetti adds a new visual opening under the same configuration; keep the calendar readable and avoid chaos stereotypes.",
+      "approval": "Pending Kevin review"
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { reconcileUpstream, sourceContext, fieldText } from "../upstream";
 import { researchSources } from "../preparation";
+import { mockSparks } from "./mock-sparks";
 import type {
   PreparationAgentId,
   ParsedIMCBrief,
@@ -33,16 +34,12 @@ export const mockPreparationService: PreparationService = {
     const number = previous.length
       ? Math.max(...previous.map((v) => v.number)) + 1
       : 1;
-    const product =
-      source.fields.product.status === "Supplied"
-        ? context.product
-        : "the supplied offer";
     const audience =
       source.fields.audience.status === "Supplied"
         ? context.audience
         : "the priority audience (confirm from the brief)";
     let text = "";
-    let ideas: string[] = [];
+    let sparks: PreparationVersion["sparks"] = [];
     if (agentId === "reasonToBelieve") {
       const original = source.fields.originalRTB;
       text =
@@ -73,20 +70,8 @@ export const mockPreparationService: PreparationService = {
         `SOURCE NOTES\nUpstream references: ${fieldText(source.fields.sourceReferences)}\n${researchSources.map((s) => `${s.name}: ${s.purpose} — Not connected`).join("\n")}`,
       ].join("\n\n");
     if (agentId === "sparks") {
-      ideas = [
-        `What if ${product} played a quieter role, so everyday life could take the lead?`,
-        `Explore the tension between a connected household and everyone's individual world.`,
-        `What everyday friction could ${product} help the audience move beyond?`,
-        `Consider belonging as a human benefit, rather than a technology feature.`,
-        `Could a familiar household moment make the campaign promise easier to understand?`,
-        `Explore how the audience defines value beyond specifications.`,
-      ];
-      if (previous.length > 0)
-        ideas = ideas.map(
-          (idea, i) =>
-            `${idea} ${guidance ? `Explore through this guidance: ${guidance}.` : `Alternative ${number}: consider ${i % 2 ? "a shared ritual" : "a small everyday moment"}.`}`,
-        );
-      text = ideas.map((idea, i) => `${i + 1}. ${idea}`).join("\n\n");
+      sparks = mockSparks(source, previous[0]?.text);
+      text = sparks.map((spark, i) => `${i + 1}. ${spark.text}`).join("\n\n");
     }
     if (agentId !== "sparks" && previous.length > 0)
       text += `\n\nREFINEMENT V${number}\n${guidance ? `Strategist emphasis: ${guidance}` : "Refresh the framing around the supplied objective and evidence gaps."}\nKeep this emphasis tied to the evidence above; validate any additional claims.`;
@@ -97,7 +82,7 @@ export const mockPreparationService: PreparationService = {
       guidance: guidance || "Initial preparation from IMC brief",
       createdAt: new Date().toISOString(),
       sourceBrief: parsedIMC.sourceText,
-      sparks: ideas.map((text) => ({ id: crypto.randomUUID(), text })),
+      sparks,
     };
   },
 };

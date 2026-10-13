@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { upstreamFields } from "../upstream";
 import type { UpstreamKey } from "../types";
+import {
+  personalitySchema,
+  perspectiveIds,
+  isPerspective,
+  type PerspectiveId,
+} from "../creative-controls";
+import { modelSettingsSchema } from "./generation-settings";
 
 const text = z.string().max(60000);
 const item = z.string().min(1).max(12000);
@@ -125,6 +132,8 @@ export const foundationSchema = z
             text: item,
             versionId: item,
             version: z.number().int().nonnegative(),
+            title: text.optional(),
+            rationale: text.optional(),
           })
           .strict(),
       )
@@ -187,13 +196,25 @@ export const requestSchema = z.discriminatedUnion("agentType", [
       ...base,
       agentType: z.enum(["rtb", "research", "sparks"]),
       context: preparation,
+      sparkRevision: z
+        .object({
+          targetId: item.optional(),
+          keptIds: z.array(item).max(6).default([]),
+          intent: z.enum(["explore", "improve"]).default("explore"),
+        })
+        .strict()
+        .optional(),
     })
     .strict(),
   z
     .object({
       ...base,
-      agentType: z.enum(["humor", "culture", "audience", "market", "brand"]),
+      agentType: z.enum(perspectiveIds),
       context: foundationSchema,
+      personality: personalitySchema.optional(),
+      modelSettings: modelSettingsSchema.optional(),
+      priorCandidates: z.array(text).max(50).optional(),
+      refinementMode: z.enum(["explore", "improve"]).optional(),
     })
     .strict(),
   z
@@ -232,12 +253,40 @@ export const requestSchema = z.discriminatedUnion("agentType", [
     .strict(),
 ]);
 export type AgentRequest = z.infer<typeof requestSchema>;
+export type PerspectiveRequest = Extract<
+  AgentRequest,
+  { agentType: PerspectiveId }
+>;
+export function isPerspectiveRequest(
+  request: AgentRequest,
+): request is PerspectiveRequest {
+  return isPerspective(request.agentType);
+}
+
+export const generationRecordSchema = z
+  .object({
+    agentId: z.enum(perspectiveIds),
+    inputPackVersion: z.string(),
+    foundation: foundationSchema,
+    personality: personalitySchema,
+    steeringText: z.string(),
+    refinementMode: z.enum(["explore", "improve"]).optional(),
+    modelSettings: modelSettingsSchema.extend({
+      maxOutputTokens: z.number().int().positive().optional(),
+    }),
+    promptTemplateVersion: z.string(),
+    requestId: z.string(),
+  })
+  .strict();
+export type GenerationRecord = z.infer<typeof generationRecordSchema>;
 
 export interface AgentResponse<T = AgentData> {
+  promptTemplateVersion?: string;
   provider: "mock" | "openai";
   model?: string;
   data: T;
   generatedAt: string;
+  generation?: GenerationRecord;
 }
 export interface AIStatus {
   mode: "mock" | "live";

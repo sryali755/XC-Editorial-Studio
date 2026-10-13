@@ -10,6 +10,12 @@ import {
   X,
 } from "lucide-react";
 import { personas } from "@/lib/demo";
+import {
+  defaultPersonality,
+  type PersonalitySettings,
+} from "@/lib/creative-controls";
+import { CreativeControls } from "./CreativeControls";
+import PackDialog from "./PackDialog";
 import type {
   AgentOutput,
   AgentPersona,
@@ -134,6 +140,7 @@ export function AgentCard({
   onRefine,
   onRestore,
   busy,
+  onConfigure,
 }: {
   persona: AgentPersona;
   output: AgentOutput;
@@ -142,8 +149,13 @@ export function AgentCard({
   onRefine: (guidance: string) => Promise<void>;
   onRestore: (id: string) => void;
   busy: boolean;
+  onConfigure: (patch: {
+    personality?: PersonalitySettings;
+    steeringText?: string;
+    refinementMode?: "explore" | "improve";
+  }) => void;
 }) {
-  const [guidance, setGuidance] = useState("");
+  const guidance = output.steeringText ?? "";
   const current = output.versions.find((v) => v.id === output.currentVersionId);
   return (
     <article
@@ -160,10 +172,10 @@ export function AgentCard({
       </div>
       <h2>{persona.name}</h2>
       <p className="agent-role">{persona.role}</p>
-      <div className="thinking">
-        <h3>How this agent thinks</h3>
+      <details className="thinking">
+        <summary>How this agent thinks</summary>
         <p>{persona.thinking}</p>
-      </div>
+      </details>
       {output.error && (
         <div className="error agent-error" role="alert">
           {output.error}
@@ -191,7 +203,9 @@ export function AgentCard({
         </div>
       ) : (
         <p className="muted">
-          No candidate generated yet. Retry this perspective to continue.
+          {busy
+            ? "Creating this perspective… You can review other agents as they finish."
+            : "No candidate generated yet. Retry this perspective to continue."}
         </p>
       )}
       <form
@@ -201,15 +215,40 @@ export function AgentCard({
           await onRefine(guidance);
         }}
       >
+        <CreativeControls
+          agentId={persona.id}
+          value={output.personality ?? defaultPersonality()}
+          disabled={busy}
+          onChange={(personality) => onConfigure({ personality })}
+        />
         <label className="field">
-          <span>Guide this perspective (optional)</span>
+          <span>Next version</span>
+          <select
+            aria-label={`Next version for ${persona.name}`}
+            disabled={busy}
+            value={output.refinementMode ?? "explore"}
+            onChange={(e) =>
+              onConfigure({
+                refinementMode: e.target.value as "explore" | "improve",
+              })
+            }
+          >
+            <option value="explore">Explore a new direction</option>
+            <option value="improve" disabled={!current}>
+              Improve this direction
+            </option>
+          </select>
+        </label>
+        <label className="field">
+          <span>Steer This Agent (optional)</span>
           <textarea
             aria-label={`Refinement for ${persona.name}`}
             placeholder="Leave blank for a fresh angle, or add direction…"
             rows={3}
             value={guidance}
             disabled={busy}
-            onChange={(e) => setGuidance(e.target.value)}
+            maxLength={8000}
+            onChange={(e) => onConfigure({ steeringText: e.target.value })}
           />
         </label>
         <button type="submit" className="button refine-button" disabled={busy}>
@@ -238,6 +277,7 @@ export function AgentRoundTable({
   onRefine,
   onRestore,
   busy,
+  onConfigure,
 }: {
   outputs: AgentOutput[];
   selected: SelectedBriefLine[];
@@ -245,6 +285,14 @@ export function AgentRoundTable({
   onRefine: (p: AgentPersona, g: string) => Promise<void>;
   onRestore: (agentId: string, id: string) => void;
   busy: string[];
+  onConfigure: (
+    agentId: string,
+    patch: {
+      personality?: PersonalitySettings;
+      steeringText?: string;
+      refinementMode?: "explore" | "improve";
+    },
+  ) => void;
 }) {
   const workspace = useRef<HTMLDivElement>(null);
   function move(direction: number) {
@@ -300,6 +348,7 @@ export function AgentRoundTable({
               onRefine={(g) => onRefine(p, g)}
               onRestore={(id) => onRestore(p.id, id)}
               busy={busy.includes(p.id)}
+              onConfigure={(patch) => onConfigure(p.id, patch)}
             />
           ) : null;
         })}
@@ -320,6 +369,7 @@ export function SelectedLinesTray({
   onCombine: () => void;
   onUse: (line: SelectedBriefLine) => void;
 }) {
+  const [comparing, setComparing] = useState(false);
   return (
     <section className="panel selection-tray">
       <div className="section-title">
@@ -331,6 +381,13 @@ export function SelectedLinesTray({
           </h2>
         </div>
         <div className="actions">
+          <button
+            className="button"
+            disabled={selected.length < 2}
+            onClick={() => setComparing(true)}
+          >
+            Compare selected
+          </button>
           <button
             className="text-button"
             disabled={!selected.length}
@@ -381,6 +438,37 @@ export function SelectedLinesTray({
             </small>
           </p>
         </div>
+      )}
+      {comparing && (
+        <PackDialog
+          title="Compare your shortlist"
+          eyebrow="CHOOSE A DIRECTION"
+          onClose={() => setComparing(false)}
+        >
+          <p className="context-note">
+            Compare the human stake, the creative choice and the evidence
+            needed. Choose the direction that best serves the brief.
+          </p>
+          <div className="shortlist-comparison">
+            {selected.map((line) => (
+              <article key={line.id}>
+                <span className="eyebrow">
+                  {line.personaName} · V{line.version}
+                </span>
+                <blockquote>{line.text}</blockquote>
+                <button
+                  className="button primary"
+                  onClick={() => {
+                    onUse(line);
+                    setComparing(false);
+                  }}
+                >
+                  Use this direction
+                </button>
+              </article>
+            ))}
+          </div>
+        </PackDialog>
       )}
     </section>
   );

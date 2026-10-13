@@ -9,6 +9,9 @@ export default function ParsedIMCPreview({
   stale: boolean;
 }) {
   const entries = [
+    ...(parsed.supplemental.brand?.present
+      ? [{ key: "brand", field: parsed.supplemental.brand }]
+      : []),
     ...imcSchema.map((def) => ({
       key: def.key as string,
       field: parsed.fields[def.key],

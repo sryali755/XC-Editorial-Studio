@@ -3,7 +3,9 @@ import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { aiConfig } from "./config";
 import { AgentError } from "./errors";
-import { agentPrompts, commonInstructions } from "./prompts";
+import { buildAgentPrompt } from "./prompts";
+import { modelCapabilities, validatedModelSettings } from "./capabilities";
+import { outputTokenBudget } from "./generation-settings";
 import { outputSchemas, type AgentRequest, type AgentData } from "./schemas";
 
 let client: OpenAI | undefined;
@@ -18,29 +20,42 @@ function getClient() {
 export async function generateOpenAI(
   request: AgentRequest,
   sdk?: OpenAI,
+  attempt = 0,
+  requestId = "",
 ): Promise<AgentData> {
   try {
+    const model = aiConfig().model;
+    const settings = validatedModelSettings(
+      "openai",
+      model,
+      "modelSettings" in request ? request.modelSettings : {},
+    );
+    const prompt = buildAgentPrompt(request, attempt, requestId);
+    const budget = outputTokenBudget(request.agentType);
+    if (budget > modelCapabilities("openai", model)!.maxOutputTokens)
+      throw new AgentError(
+        "The output budget exceeds the registered model capability.",
+        503,
+      );
     const response = await (sdk ?? getClient()).responses.create({
-      model: aiConfig().model,
+      model,
       store: false,
-      instructions: `${commonInstructions}\n\n${agentPrompts[request.agentType]}`,
-      input: JSON.stringify({
-        context: request.context,
-        guidance: request.guidance ?? "",
-        previousVersion: request.previousVersion ?? null,
-      }),
+      ...prompt,
+      ...(settings.temperature !== undefined
+        ? { temperature: settings.temperature }
+        : {}),
+      ...(settings.topP !== undefined ? { top_p: settings.topP } : {}),
+      ...(settings.reasoningEffort
+        ? { reasoning: { effort: settings.reasoningEffort } }
+        : {}),
       text: {
+        ...(settings.verbosity ? { verbosity: settings.verbosity } : {}),
         format: zodTextFormat(
           outputSchemas[request.agentType],
           `xc_${request.agentType}`,
         ),
       },
-      max_output_tokens:
-        request.agentType === "finalBrief"
-          ? 6000
-          : request.agentType === "research"
-            ? 4500
-            : 2500,
+      max_output_tokens: budget,
     });
     if (response.status !== "completed" || !response.output_text)
       throw new AgentError(

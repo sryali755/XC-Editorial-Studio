@@ -1,0 +1,109 @@
+{
+  "reviewer": "Assistant provisional assessment",
+  "approval": "Pending human creative review",
+  "method": "Same stored synthetic requests for 12 before/after conditions; five additional evidence/workflow checks. One output per condition is not a statistical quality benchmark.",
+  "cases": [
+    {
+      "label": "humor: same balanced brief",
+      "promptTemplateVersion": "xc-roundtable-3.0:humor",
+      "generatedAt": "2026-10-12T17:11:45.032Z",
+      "assessment": "The comic contradiction is explicit and grounded. Handoff-as-hero is clearer as a direction, but still needs a more distinctive expression and review of the relay implication."
+    },
+    {
+      "label": "culture: same balanced brief",
+      "promptTemplateVersion": "xc-roundtable-3.0:culture",
+      "generatedAt": "2026-10-12T17:11:54.945Z",
+      "assessment": "Courtesy and recognition establish a social meaning beyond listing devices. The general courtesy language still needs campaign-specific creative judgment."
+    },
+    {
+      "label": "audience: same balanced brief",
+      "promptTemplateVersion": "xc-roundtable-3.0:audience",
+      "generatedAt": "2026-10-12T17:14:44.942Z",
+      "assessment": "The revised line centers an adult, but next-turn language and the attached brand-staging instruction remain weaker points for human review."
+    },
+    {
+      "label": "market: same balanced brief",
+      "promptTemplateVersion": "xc-roundtable-3.0:market",
+      "generatedAt": "2026-10-12T17:19:33.512Z",
+      "assessment": "The final refinement names an evaluation criterion in the line itself, replacing the initial scene-only response. It proposes a use-based frame without competitive superiority."
+    },
+    {
+      "label": "brand: same balanced brief",
+      "promptTemplateVersion": "xc-roundtable-3.0:brand",
+      "generatedAt": "2026-10-12T17:15:02.369Z",
+      "assessment": "Names the supplied brand principle and hierarchy. Screen-to-screen choreography remains close to the source Spark and should be reviewed for originality and one-at-a-time implications."
+    },
+    {
+      "label": "humor: Experimental",
+      "promptTemplateVersion": "xc-roundtable-3.0:humor",
+      "generatedAt": "2026-10-12T17:15:35.071Z",
+      "assessment": "The surprise-guests metaphor is more playful than the balanced response. Test clarity and whether making introductions overstates the functional product role."
+    },
+    {
+      "label": "market: Controls + steering",
+      "promptTemplateVersion": "xc-roundtable-3.0:market",
+      "generatedAt": "2026-10-12T17:19:42.355Z",
+      "assessment": "Calendar steering now supports an explicit evaluation criterion rather than simply narrating a scene. Figurative connection language still needs reviewer judgment."
+    },
+    {
+      "label": "Sparks: Initial household exploration",
+      "promptTemplateVersion": "xc-sparks-3.0",
+      "generatedAt": "2026-10-12T17:16:03.860Z",
+      "assessment": "Premise/Grounding/Validate makes comparison practical. Everyone\u2019s Real Task, Specs Into Stories and Rooms Change Jobs still overlap in showing product through daily activity; the prompt does not guarantee six semantically unique ideas."
+    },
+    {
+      "label": "Sparks: Fresh alternatives without steering",
+      "promptTemplateVersion": "xc-sparks-3.0",
+      "generatedAt": "2026-10-12T17:16:36.166Z",
+      "assessment": "Self-inclusion, household etiquette and recognition add different motives. Some premises still resemble the stored previous set; wording-level checks cannot guarantee semantic novelty."
+    },
+    {
+      "label": "Sparks: Calendar steering with varied territories",
+      "promptTemplateVersion": "xc-sparks-3.0",
+      "generatedAt": "2026-10-12T17:16:53.855Z",
+      "assessment": "Calendar steering produces questions about fairness, possibility, personal choice, translation, visibility and flexibility. Fairness and visibility are related and should be compared before selection."
+    },
+    {
+      "label": "Sparks: Excluded RTB and missing research",
+      "promptTemplateVersion": "xc-sparks-3.0",
+      "generatedAt": "2026-10-12T17:17:14.470Z",
+      "assessment": "All six rationales preserve the excluded RTB. Review physical-space and fairness metaphors so they do not imply an unsupported product outcome."
+    },
+    {
+      "label": "Sparks: Business context with qualified evidence",
+      "promptTemplateVersion": "xc-sparks-3.0",
+      "generatedAt": "2026-10-12T17:17:34.109Z",
+      "assessment": "The illustrative interview stays qualified as one example and business context is retained. Not a Household is more a framing constraint than a developed creative territory; Beside the Till and Respect the System overlap."
+    },
+    {
+      "label": "RTB: preserve supplied proof",
+      "promptTemplateVersion": "xc-rtb-3.0",
+      "generatedAt": "2026-10-12T17:17:43.930Z",
+      "assessment": "Original proof remains exact and the proposed interpretation is separately unapproved. The chosen handoff framing is illustrative and unvalidated."
+    },
+    {
+      "label": "RTB: excluded proof despite conflicting steering",
+      "promptTemplateVersion": "xc-rtb-3.0",
+      "generatedAt": "2026-10-12T17:17:48.467Z",
+      "assessment": "The conflicting fastest-guarantee steering does not replace the explicit exclusion. The application preserves a null adaptation and the rationale explains the conflict."
+    },
+    {
+      "label": "Research: single illustrative interview",
+      "promptTemplateVersion": "xc-research-3.0",
+      "generatedAt": "2026-10-12T17:18:00.563Z",
+      "assessment": "The supplied interview is retained verbatim with scope. Questions specify decisions and sources remain unconnected; some metadata falls into broad performance categories and would benefit from editorial review."
+    },
+    {
+      "label": "Synthesis: weighted choice, zero-weight claim excluded",
+      "promptTemplateVersion": "xc-synthesis-3.0",
+      "generatedAt": "2026-10-12T17:18:05.603Z",
+      "assessment": "The rationale explains the 80/20 emphasis and excludes the zero-weight unsupported claim. The line is coherent, although the attached product explanation can still be tightened."
+    },
+    {
+      "label": "Final brief: approved line and exact requirements",
+      "promptTemplateVersion": "xc-finalBrief-3.0",
+      "generatedAt": "2026-10-12T17:18:18.281Z",
+      "assessment": "Approved strategy, requested assets and channels are exact. Proposed interpretation is labeled and no added offer or deadline appears. Some approval and constraint repetitions come from the existing preservation layer."
+    }
+  ]
+}

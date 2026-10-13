@@ -1,11 +1,15 @@
 import "server-only";
-import { personas } from "../demo";
+import { mockPerspective } from "./mock-perspective";
 import { parseIMCBrief } from "../imc-parser";
 import { fieldText, reconcileUpstream } from "../upstream";
 import { mockPreparationService } from "./mock-preparation";
 import { mockStrategyService, mockBriefService } from "./mock-strategy";
 import { foundationPack } from "./context";
-import type { AgentData, AgentRequest } from "./schemas";
+import {
+  isPerspectiveRequest,
+  type AgentData,
+  type AgentRequest,
+} from "./schemas";
 import type { AgentVersion } from "../types";
 
 export async function generateMock(request: AgentRequest): Promise<AgentData> {
@@ -21,7 +25,11 @@ export async function generateMock(request: AgentRequest): Promise<AgentData> {
         },
       ]
     : [];
-  if ("parsedIMC" in request.context) {
+  if (
+    request.agentType === "rtb" ||
+    request.agentType === "research" ||
+    request.agentType === "sparks"
+  ) {
     const parsedIMC = parseIMCBrief(request.context.parsedIMC.sourceText);
     const upstream = reconcileUpstream(parsedIMC, request.context.upstream);
     const version = await mockPreparationService.generate({
@@ -51,9 +59,10 @@ export async function generateMock(request: AgentRequest): Promise<AgentData> {
       return {
         sparks: version.sparks.map((spark) => ({
           ...spark,
-          title: "",
+          title: spark.title ?? "",
           rationale:
-            "Exploratory idea starter; validate against the supplied campaign context.",
+            spark.rationale ??
+            "Mock creative hypothesis; validate against supplied context.",
         })),
       };
     return {
@@ -148,17 +157,6 @@ export async function generateMock(request: AgentRequest): Promise<AgentData> {
       ],
     };
   }
-  const persona = personas.find((p) => p.id === request.agentType)!;
-  const pack = foundationPack(request.context);
-  const version = prior.length
-    ? await mockStrategyService.refine(persona, pack, prior, guidance)
-    : (await mockStrategyService.generatePerspectives(pack)).find(
-        (o) => o.agentId === persona.id,
-      )!.versions[0];
-  return {
-    briefLines: [
-      { id: version.id, line: version.text, rationale: persona.thinking },
-    ],
-    perspectiveSummary: persona.role,
-  };
+  if (isPerspectiveRequest(request)) return mockPerspective(request);
+  throw new Error("Unsupported mock agent.");
 }

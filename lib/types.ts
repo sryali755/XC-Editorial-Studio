@@ -1,5 +1,9 @@
 import type { AgentData, AgentResponse, AgentDataMap } from "./ai/schemas";
+import type { GenerationRecord } from "./ai/schemas";
+import type { PersonalitySettings } from "./creative-controls";
 export interface GenerationMetadata {
+  promptTemplateVersion?: string;
+  generation?: GenerationRecord;
   provider?: "mock" | "openai" | "manual";
   model?: string;
   generatedAt?: string;
@@ -9,6 +13,8 @@ export interface StrategyInputPack {
   selectedSparks?: {
     id: string;
     text: string;
+    title?: string;
+    rationale?: string;
     versionId: string;
     version: number;
   }[];
@@ -43,6 +49,9 @@ export interface AgentVersion extends GenerationMetadata {
   createdAt: string;
 }
 export interface AgentOutput {
+  refinementMode?: "explore" | "improve";
+  personality?: PersonalitySettings;
+  steeringText?: string;
   error?: string;
   agentId: string;
   versions: AgentVersion[];
@@ -120,13 +129,28 @@ export interface PreparationVersion extends AgentVersion {
   sparks: { id: string; text: string; title?: string; rationale?: string }[];
 }
 export interface PreparationOutput {
+  retryRequest?: {
+    guidance: string;
+    targetId?: string;
+    intent: "explore" | "improve";
+  };
   error?: string;
   guidance?: string;
   agentId: PreparationAgentId;
   versions: PreparationVersion[];
   currentVersionId: string;
 }
+export interface InputPackSnapshot {
+  savedAt: string;
+  sourceBrief: string;
+  pack: StrategyInputPack;
+  versions: Record<PreparationAgentId, { id: string; number: number }>;
+}
 export interface PreparationState {
+  keptSparkIds?: string[];
+  packCandidates?: Partial<Record<"A" | "B", InputPackSnapshot>>;
+  reviewedPack?: InputPackSnapshot;
+  selectionNotice?: string;
   parsedIMC?: ParsedIMCBrief;
   upstream?: UpstreamContext;
   upstreamDraft: string;
@@ -216,7 +240,10 @@ export interface ParsedIMCField {
 }
 export interface ParsedIMCBrief {
   readonly schemaVersion: 1;
+  readonly parserVersion?: number;
   readonly sourceText: string;
   readonly fields: Readonly<Record<IMCFieldKey, ParsedIMCField>>;
-  readonly supplemental: Readonly<Partial<Record<UpstreamKey, ParsedIMCField>>>;
+  readonly supplemental: Readonly<
+    Partial<Record<UpstreamKey | "brand", ParsedIMCField>>
+  >;
 }

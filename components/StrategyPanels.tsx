@@ -1,4 +1,5 @@
 import { demoExecution } from "@/lib/demo";
+import { campaignDisplayName } from "@/lib/campaign-display";
 import { useRef, useState } from "react";
 import { briefFilename, buildBriefDocument } from "@/lib/brief-document";
 import BriefDocumentPreview from "./BriefDocumentPreview";
@@ -52,7 +53,9 @@ export function StrategyInputSummary({ pack }: { pack: StrategyInputPack }) {
       <summary>
         <span>
           <span className="eyebrow">XC STRATEGY INPUT PACK</span>
-          <strong>{pack.campaignName || "Campaign context"}</strong>
+          <strong>
+            {campaignDisplayName(pack.campaignName) || "Campaign context"}
+          </strong>
         </span>
         <span className="summary-tags">
           RTB <i /> DATA & RESEARCH <i /> SPARKS

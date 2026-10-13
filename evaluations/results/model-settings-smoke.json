@@ -1,0 +1,301 @@
+{
+  "provider": "openai",
+  "model": "gpt-5.5",
+  "data": {
+    "briefLines": [
+      {
+        "id": "v0",
+        "line": "Every room has a different deadline, and somehow they all need the internet.",
+        "rationale": "Built for busy households coordinating work, homework and entertainment, using the supplied RTB that home internet can connect household devices to online activities. The “different deadline” framing is a creative hypothesis from the handoffs spark, not supplied research; no speed, price, reliability or offer claims are made."
+      }
+    ],
+    "perspectiveSummary": "Look at home internet as the quiet common thread in a household where everyone’s online activity feels urgent in its own way."
+  },
+  "generatedAt": "2026-10-12T15:47:40.651Z",
+  "generation": {
+    "agentId": "humor",
+    "inputPackVersion": "pack-dc2860f8b2bf4995",
+    "foundation": {
+      "campaignContext": {
+        "campaignName": "Household handoffs — fictional evaluation",
+        "objective": "Encourage busy households to explore Xfinity home internet by making its everyday role understandable.",
+        "audience": "Adults coordinating work, homework and entertainment in a shared household.",
+        "product": "Xfinity home internet",
+        "channel": "Email and web",
+        "constraints": "No speed, price, reliability guarantees, competitive superiority or invented product features. Keep humor kind. No stereotypes."
+      },
+      "currentRtb": {
+        "original": "Home internet can connect household devices to online activities.",
+        "proposal": "",
+        "status": "Supplied",
+        "reviewNote": ""
+      },
+      "currentResearch": "Not supplied. No audience, cultural, competitor or historical campaign research has been supplied.",
+      "selectedSparks": [
+        {
+          "id": "handoffs",
+          "text": "Explore household handoffs as a creative hypothesis, not a research finding.",
+          "versionId": "spark-fixture-v0",
+          "version": 0
+        }
+      ],
+      "researchEmphasis": "",
+      "requirements": {
+        "fields": {
+          "campaignName": {
+            "value": "Household handoffs — fictional evaluation",
+            "sourceValue": "Household handoffs — fictional evaluation",
+            "status": "Supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "Household handoffs — fictional evaluation"
+            ]
+          },
+          "objective": {
+            "value": "Encourage busy households to explore Xfinity home internet by making its everyday role understandable.",
+            "sourceValue": "Encourage busy households to explore Xfinity home internet by making its everyday role understandable.",
+            "status": "Supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "Encourage busy households to explore Xfinity home internet by making its everyday role understandable."
+            ]
+          },
+          "audience": {
+            "value": "Adults coordinating work, homework and entertainment in a shared household.",
+            "sourceValue": "Adults coordinating work, homework and entertainment in a shared household.",
+            "status": "Supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "Adults coordinating work, homework and entertainment in a shared household."
+            ]
+          },
+          "product": {
+            "value": "Xfinity home internet",
+            "sourceValue": "Xfinity home internet",
+            "status": "Supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "Xfinity home internet"
+            ]
+          },
+          "channel": {
+            "value": "Email and web",
+            "sourceValue": "Email and web",
+            "status": "Supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "Email and web"
+            ]
+          },
+          "constraints": {
+            "value": "No speed, price, reliability guarantees, competitive superiority or invented product features. Keep humor kind. No stereotypes.",
+            "sourceValue": "No speed, price, reliability guarantees, competitive superiority or invented product features. Keep humor kind. No stereotypes.",
+            "status": "Supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "No speed, price, reliability guarantees, competitive superiority or invented product features. Keep humor kind. No stereotypes."
+            ]
+          },
+          "originalRTB": {
+            "value": "Home internet can connect household devices to online activities.",
+            "sourceValue": "Home internet can connect household devices to online activities.",
+            "status": "Supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "Home internet can connect household devices to online activities."
+            ]
+          },
+          "research": {
+            "value": "Not supplied.",
+            "sourceValue": "Not supplied.",
+            "status": "Not supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "Not supplied."
+            ]
+          },
+          "briefType": {
+            "value": "",
+            "sourceValue": "",
+            "status": "Not supplied",
+            "note": "",
+            "present": false,
+            "occurrences": []
+          },
+          "campaignTier": {
+            "value": "",
+            "sourceValue": "",
+            "status": "Not supplied",
+            "note": "",
+            "present": false,
+            "occurrences": []
+          },
+          "kpis": {
+            "value": "",
+            "sourceValue": "",
+            "status": "Not supplied",
+            "note": "",
+            "present": false,
+            "occurrences": []
+          },
+          "brandMessaging": {
+            "value": "Focus on the household's own activities, not technical boasting.",
+            "sourceValue": "Focus on the household's own activities, not technical boasting.",
+            "status": "Supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "Focus on the household's own activities, not technical boasting."
+            ]
+          },
+          "messagingApproval": {
+            "value": "Supplied wording only is approved for this fictional exercise. Generated lines remain unapproved.",
+            "sourceValue": "Supplied wording only is approved for this fictional exercise. Generated lines remain unapproved.",
+            "status": "Supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "Supplied wording only is approved for this fictional exercise. Generated lines remain unapproved."
+            ]
+          },
+          "messageHierarchy": {
+            "value": "Human situation first; supplied product role second.",
+            "sourceValue": "Human situation first; supplied product role second.",
+            "status": "Supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "Human situation first; supplied product role second."
+            ]
+          },
+          "brandGuidelines": {
+            "value": "Clear, warm, straightforward and inclusive. No fear or shame.",
+            "sourceValue": "Clear, warm, straightforward and inclusive. No fear or shame.",
+            "status": "Supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "Clear, warm, straightforward and inclusive. No fear or shame."
+            ]
+          },
+          "eligibility": {
+            "value": "Not supplied.",
+            "sourceValue": "Not supplied.",
+            "status": "Not supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "Not supplied."
+            ]
+          },
+          "exclusions": {
+            "value": "Price promotion intentionally excluded.",
+            "sourceValue": "Price promotion intentionally excluded.",
+            "status": "Supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "Price promotion intentionally excluded."
+            ]
+          },
+          "substantiation": {
+            "value": "No speed, performance or competitive evidence supplied.",
+            "sourceValue": "No speed, performance or competitive evidence supplied.",
+            "status": "Supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "No speed, performance or competitive evidence supplied."
+            ]
+          },
+          "disclaimers": {
+            "value": "Do not imply this fixture is an official Xfinity offer.",
+            "sourceValue": "Do not imply this fixture is an official Xfinity offer.",
+            "status": "Supplied",
+            "note": "",
+            "present": true,
+            "occurrences": [
+              "Do not imply this fixture is an official Xfinity offer."
+            ]
+          },
+          "learningAgenda": {
+            "value": "",
+            "sourceValue": "",
+            "status": "Not supplied",
+            "note": "",
+            "present": false,
+            "occurrences": []
+          },
+          "journeyDestinations": {
+            "value": "",
+            "sourceValue": "",
+            "status": "Not supplied",
+            "note": "",
+            "present": false,
+            "occurrences": []
+          },
+          "milestones": {
+            "value": "",
+            "sourceValue": "",
+            "status": "Not supplied",
+            "note": "",
+            "present": false,
+            "occurrences": []
+          },
+          "partnerApproval": {
+            "value": "",
+            "sourceValue": "",
+            "status": "Not supplied",
+            "note": "",
+            "present": false,
+            "occurrences": []
+          },
+          "sourceVersion": {
+            "value": "",
+            "sourceValue": "",
+            "status": "Not supplied",
+            "note": "",
+            "present": false,
+            "occurrences": []
+          },
+          "upstreamApproval": {
+            "value": "",
+            "sourceValue": "",
+            "status": "Not supplied",
+            "note": "",
+            "present": false,
+            "occurrences": []
+          },
+          "sourceReferences": {
+            "value": "",
+            "sourceValue": "",
+            "status": "Not supplied",
+            "note": "",
+            "present": false,
+            "occurrences": []
+          }
+        }
+      }
+    },
+    "personality": {
+      "primary": 5,
+      "secondary": 5
+    },
+    "steeringText": "",
+    "modelSettings": {
+      "reasoningEffort": "low",
+      "verbosity": "low",
+      "maxOutputTokens": 2500
+    },
+    "promptTemplateVersion": "xc-roundtable-2.1",
+    "requestId": "9717cd5d-1083-4a44-8102-2b4b8fb863bf"
+  }
+}
