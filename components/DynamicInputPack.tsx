@@ -41,6 +41,7 @@ export default function DynamicInputPack({
   working,
   generating,
   hasSession,
+  aiMode,
 }: {
   state: PreparationState;
   onChange: (value: SetStateAction<PreparationState>) => void;
@@ -49,6 +50,7 @@ export default function DynamicInputPack({
   working: boolean;
   generating: boolean;
   hasSession: boolean;
+  aiMode: "mock" | "live";
 }) {
   const [view, setView] = useState<"preview" | "compare" | null>(null);
   const [inspectedId, setInspectedId] = useState<string | null>(null);
@@ -67,7 +69,7 @@ export default function DynamicInputPack({
     const v = currentPreparation(state, id);
     return v && v.sourceBrief === state.sourceSnapshot;
   }).length;
-  const ready = preparationReady(state) && !working;
+  const ready = preparationReady(state, aiMode) && !working;
   const disabled = working || stale;
   const changes = state.reviewedPack
     ? inputPackChanges(state.reviewedPack, snapshot)

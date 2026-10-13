@@ -1,12 +1,16 @@
 import { test, expect } from "@playwright/test";
 import OpenAI from "openai";
-import { generateOpenAI } from "../../lib/ai/openai-provider";
+import {
+  classifyOpenAIError,
+  generateOpenAI,
+} from "../../lib/ai/openai-provider";
 import { generateAgentResponse, preserveSource } from "../../lib/ai/provider";
 import { publicAIStatus } from "../../lib/ai/config";
 import {
   requestSchema,
   outputSchemas,
   type AgentRequest,
+  type AgentDataMap,
 } from "../../lib/ai/schemas";
 import { selectedFoundation } from "../../lib/ai/context";
 import { demoExecution } from "../../lib/demo";
@@ -143,6 +147,8 @@ test("live missing-key/provider configuration is explicit, sanitized and never s
   expect(await response.json()).toEqual({
     error:
       "Live AI requires OPENAI_API_KEY on the server. Configure it or set AI_MODE=mock.",
+    code: "agent_error",
+    retryable: false,
   });
   process.env.OPENAI_API_KEY = "sk-test-private-sentinel";
   process.env.AI_PROVIDER = "writer";
@@ -210,6 +216,7 @@ test("source preservation prevents model edits to original RTB, evidence and app
   const output = {
     originalRtb: "A replacement claim",
     originalRtbStatus: "not_supplied" as const,
+    originalRtbApprovalStatus: "unknown" as const,
     xcAdaptation: "A proposal",
     adaptationStatus: "not_approved" as const,
     reviewNotes: [],
@@ -220,6 +227,7 @@ test("source preservation prevents model edits to original RTB, evidence and app
     originalRtb:
       preparationContext().parsedIMC.fields.reason_to_believe.sourceValue,
     originalRtbStatus: "supplied",
+    originalRtbApprovalStatus: "unknown",
   });
   const excluded = {
     agentType: "rtb" as const,
@@ -232,6 +240,19 @@ test("source preservation prevents model edits to original RTB, evidence and app
     originalRtbStatus: "intentionally_excluded",
     xcAdaptation: null,
   });
+  const approvedSource = "GTM-approved RTB: Exact approved proof.";
+  const approvedRequest: AgentRequest = {
+    agentType: "rtb",
+    context: {
+      parsedIMC: parseIMCBrief(approvedSource),
+      upstream: extractUpstream(approvedSource),
+    },
+  };
+  expect(preserveSource(approvedRequest, output)).toMatchObject({
+    originalRtb: "Exact approved proof.",
+    originalRtbStatus: "supplied",
+    originalRtbApprovalStatus: "approved",
+  });
   const generated = await generateAgentResponse(finalRequest());
   expect(
     preserveSource(finalRequest(), {
@@ -241,12 +262,56 @@ test("source preservation prevents model edits to original RTB, evidence and app
   ).toMatchObject({ approvedStrategy: "Human-approved direction, verbatim." });
 });
 
+test("research preserves campaign fields, separates evidence classes and removes disconnected-source result claims", () => {
+  const data: AgentDataMap["research"] = {
+    campaignName: "Changed campaign",
+    objectives: "Changed objective",
+    audience: "Changed audience",
+    productInformation: "Changed product",
+    suppliedEvidence: ["Invented evidence"],
+    verifiedEvidence: ["Invented verified result"],
+    illustrativeAssumptions: ["A proposed creative question"],
+    audienceContext: ["Audience interpretation"],
+    historicalPerformance: ["Tableau shows a 42% lift."],
+    creativePerformance: ["iSpot proves the ad won."],
+    marketContext: ["Datorama reports category leadership."],
+    researchToValidate: [
+      { source: "Tableau", question: "Which historical result is relevant?" },
+    ],
+    evidenceGaps: ["Need campaign-specific performance evidence."],
+    sourceNotes: [],
+  };
+  const preserved = preserveSource(prep("research"), data);
+  if (!("suppliedEvidence" in preserved)) throw new Error("Expected research");
+  expect(preserved.campaignName).toBe("Life, connected");
+  expect(preserved.objectives).toBe(
+    "Make Xfinity the first choice for households looking for dependable home connectivity.",
+  );
+  expect(preserved.productInformation).toBe("Xfinity home internet");
+  expect(preserved.suppliedEvidence.join("\n")).toContain(
+    preparationContext().parsedIMC.fields.research.sourceValue,
+  );
+  expect(preserved.verifiedEvidence).toEqual([]);
+  expect(preserved.illustrativeAssumptions.join("\n")).toContain(
+    "Illustrative audience observation",
+  );
+  expect(
+    [
+      ...preserved.historicalPerformance,
+      ...preserved.creativePerformance,
+      ...preserved.marketContext,
+    ].join("\n"),
+  ).not.toMatch(/Tableau|iSpot|Datorama/);
+  expect(preserved.researchToValidate[0].source).toBe("Tableau");
+});
+
 test("OpenAI SDK sends Responses JSON schemas and validates transport outputs without network", async () => {
   process.env.OPENAI_MODEL = "gpt-5.5";
   let sent: Record<string, unknown> = {};
   const data = {
     originalRtb: "Original",
     originalRtbStatus: "supplied",
+    originalRtbApprovalStatus: "unknown",
     xcAdaptation: "Proposal",
     adaptationStatus: "not_approved",
     reviewNotes: [],
@@ -291,6 +356,124 @@ test("OpenAI SDK sends Responses JSON schemas and validates transport outputs wi
   });
   expect(JSON.stringify(sent)).not.toContain("sk-test-private-sentinel");
   expect(sent).not.toHaveProperty("tools");
+});
+
+test("provider errors distinguish quota, authentication and retryable throttling", async () => {
+  const quota = classifyOpenAIError(
+    OpenAI.APIError.generate(
+      429,
+      {
+        error: {
+          message: "No credits",
+          type: "insufficient_quota",
+          code: "credit_balance_exhausted",
+        },
+      },
+      "No credits",
+      new Headers(),
+    ),
+  );
+  expect(quota).toMatchObject({
+    category: "quota",
+    code: "credit_balance_exhausted",
+    retryable: false,
+  });
+  const authentication = classifyOpenAIError(
+    OpenAI.APIError.generate(
+      401,
+      { error: { type: "authentication_error", code: "invalid_api_key" } },
+      "Invalid key",
+      new Headers(),
+    ),
+  );
+  expect(authentication).toMatchObject({
+    category: "authentication",
+    retryable: false,
+  });
+
+  const data = {
+    originalRtb: "Original",
+    originalRtbStatus: "supplied",
+    originalRtbApprovalStatus: "unknown",
+    xcAdaptation: "Proposal",
+    adaptationStatus: "not_approved",
+    reviewNotes: [],
+    evidenceGaps: [],
+  };
+  let calls = 0;
+  const sdk = new OpenAI({
+    apiKey: "sk-test-private-sentinel",
+    maxRetries: 0,
+    fetch: async () => {
+      calls++;
+      if (calls === 1)
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "Slow down",
+              type: "rate_limit_error",
+              code: "slow_down",
+            },
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json",
+              "retry-after": "0",
+            },
+          },
+        );
+      return new Response(
+        JSON.stringify({
+          id: "resp_after_retry",
+          object: "response",
+          status: "completed",
+          output: [
+            {
+              id: "msg_after_retry",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify(data),
+                  annotations: [],
+                },
+              ],
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    },
+  });
+  expect(await generateOpenAI(prep("rtb"), sdk)).toEqual(data);
+  expect(calls).toBe(2);
+
+  let quotaCalls = 0;
+  const quotaSdk = new OpenAI({
+    apiKey: "sk-test-private-sentinel",
+    maxRetries: 0,
+    fetch: async () => {
+      quotaCalls++;
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: "No credits",
+            type: "insufficient_quota",
+            code: "credit_balance_exhausted",
+          },
+        }),
+        { status: 429, headers: { "content-type": "application/json" } },
+      );
+    },
+  });
+  await expect(generateOpenAI(prep("rtb"), quotaSdk)).rejects.toMatchObject({
+    code: "credit_balance_exhausted",
+    retryable: false,
+  });
+  expect(quotaCalls).toBe(1);
 });
 
 test("malformed, refused, truncated and provider-error responses produce sanitized errors", async () => {
@@ -350,4 +533,39 @@ test("malformed, refused, truncated and provider-error responses produce sanitiz
       expect(String(error)).not.toContain("Expected failure");
     }
   }
+});
+
+test("malformed model JSON reports an actionable parser error", async () => {
+  const sdk = new OpenAI({
+    apiKey: "sk-test-private-sentinel",
+    maxRetries: 0,
+    fetch: async () =>
+      new Response(
+        JSON.stringify({
+          id: "resp_invalid_json",
+          object: "response",
+          status: "completed",
+          output: [
+            {
+              id: "msg_invalid_json",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "not valid JSON",
+                  annotations: [],
+                },
+              ],
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+  });
+  await expect(generateOpenAI(prep("rtb"), sdk)).rejects.toMatchObject({
+    code: "model_output_invalid_json",
+    retryable: true,
+  });
 });

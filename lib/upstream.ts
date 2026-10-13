@@ -6,6 +6,7 @@ import type {
   UpstreamContext,
   SourceField,
   UpstreamKey,
+  RtbApprovalStatus,
 } from "./types";
 
 export const upstreamFields: {
@@ -55,6 +56,18 @@ export const upstreamFields: {
     label: "Original upstream RTB",
     group: "Upstream RTB",
     aliases: ["Reason to believe", "RTB"],
+  },
+  {
+    key: "gtmApprovedRTB",
+    label: "Distinct GTM-approved RTB",
+    group: "Upstream RTB",
+    aliases: ["GTM-approved RTB", "GTM approved reason to believe"],
+  },
+  {
+    key: "rtbApproval",
+    label: "RTB approval status",
+    group: "Upstream RTB",
+    aliases: ["RTB approval status", "Reason to believe approval status"],
   },
   {
     key: "research",
@@ -181,24 +194,29 @@ export function extractUpstream(
   source: string | ParsedIMCBrief,
 ): UpstreamContext {
   const parsed = typeof source === "string" ? parseIMCBrief(source) : source;
-  const entries = imcSchema.map((def) => [
-    def.upstreamKey,
-    { ...parsed.fields[def.key] },
-  ]);
+  const entries = new Map<UpstreamKey, SourceField>(
+    imcSchema.map((def) => [def.upstreamKey, { ...parsed.fields[def.key] }]),
+  );
+  for (const [key, value] of Object.entries(parsed.supplemental)) {
+    if (key !== "brand" && value) entries.set(key as UpstreamKey, { ...value });
+  }
   return {
-    fields: {
-      ...Object.fromEntries(entries),
-      ...Object.fromEntries(
-        Object.entries(parsed.supplemental)
-          .filter(([key]) => key !== "brand")
-          .map(([key, value]) => [key, { ...value }]),
-      ),
-    } as UpstreamContext["fields"],
+    fields: Object.fromEntries(
+      upstreamFields.map(({ key }) => [
+        key,
+        entries.get(key) ?? {
+          value: "",
+          sourceValue: "",
+          status: "Not supplied",
+          note: "",
+        },
+      ]),
+    ) as UpstreamContext["fields"],
   };
 }
 export function getParsedIMC(state: PreparationState): ParsedIMCBrief {
   return state.parsedIMC?.schemaVersion === 1 &&
-    state.parsedIMC.parserVersion === 2 &&
+    state.parsedIMC.parserVersion === 3 &&
     state.parsedIMC.sourceText === state.sourceSnapshot
     ? state.parsedIMC
     : parseIMCBrief(state.sourceSnapshot);
@@ -253,6 +271,45 @@ export function reconcileUpstream(
 export function fieldText(field: SourceField): string {
   if (field.status === "Supplied") return field.value || "Not supplied";
   return `${field.status}${field.note ? ` — ${field.note}` : ""}${field.status === "Needs clarification" && field.value ? `\nUnconfirmed supplied detail: ${field.value}` : ""}`;
+}
+export function resolveRtb(upstream: UpstreamContext): {
+  field: SourceField;
+  approvalStatus: RtbApprovalStatus;
+  approvalNote: string;
+} {
+  const original = upstream.fields.originalRTB;
+  const gtmApproved = upstream.fields.gtmApprovedRTB;
+  const explicitApproval = upstream.fields.rtbApproval;
+  const field =
+    original.status === "Not supplied" && gtmApproved.status === "Supplied"
+      ? gtmApproved
+      : original;
+  const approvalText =
+    explicitApproval.status === "Supplied"
+      ? explicitApproval.value.trim().toLowerCase()
+      : "";
+  let approvalStatus: RtbApprovalStatus = "unknown";
+  if (/\b(?:not approved|unapproved|rejected)\b/.test(approvalText))
+    approvalStatus = "not_approved";
+  else if (/\b(?:pending|in review|awaiting)\b/.test(approvalText))
+    approvalStatus = "pending";
+  else if (/\bapproved\b/.test(approvalText)) approvalStatus = "approved";
+  else if (
+    gtmApproved.status === "Supplied" &&
+    (original.status === "Not supplied" ||
+      gtmApproved.sourceValue.trim() === original.sourceValue.trim())
+  )
+    approvalStatus = "approved";
+
+  const approvalNote =
+    original.status === "Supplied" &&
+    gtmApproved.status === "Supplied" &&
+    gtmApproved.sourceValue.trim() !== original.sourceValue.trim()
+      ? "A distinct GTM-approved RTB was supplied with different wording. The Reason to Believe field remains preserved; reconcile the two source fields before treating either as the approved campaign RTB."
+      : approvalStatus === "unknown" && field.status === "Supplied"
+        ? "The brief supplies a Reason to Believe but does not explicitly identify its GTM approval status. Approval is unknown."
+        : "";
+  return { field, approvalStatus, approvalNote };
 }
 export function upstreamSections(upstream?: UpstreamContext) {
   if (!upstream) return [];

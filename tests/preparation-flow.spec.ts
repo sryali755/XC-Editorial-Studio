@@ -2,8 +2,13 @@ import { test, expect, type Page } from "@playwright/test";
 import { parseIMCBrief } from "../lib/imc-parser";
 import { extractUpstream } from "../lib/upstream";
 import { emptyExecution, prefillExecution } from "../lib/execution";
-import { compileInputPack, emptyPreparation } from "../lib/preparation";
+import {
+  compileInputPack,
+  demoIMCBrief,
+  emptyPreparation,
+} from "../lib/preparation";
 import type { StrategySession } from "../lib/types";
+import { requestSchema, type AgentRequest } from "../lib/ai/schemas";
 
 const readSession = (page: Page): Promise<StrategySession> =>
   page.evaluate(() =>
@@ -33,6 +38,7 @@ test("research-only V2, restored versions, selected foundation and approved exec
     exact: true,
   });
   await expect(research.locator(".card-top")).toContainText("V1 · Current");
+  await expect(sparks.locator(".card-top")).toContainText("V1 · Current");
   await expect(page.locator(".preparation-card")).toHaveCount(3);
   for (const card of await page.locator(".preparation-card").all()) {
     await expect(card.locator(".agent-process")).toContainText("INPUT");
@@ -158,6 +164,152 @@ test("research-only V2, restored versions, selected foundation and approved exec
   await expect(page.locator(".brief-paper")).toContainText("REFINEMENT V2");
   await expect(page.locator(".brief-paper")).toContainText("Approval Notes");
   expect(errors).toEqual([]);
+});
+
+test("regeneration sends current brief, selected content and steering while preserving version input history", async ({
+  page,
+}) => {
+  const requests: AgentRequest[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/ai/agent") && request.method() === "POST")
+      requests.push(requestSchema.parse(request.postDataJSON()));
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load sample IMC brief" }).click();
+  await page
+    .getByRole("button", { name: "Prepare XC Input Pack", exact: true })
+    .click();
+  const research = page.getByRole("article", {
+    name: "Data & Research Agent",
+    exact: true,
+  });
+  const sparks = page.getByRole("article", {
+    name: "Strategic Sparks Agent",
+    exact: true,
+  });
+  await sparks.getByRole("checkbox").first().check();
+  await research
+    .getByLabel("Guide Data & Research Agent", { exact: false })
+    .fill("Prioritize the selected human tension.");
+  await research.getByRole("button", { name: "Regenerate this agent" }).click();
+  await expect(research.locator(".card-top")).toContainText("V2 · Current");
+  const refinedRequest = requests
+    .filter((request) => request.agentType === "research")
+    .at(-1)!;
+  expect(refinedRequest.guidance).toBe(
+    "Prioritize the selected human tension.",
+  );
+  expect(refinedRequest.context).toHaveProperty(
+    "selectedContent.selectedSparks.length",
+    1,
+  );
+  const refinedState = await readSession(page);
+  const researchV2 = refinedState.preparation.outputs
+    .find((output) => output.agentId === "research")!
+    .versions.find((version) => version.number === 2)!;
+  expect(researchV2.inputContext).toMatchObject({
+    sourceBrief: demoIMCBrief,
+    steeringText: "Prioritize the selected human tension.",
+  });
+  expect(researchV2.inputContext!.selectedContent.selectedSparks).toHaveLength(
+    1,
+  );
+
+  await page
+    .getByRole("button", { name: "Prepare XC Input Pack", exact: true })
+    .click();
+  await expect(research.locator(".card-top")).toContainText("V3 · Current");
+  await expect(research.locator(".version-label").first()).toContainText(
+    "Prepared from current IMC brief",
+  );
+  await expect(research.locator(".version-label").first()).not.toContainText(
+    "Initial preparation",
+  );
+
+  const replacement = demoIMCBrief.replace(
+    "Campaign: Life, connected",
+    "Campaign: A genuinely different current brief",
+  );
+  await page
+    .getByRole("textbox", { name: "IMC output brief", exact: false })
+    .fill(replacement);
+  await page
+    .getByRole("button", { name: "Prepare XC Input Pack", exact: true })
+    .click();
+  await expect(research.locator(".card-top")).toContainText("V4 · Current");
+  const latestRequest = requests
+    .filter((request) => request.agentType === "research")
+    .at(-1)!;
+  if (latestRequest.agentType !== "research")
+    throw new Error("Expected a Research request");
+  expect(latestRequest.context.parsedIMC.sourceText).toBe(replacement);
+  expect(latestRequest.previousVersion).toBeUndefined();
+  expect(latestRequest.context).toHaveProperty(
+    "selectedContent.selectedSparks.length",
+    0,
+  );
+  const latestState = await readSession(page);
+  const researchHistory = latestState.preparation.outputs.find(
+    (output) => output.agentId === "research",
+  )!.versions;
+  expect(researchHistory).toHaveLength(4);
+  expect(researchHistory[0].sourceBrief).toBe(replacement);
+  expect(
+    researchHistory
+      .slice(1)
+      .every((version) => version.sourceBrief === demoIMCBrief),
+  ).toBe(true);
+});
+
+test("legacy repeated preparation labels do not describe V5 as initial", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load sample IMC brief" }).click();
+  await page
+    .getByRole("button", { name: "Prepare XC Input Pack", exact: true })
+    .click();
+  const research = page.getByRole("article", {
+    name: "Data & Research Agent",
+    exact: true,
+  });
+  await expect(research.locator(".card-top")).toContainText("V1 · Current");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const session = JSON.parse(
+          sessionStorage.getItem("xc-strategy-session-v1")!,
+        );
+        const output = session.preparation.outputs.find(
+          (candidate: { agentId: string }) => candidate.agentId === "research",
+        );
+        return output?.versions.some(
+          (version: { id: string }) => version.id === output.currentVersionId,
+        );
+      }),
+    )
+    .toBe(true);
+  await page.evaluate(() => {
+    const session = JSON.parse(
+      sessionStorage.getItem("xc-strategy-session-v1")!,
+    );
+    const research = session.preparation.outputs.find(
+      (output: { agentId: string }) => output.agentId === "research",
+    );
+    const current = research.versions.find(
+      (version: { id: string }) => version.id === research.currentVersionId,
+    );
+    current.number = 5;
+    current.guidance = "Initial preparation from IMC brief";
+    sessionStorage.setItem("xc-strategy-session-v1", JSON.stringify(session));
+  });
+  await page.reload();
+  await expect(research.locator(".version-label").first()).toContainText(
+    "V5 · Prepared from current IMC brief",
+  );
+  await expect(research.locator(".version-label").first()).not.toContainText(
+    "Initial preparation",
+  );
 });
 
 test("CSV import preserves source fields and does not block sparse briefs", async ({

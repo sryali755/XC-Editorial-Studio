@@ -86,16 +86,27 @@ export function mockSparks(
   upstream: UpstreamContext,
   previousText = "",
 ): AgentDataMap["sparks"]["sparks"] {
+  const campaign = fieldText(upstream.fields.campaignName);
+  const objective = fieldText(upstream.fields.objective);
+  const audience = fieldText(upstream.fields.audience);
   const candidates = sets[0].map(
     (fallback, index) =>
       sets
         .map((set) => set[index])
         .find(([, text]) => !previousText.includes(text)) ?? fallback,
   );
-  return candidates.map(([title, text, field, validation], i) => ({
-    id: `spark-${i + 1}`,
-    title,
-    text,
-    rationale: `Mock creative hypothesis. Supplied ${field}: ${fieldText(upstream.fields[field])} ${validation}`,
-  }));
+  return candidates.map(([title, text, field, validation], i) => {
+    const excerpt =
+      upstream.fields[field].sourceValue ||
+      upstream.fields.campaignName.sourceValue ||
+      fieldText(upstream.fields[field]);
+    return {
+      id: `spark-${i + 1}`,
+      title,
+      text: `${text} For ${campaign}, connect the opportunity to ${audience} and the supplied objective: ${objective}`,
+      campaignGrounding: `${field}: "${excerpt}"`,
+      hypothesisToValidate: validation,
+      rationale: `Premise: ${text} Grounding: ${excerpt} Validate: ${validation}`,
+    };
+  });
 }

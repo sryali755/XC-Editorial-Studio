@@ -15,12 +15,20 @@ export const imcSchema: {
   {
     key: "objective",
     upstreamKey: "objective",
-    aliases: ["Objectives", "Campaign objective"],
+    aliases: [
+      "Objectives",
+      "Campaign objective",
+      "Business objective",
+      "Business objectives",
+      "Marketing objective",
+      "Communications objective",
+      "Communication objective",
+    ],
   },
   {
     key: "audience",
     upstreamKey: "audience",
-    aliases: ["Priority audience", "Target audience"],
+    aliases: ["Priority audience", "Target audience", "Primary audience"],
   },
   {
     key: "product",
@@ -28,11 +36,21 @@ export const imcSchema: {
     aliases: ["Offer", "Offer / product", "Offer and product details"],
   },
   { key: "channels", upstreamKey: "channel", aliases: ["Channel"] },
-  { key: "constraints", upstreamKey: "constraints", aliases: [] },
+  {
+    key: "constraints",
+    upstreamKey: "constraints",
+    aliases: ["Creative requirements", "Requested deliverables"],
+  },
   {
     key: "reason_to_believe",
     upstreamKey: "originalRTB",
-    aliases: ["RTB", "Reasons to believe", "Original upstream RTB"],
+    aliases: [
+      "RTB",
+      "Reasons to believe",
+      "Reason to Believe (RTB)",
+      "Reasons to Believe (RTB)",
+      "Original upstream RTB",
+    ],
   },
   {
     key: "research",
@@ -42,19 +60,39 @@ export const imcSchema: {
       "Data & research",
       "Supporting data & research",
       "Supporting research",
+      "Illustrative consumer observations",
+      "Historical campaign performance",
+      "Competitive intelligence",
+      "Validated consumer research",
+      "Audience insight",
+      "Consumer tension",
     ],
   },
-  { key: "brief_type", upstreamKey: "briefType", aliases: [] },
+  {
+    key: "brief_type",
+    upstreamKey: "briefType",
+    aliases: ["Campaign type"],
+  },
   { key: "campaign_tier", upstreamKey: "campaignTier", aliases: ["Tier"] },
   {
     key: "kpis",
     upstreamKey: "kpis",
-    aliases: ["Success measures", "Success measures / KPIs"],
+    aliases: [
+      "Success measures",
+      "Success measures / KPIs",
+      "Success metrics",
+      "Primary KPIs",
+      "Secondary KPIs",
+    ],
   },
   {
     key: "brand_messaging",
     upstreamKey: "brandMessaging",
-    aliases: ["Approved brand messaging"],
+    aliases: [
+      "Approved brand messaging",
+      "Expected creative direction",
+      "Core creative thought",
+    ],
   },
   {
     key: "messaging_approval",
@@ -84,7 +122,11 @@ export const imcSchema: {
   {
     key: "substantiation",
     upstreamKey: "substantiation",
-    aliases: ["Claim evidence", "Substantiation / claim evidence"],
+    aliases: [
+      "Claim evidence",
+      "Substantiation / claim evidence",
+      "Product claim substantiation",
+    ],
   },
   {
     key: "disclaimers",
@@ -95,6 +137,25 @@ export const imcSchema: {
 const supplementalSchema: { key: UpstreamKey | "brand"; aliases: string[] }[] =
   [
     { key: "brand", aliases: ["Brand name"] },
+    {
+      key: "gtmApprovedRTB",
+      aliases: [
+        "GTM-approved RTB",
+        "GTM approved RTB",
+        "GTM-approved reason to believe",
+        "GTM approved reason to believe",
+      ],
+    },
+    {
+      key: "rtbApproval",
+      aliases: [
+        "RTB approval",
+        "RTB approval status",
+        "Reason to believe approval",
+        "Reason to believe approval status",
+        "GTM RTB approval status",
+      ],
+    },
     { key: "learningAgenda", aliases: ["Learning agenda"] },
     { key: "journeyDestinations", aliases: ["Journey destinations"] },
     { key: "milestones", aliases: ["Milestones", "GTM milestones"] },
@@ -120,6 +181,7 @@ const supplementalSchema: { key: UpstreamKey | "brand"; aliases: string[] }[] =
         "Upstream approval",
         "Approval status",
         "Upstream approval status",
+        "Status",
       ],
     },
     {
@@ -144,6 +206,39 @@ for (const def of imcSchema)
 for (const def of supplementalSchema)
   for (const label of [def.key, ...def.aliases])
     labels.set(normalize(label), def.key);
+
+function stripMarkdownLabel(value: string) {
+  return value
+    .trim()
+    .replace(/^>\s*/, "")
+    .replace(/^#{1,6}\s*/, "")
+    .replace(/^(?:[-*+]\s+|\d{1,3}[.)]\s*)/, "")
+    .replace(/^(?:section\s+)?\d{1,3}\s*[-–—.:)]\s*/i, "")
+    .replace(/^[\s*_`~]+|[\s*_`~#]+$/g, "")
+    .trim();
+}
+
+function labelCandidates(value: string) {
+  const label = stripMarkdownLabel(value);
+  return [
+    label,
+    label.replace(/\s*\([^)]*\)\s*$/, ""),
+    label.split(/\s+(?:[—–-]|\/|\|)\s+/, 1)[0],
+  ].filter((candidate, index, candidates) => {
+    const normalized = normalize(candidate);
+    return (
+      normalized &&
+      candidates.findIndex((item) => normalize(item) === normalized) === index
+    );
+  });
+}
+
+function resolveLabel(value: string) {
+  for (const candidate of labelCandidates(value)) {
+    const key = labels.get(normalize(candidate));
+    if (key) return key;
+  }
+}
 
 function classify(occurrences: string[]): ParsedIMCField {
   // Presence is determined only after the entire document has been parsed.
@@ -180,7 +275,7 @@ function csvFields(text: string): [string, string][] | null {
   const first = content.split(/\r?\n/, 1)[0];
   if (!first.includes(",")) return null;
   const firstLabel = first.split(",", 1)[0].trim().replace(/^"|"$/g, "");
-  if (!labels.has(normalize(firstLabel)) && !/^(field|key)$/i.test(firstLabel))
+  if (!resolveLabel(firstLabel) && !/^(field|key)$/i.test(firstLabel))
     return null;
   const rows: string[][] = [];
   let row: string[] = [],
@@ -209,20 +304,17 @@ function csvFields(text: string): [string, string][] | null {
     );
   if (value || row.length) rows.push([...row, value]);
   const header = rows[0];
-  if (header.length > 1 && header.every((cell) => labels.has(normalize(cell))))
+  if (header.length > 1 && header.every((cell) => resolveLabel(cell)))
     return rows
       .slice(1)
       .flatMap((record) =>
         header.map(
           (label, i) =>
-            [labels.get(normalize(label))!, record[i] ?? ""] as [
-              string,
-              string,
-            ],
+            [resolveLabel(label)!, record[i] ?? ""] as [string, string],
         ),
       );
   return rows.flatMap(([label, ...cells]) => {
-    const key = labels.get(normalize(label));
+    const key = resolveLabel(label);
     return key ? [[key, cells.join(",")] as [string, string]] : [];
   });
 }
@@ -278,6 +370,7 @@ export function parseIMCBrief(sourceText: string): ParsedIMCBrief {
     let lines: string[] = [];
     const flush = () => {
       if (active) {
+        while (lines.length && !lines[0].trim()) lines.shift();
         while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
         append(active, lines.join("\n"));
       }
@@ -287,37 +380,61 @@ export function parseIMCBrief(sourceText: string): ParsedIMCBrief {
     for (const line of sourceText.split(/\r?\n/)) {
       // Markdown tables: field | value, including an optional outer pipe.
       const table = line.trim().match(/^\|?\s*([^|]+?)\s*\|\s*(.*?)\s*\|?$/);
-      if (table && labels.has(normalize(table[1]))) {
+      const tableKey = table ? resolveLabel(table[1]) : undefined;
+      if (table && tableKey) {
         flush();
-        append(labels.get(normalize(table[1]))!, table[2]);
+        append(tableKey, table[2]);
         continue;
       }
       const heading = /^\s*#{1,6}\s+/.test(line);
       const decorated = /^\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:\*\*|__)/.test(line);
       const clean = line
+        .replace(/^\s*>\s*/, "")
         .replace(/^\s*#{1,6}\s+/, "")
         .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, "")
         .replace(/^\s*(?:\*\*|__)/, "");
-      const colon = clean.indexOf(":");
-      const label = (colon >= 0 ? clean.slice(0, colon) : clean)
-        .replace(/(?:\*\*|__)\s*$/, "")
-        .trim();
-      const key = labels.get(normalize(label));
+      let separator = clean.indexOf(":");
+      let label = separator >= 0 ? clean.slice(0, separator) : clean;
+      let key = resolveLabel(label);
+      if (!key) {
+        const dash = clean.match(/\s+[—–-]\s+/);
+        if (dash?.index !== undefined) {
+          const candidate = clean.slice(0, dash.index);
+          const candidateKey = resolveLabel(candidate);
+          if (candidateKey) {
+            key = candidateKey;
+            label = candidate;
+            separator = dash.index + dash[0].length - 1;
+          }
+        }
+      }
       if (
         key &&
-        (colon >= 0 ||
-          heading ||
-          decorated ||
-          normalize(clean) === normalize(label))
+        (separator >= 0 || heading || decorated || resolveLabel(clean) === key)
       ) {
+        if (active === key && lines.every((value) => !value.trim())) {
+          lines = [];
+          if (separator >= 0) {
+            const value = clean
+              .slice(separator + 1)
+              .replace(/^[ \t]+/, "")
+              .replace(/^(?:\*\*|__)\s*/, "")
+              .replace(/\s+#+\s*$/, "");
+            if (value.length) lines.push(value);
+            if (/^not\s+supplied[.]?$/i.test(value.trim())) flush();
+          }
+          continue;
+        }
         flush();
         active = key;
-        if (colon >= 0) {
-          let value = clean.slice(colon + 1);
-          if (decorated && /^\s*(?:\*\*|__)/.test(value))
-            value = value.replace(/^\s*(?:\*\*|__)/, "");
-          value = value.replace(/^[ \t]+/, "");
+        if (separator >= 0) {
+          let value = clean.slice(separator + 1);
+          value = value
+            .replace(/^[ \t]+/, "")
+            .replace(/^(?:\*\*|__)\s*/, "")
+            .replace(/\s+#+\s*$/, "");
           if (value.length) lines.push(value);
+          if (/^not\s+supplied[.]?$/i.test(value.trim())) flush();
         }
         continue;
       }
@@ -336,7 +453,7 @@ export function parseIMCBrief(sourceText: string): ParsedIMCBrief {
   }
   return Object.freeze({
     schemaVersion: 1,
-    parserVersion: 2,
+    parserVersion: 3,
     sourceText,
     fields: Object.freeze(
       Object.fromEntries(

@@ -64,7 +64,10 @@ export function SparkTrace({
   onClose: () => void;
 }) {
   const reasoning = sparkReasoning(spark.rationale ?? "");
-  const matches = sparkSourceMatches(spark.rationale ?? "", parsed);
+  const matches = sparkSourceMatches(
+    [spark.campaignGrounding, spark.rationale].filter(Boolean).join("\n"),
+    parsed,
+  );
   return (
     <PackDialog
       title={spark.title || "Idea starter"}
@@ -78,7 +81,21 @@ export function SparkTrace({
           aria-label="Agent interpretation"
         >
           <span className="pack-label proposal">AGENT INTERPRETATION</span>
-          {reasoning ? (
+          {spark.campaignGrounding || spark.hypothesisToValidate ? (
+            <>
+              <h3>Creative opportunity</h3>
+              <p>{spark.text}</p>
+              <h3>Campaign grounding</h3>
+              <p>
+                {spark.campaignGrounding || "No structured grounding recorded."}
+              </p>
+              <h3>Hypothesis to validate</h3>
+              <p>
+                {spark.hypothesisToValidate ||
+                  "No structured validation hypothesis recorded."}
+              </p>
+            </>
+          ) : reasoning ? (
             <>
               <h3>Creative premise</h3>
               <p>{reasoning.premise}</p>
@@ -181,7 +198,8 @@ export function SharedPackContents({ pack }: { pack: StrategyInputPack }) {
       <div className="pack-trace-grid">
         <section className="pack-detail-section">
           <span className="pack-label source">
-            UPSTREAM RTB · {foundation.currentRtb.status}
+            UPSTREAM RTB · {foundation.currentRtb.status} · APPROVAL{" "}
+            {foundation.currentRtb.approvalStatus.replace("_", " ")}
           </span>
           <p>{foundation.currentRtb.original}</p>
           {foundation.currentRtb.reviewNote && (
@@ -219,6 +237,16 @@ export function SharedPackContents({ pack }: { pack: StrategyInputPack }) {
               <p>{spark.text}</p>
               {spark.rationale && (
                 <p className="context-note">{spark.rationale}</p>
+              )}
+              {spark.campaignGrounding && (
+                <p className="context-note">
+                  Campaign grounding: {spark.campaignGrounding}
+                </p>
+              )}
+              {spark.hypothesisToValidate && (
+                <p className="context-note">
+                  Hypothesis to validate: {spark.hypothesisToValidate}
+                </p>
               )}
             </div>
           ))

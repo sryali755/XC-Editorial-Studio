@@ -1,7 +1,7 @@
 import "server-only";
 import { mockPerspective } from "./mock-perspective";
 import { parseIMCBrief } from "../imc-parser";
-import { fieldText, reconcileUpstream } from "../upstream";
+import { fieldText, reconcileUpstream, resolveRtb } from "../upstream";
 import { mockPreparationService } from "./mock-preparation";
 import { mockStrategyService, mockBriefService } from "./mock-strategy";
 import { foundationPack } from "./context";
@@ -47,14 +47,23 @@ export async function generateMock(request: AgentRequest): Promise<AgentData> {
       })),
     });
     if (request.agentType === "rtb")
-      return {
-        originalRtb: parsedIMC.fields.reason_to_believe.value || null,
-        originalRtbStatus: "supplied",
-        xcAdaptation: version.text,
-        adaptationStatus: "not_approved",
-        reviewNotes: [],
-        evidenceGaps: [],
-      };
+      return (() => {
+        const resolved = resolveRtb(upstream);
+        return {
+          originalRtb: resolved.field.sourceValue || null,
+          originalRtbStatus:
+            resolved.field.status === "Supplied"
+              ? "supplied"
+              : resolved.field.status === "Intentionally excluded"
+                ? "intentionally_excluded"
+                : "not_supplied",
+          originalRtbApprovalStatus: resolved.approvalStatus,
+          xcAdaptation: version.text,
+          adaptationStatus: "not_approved",
+          reviewNotes: resolved.approvalNote ? [resolved.approvalNote] : [],
+          evidenceGaps: [],
+        };
+      })();
     if (request.agentType === "sparks")
       return {
         sparks: version.sparks.map((spark) => ({
@@ -63,10 +72,30 @@ export async function generateMock(request: AgentRequest): Promise<AgentData> {
           rationale:
             spark.rationale ??
             "Mock creative hypothesis; validate against supplied context.",
+          campaignGrounding:
+            spark.campaignGrounding ??
+            `Campaign: ${fieldText(upstream.fields.campaignName)}`,
+          hypothesisToValidate:
+            spark.hypothesisToValidate ??
+            "Validate this creative hypothesis with the intended audience.",
         })),
       };
     return {
-      suppliedEvidence: [fieldText(upstream.fields.research)],
+      campaignName: fieldText(upstream.fields.campaignName),
+      objectives: fieldText(upstream.fields.objective),
+      audience: fieldText(upstream.fields.audience),
+      productInformation: fieldText(upstream.fields.product),
+      suppliedEvidence: [
+        `Research (${upstream.fields.research.status}; not independently verified): ${fieldText(upstream.fields.research)}`,
+        `Supporting evidence (${upstream.fields.substantiation.status}; not independently verified): ${fieldText(upstream.fields.substantiation)}`,
+      ],
+      verifiedEvidence: [],
+      illustrativeAssumptions:
+        /\b(?:illustrative|hypothesis|assumption|proposed)\b/i.test(
+          upstream.fields.research.sourceValue,
+        )
+          ? [upstream.fields.research.sourceValue]
+          : [],
       audienceContext: [fieldText(upstream.fields.audience)],
       historicalPerformance: [
         "No connected performance data. Review any supplied evidence above; validate results with the source owner.",

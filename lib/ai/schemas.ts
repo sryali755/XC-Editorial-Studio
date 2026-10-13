@@ -16,6 +16,16 @@ const line = z.object({ id: item, line: item, rationale: text }).strict();
 const perspective = z
   .object({ briefLines: z.array(line).length(1), perspectiveSummary: text })
   .strict();
+const spark = z
+  .object({
+    id: item,
+    title: item,
+    text: item,
+    rationale: text,
+    campaignGrounding: item,
+    hypothesisToValidate: item,
+  })
+  .strict();
 export const outputSchemas = {
   rtb: z
     .object({
@@ -25,6 +35,12 @@ export const outputSchemas = {
         "not_supplied",
         "intentionally_excluded",
       ]),
+      originalRtbApprovalStatus: z.enum([
+        "approved",
+        "not_approved",
+        "pending",
+        "unknown",
+      ]),
       xcAdaptation: text.nullable(),
       adaptationStatus: z.literal("not_approved"),
       reviewNotes: list,
@@ -33,7 +49,13 @@ export const outputSchemas = {
     .strict(),
   research: z
     .object({
+      campaignName: text,
+      objectives: text,
+      audience: text,
+      productInformation: text,
       suppliedEvidence: list,
+      verifiedEvidence: list,
+      illustrativeAssumptions: list,
       audienceContext: list,
       historicalPerformance: list,
       creativePerformance: list,
@@ -47,13 +69,7 @@ export const outputSchemas = {
     .strict(),
   sparks: z
     .object({
-      sparks: z
-        .array(
-          z
-            .object({ id: item, title: text, text: item, rationale: text })
-            .strict(),
-        )
-        .length(6),
+      sparks: z.array(spark).length(6),
     })
     .strict(),
   humor: perspective,
@@ -120,6 +136,12 @@ export const foundationSchema = z
         original: text,
         proposal: text,
         status: sourceField.shape.status,
+        approvalStatus: z.enum([
+          "approved",
+          "not_approved",
+          "pending",
+          "unknown",
+        ]),
         reviewNote: text,
       })
       .strict(),
@@ -134,6 +156,8 @@ export const foundationSchema = z
             version: z.number().int().nonnegative(),
             title: text.optional(),
             rationale: text.optional(),
+            campaignGrounding: text.optional(),
+            hypothesisToValidate: text.optional(),
           })
           .strict(),
       )
@@ -151,6 +175,35 @@ const preparation = z
       sourceText: text.min(1),
     }),
     upstream: upstreamSchema,
+    selectedContent: z
+      .object({
+        reasonToBelieve: z
+          .object({ versionId: item, version: z.number().int(), text })
+          .strict()
+          .optional(),
+        research: z
+          .object({ versionId: item, version: z.number().int(), text })
+          .strict()
+          .optional(),
+        selectedSparks: z
+          .array(
+            z
+              .object({
+                id: item,
+                versionId: item,
+                version: z.number().int(),
+                title: text.optional(),
+                text: item,
+                rationale: text.optional(),
+                campaignGrounding: text.optional(),
+                hypothesisToValidate: text.optional(),
+              })
+              .strict(),
+          )
+          .max(6),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 const selectedLine = z

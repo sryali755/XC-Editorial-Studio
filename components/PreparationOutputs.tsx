@@ -58,6 +58,7 @@ export function SparkChoices({
                 {spark.title && (
                   <strong className="spark-title">{spark.title}</strong>
                 )}
+                <small>CREATIVE OPPORTUNITY</small>
                 <span className="spark-description">{spark.text}</span>
               </span>
               <Check size={15} />
@@ -102,10 +103,24 @@ export function SparkChoices({
                 Trace this idea <span aria-hidden="true">↗</span>
               </button>
             ) : (
-              spark.rationale && (
+              (spark.rationale ||
+                spark.campaignGrounding ||
+                spark.hypothesisToValidate) && (
                 <details className="spark-rationale">
                   <summary>Why this spark · grounding & hypothesis</summary>
-                  <p>{spark.rationale}</p>
+                  {spark.campaignGrounding && (
+                    <p>
+                      <strong>Campaign grounding:</strong>{" "}
+                      {spark.campaignGrounding}
+                    </p>
+                  )}
+                  {spark.hypothesisToValidate && (
+                    <p>
+                      <strong>Hypothesis to validate:</strong>{" "}
+                      {spark.hypothesisToValidate}
+                    </p>
+                  )}
+                  {spark.rationale && <p>{spark.rationale}</p>}
                 </details>
               )
             )}
@@ -123,7 +138,12 @@ export function ResearchOutput({
   text: string;
   data?: AgentData;
 }) {
-  if (data && "suppliedEvidence" in data)
+  if (
+    data &&
+    "suppliedEvidence" in data &&
+    "verifiedEvidence" in data &&
+    "illustrativeAssumptions" in data
+  )
     return (
       <div className="prepared-text research-output">
         {researchSections(data).map((section) => (
@@ -137,7 +157,7 @@ export function ResearchOutput({
   // Text-only rendering supports older sessions and manual edits, never model responses.
   // Render the saved artifact; refinement/history and the pack share this exact text.
   const headings =
-    /^(SUPPLIED EVIDENCE|AUDIENCE CONTEXT|HISTORICAL \/ CREATIVE PERFORMANCE|MARKET \/ CATEGORY CONTEXT|RESEARCH TO VALIDATE|EVIDENCE GAPS|SOURCE NOTES|REFINEMENT V\d+)$/m;
+    /^(CAMPAIGN NAME|OBJECTIVES|AUDIENCE|PRODUCT INFORMATION|SUPPLIED RESEARCH & SUPPORTING EVIDENCE|VERIFIED EVIDENCE|ILLUSTRATIVE ASSUMPTIONS|SUPPLIED EVIDENCE|AUDIENCE CONTEXT|HISTORICAL \/ CREATIVE PERFORMANCE|MARKET \/ CATEGORY CONTEXT|RESEARCH TO VALIDATE|EVIDENCE GAPS|SOURCE NOTES|REFINEMENT V\d+)$/m;
   const parts = text.split(headings);
   return (
     <div className="prepared-text research-output">

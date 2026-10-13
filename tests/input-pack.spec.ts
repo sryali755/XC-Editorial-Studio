@@ -228,6 +228,8 @@ test("mobile layout keeps tray actions reachable and legacy Sparks show honest m
     ).sparks[0];
     delete spark.title;
     delete spark.rationale;
+    delete spark.campaignGrounding;
+    delete spark.hypothesisToValidate;
     delete s.preparation.reviewedPack;
     delete s.preparation.packCandidates;
     sessionStorage.setItem("xc-strategy-session-v1", JSON.stringify(s));

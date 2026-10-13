@@ -112,6 +112,18 @@ export default function StrategyWorkspace({
     update({ step });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+  function currentDownstreamPack() {
+    if (preparationReady(session.preparation, aiStatus.mode)) {
+      return structuredClone(compileInputPack(session.preparation));
+    }
+    const hasPreparationSource = Boolean(
+      session.preparation.sourceSnapshot?.trim() ||
+      session.preparation.upstreamDraft?.trim(),
+    );
+    return !hasPreparationSource && session.sharedPack
+      ? structuredClone(session.sharedPack)
+      : null;
+  }
   async function run(key: string, action: () => Promise<void>) {
     if (locks.current.has(key)) return;
     locks.current.add(key);
@@ -131,7 +143,8 @@ export default function StrategyWorkspace({
     }
   }
   async function generate() {
-    if (preparing || !preparationReady(session.preparation)) return;
+    if (preparing || !preparationReady(session.preparation, aiStatus.mode))
+      return;
     await run("perspectives", async () => {
       const sharedPack = structuredClone(compileInputPack(session.preparation));
       const outputs = personas.map((persona) => ({
@@ -180,6 +193,15 @@ export default function StrategyWorkspace({
   }
   async function refine(persona: AgentPersona, guidance: string) {
     if (locks.current.has(persona.id) || !session.sharedPack) return;
+    const latestPack = currentDownstreamPack();
+    if (!latestPack) {
+      setError(
+        "The IMC brief or selected inputs changed. Prepare the current input pack before regenerating this perspective.",
+      );
+      return;
+    }
+    const packChanged =
+      JSON.stringify(latestPack) !== JSON.stringify(session.sharedPack);
     locks.current.add(persona.id);
     setAgentBusy((b) => [...b, persona.id]);
     setError("");
@@ -187,7 +209,7 @@ export default function StrategyWorkspace({
       const output = session.outputs.find((o) => o.agentId === persona.id)!;
       const version = await strategyService.refine(
         persona,
-        session.sharedPack,
+        latestPack,
         output.versions,
         guidance,
         output.versions.find((v) => v.id === output.currentVersionId),
@@ -196,6 +218,20 @@ export default function StrategyWorkspace({
       );
       setSession((s) => ({
         ...s,
+        sharedPack: latestPack,
+        ...(packChanged
+          ? {
+              selected: [],
+              synthesis: [],
+              synthesisResults: [],
+              synthesisSources: [],
+              finalSourceLines: [],
+              finalLine: "",
+              finalSource: "",
+              approved: null,
+              brief: null,
+            }
+          : {}),
         outputs: s.outputs.map((o) =>
           o.agentId === persona.id
             ? {
@@ -453,6 +489,7 @@ export default function StrategyWorkspace({
               onBusyChange={setPreparing}
               generating={!!busy}
               hasSession={session.outputs.length > 0}
+              aiMode={aiStatus.mode}
             />
           )}
           {session.step === 1 && session.sharedPack && (
@@ -524,13 +561,19 @@ export default function StrategyWorkspace({
                   busy={busy === "synthesis"}
                   onGenerate={(weights) =>
                     run("synthesis", async () => {
+                      const latestPack = currentDownstreamPack();
+                      if (!latestPack)
+                        throw new Error(
+                          "Prepare the current IMC brief and selected inputs before generating a synthesis.",
+                        );
                       const result = await strategyService.synthesize({
-                        strategyInputPack: session.sharedPack!,
+                        strategyInputPack: latestPack,
                         lines: session.selected,
                         weights,
                       });
                       setSession((s) => ({
                         ...s,
+                        sharedPack: latestPack,
                         synthesis: [
                           result.data.synthesizedLines[0].line,
                           ...s.synthesis,

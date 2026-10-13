@@ -15,12 +15,15 @@ export interface StrategyInputPack {
     text: string;
     title?: string;
     rationale?: string;
+    campaignGrounding?: string;
+    hypothesisToValidate?: string;
     versionId: string;
     version: number;
   }[];
   parsedIMC?: ParsedIMCBrief;
   upstream?: UpstreamContext;
   proposedRTB?: string;
+  rtbApprovalStatus?: RtbApprovalStatus;
   researchFocus?: string;
   preparationSource?: string;
   reasonToBelieve: string;
@@ -124,9 +127,37 @@ export interface StrategySession {
 }
 
 export type PreparationAgentId = "reasonToBelieve" | "research" | "sparks";
+export type RtbApprovalStatus =
+  "approved" | "not_approved" | "pending" | "unknown";
+export interface PreparationSelectedContent {
+  reasonToBelieve?: { versionId: string; version: number; text: string };
+  research?: { versionId: string; version: number; text: string };
+  selectedSparks: {
+    id: string;
+    versionId: string;
+    version: number;
+    title?: string;
+    text: string;
+    rationale?: string;
+    campaignGrounding?: string;
+    hypothesisToValidate?: string;
+  }[];
+}
 export interface PreparationVersion extends AgentVersion {
+  inputContext?: {
+    sourceBrief: string;
+    selectedContent: PreparationSelectedContent;
+    steeringText: string;
+  };
   sourceBrief: string;
-  sparks: { id: string; text: string; title?: string; rationale?: string }[];
+  sparks: {
+    id: string;
+    text: string;
+    title?: string;
+    rationale?: string;
+    campaignGrounding?: string;
+    hypothesisToValidate?: string;
+  }[];
 }
 export interface PreparationOutput {
   retryRequest?: {
@@ -135,6 +166,9 @@ export interface PreparationOutput {
     intent: "explore" | "improve";
   };
   error?: string;
+  errorCode?: string;
+  retryable?: boolean;
+  status?: "idle" | "pending" | "success" | "failed" | "mock";
   guidance?: string;
   agentId: PreparationAgentId;
   versions: PreparationVersion[];
@@ -178,6 +212,8 @@ export type UpstreamKey =
   | "constraints"
   | "research"
   | "originalRTB"
+  | "gtmApprovedRTB"
+  | "rtbApproval"
   | "brandMessaging"
   | "messagingApproval"
   | "messageHierarchy"

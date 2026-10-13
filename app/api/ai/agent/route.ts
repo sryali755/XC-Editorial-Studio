@@ -71,6 +71,9 @@ export async function POST(request: Request) {
           error instanceof AgentError
             ? error.message
             : "This agent could not complete the request. Please retry.",
+        ...(error instanceof AgentError
+          ? { code: error.code, retryable: error.retryable }
+          : { code: "internal_error", retryable: false }),
       },
       {
         status: error instanceof AgentError ? error.status : 500,

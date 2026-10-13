@@ -1,9 +1,14 @@
 import { test, expect } from "@playwright/test";
 import { parseIMCBrief } from "../lib/imc-parser";
-import { extractUpstream, getUpstream } from "../lib/upstream";
+import { extractUpstream, getUpstream, resolveRtb } from "../lib/upstream";
 import { emptyPreparation } from "../lib/preparation";
 import { getParsedIMC } from "../lib/upstream";
 import { mockPreparationService as preparationService } from "../lib/ai/mock-preparation";
+import {
+  mobileBusinessObjective,
+  mobileIMCBrief,
+  mobileReasonToBelieve,
+} from "./fixtures/mobile-imc-brief";
 
 const fields = {
   campaign: "Fall household campaign",
@@ -53,7 +58,7 @@ test("brand metadata is extracted separately and legacy unedited campaign fields
     upstream: legacy,
     parsedIMC: { ...parsed, parserVersion: undefined },
   };
-  expect(getParsedIMC(state).parserVersion).toBe(2);
+  expect(getParsedIMC(state).parserVersion).toBe(3);
   expect(getUpstream(state).fields.campaignName.value).toBe(
     "Life Has Enough Drama",
   );
@@ -61,6 +66,60 @@ test("brand metadata is extracted separately and legacy unedited campaign fields
   expect(getUpstream(state).fields.campaignName.value).toBe(
     "A human-reviewed title",
   );
+});
+test("extracts the pasted mobile Markdown brief without inventing absent fields", () => {
+  const parsed = parseIMCBrief(mobileIMCBrief);
+  const displayedFields = [
+    parsed.supplemental.brand,
+    ...Object.values(parsed.fields),
+    parsed.supplemental.partnerApproval,
+  ];
+  expect(displayedFields).toHaveLength(21);
+  expect(
+    displayedFields.filter((field) => field?.status === "Supplied"),
+  ).toHaveLength(13);
+  expect(parsed.parserVersion).toBe(3);
+  expect(parsed.fields.objective).toMatchObject({
+    status: "Supplied",
+    sourceValue: mobileBusinessObjective,
+  });
+  expect(parsed.fields.reason_to_believe).toMatchObject({
+    status: "Supplied",
+    sourceValue: mobileReasonToBelieve,
+  });
+  expect(parsed.fields.channels.sourceValue).toBe(
+    "Paid Social, Online Video, Digital Display, Website, and Email.",
+  );
+  expect(parsed.fields.constraints.sourceValue).toContain(
+    "Five independent creative perspectives.",
+  );
+  expect(parsed.fields.kpis.sourceValue).toContain("Campaign engagement");
+  expect(parsed.fields.substantiation.status).toBe("Not supplied");
+  const rtb = resolveRtb(extractUpstream(parsed));
+  expect(rtb.field.sourceValue).toBe(mobileReasonToBelieve);
+  expect(rtb.approvalStatus).toBe("unknown");
+  expect(extractUpstream(parsed).fields.upstreamApproval.sourceValue).toContain(
+    "not approved marketing content",
+  );
+});
+test("preserves the actual RTB and keeps approval unknown without a distinct approval record", () => {
+  const source =
+    "Campaign: Exact RTB test\nReason to believe: First line exactly.\nSecond line, including punctuation!";
+  const parsed = parseIMCBrief(source);
+  const resolved = resolveRtb(extractUpstream(parsed));
+  expect(resolved.field.sourceValue).toBe(
+    "First line exactly.\nSecond line, including punctuation!",
+  );
+  expect(resolved.approvalStatus).toBe("unknown");
+  expect(resolved.approvalNote).toContain("Approval is unknown");
+
+  const distinct = extractUpstream(
+    "Campaign: Approved RTB test\nGTM-approved RTB: GTM wording exactly.",
+  );
+  expect(resolveRtb(distinct)).toMatchObject({
+    approvalStatus: "approved",
+    field: { sourceValue: "GTM wording exactly." },
+  });
 });
 test("extracts all 19 snake_case fields and retains multiline text before agent use", async () => {
   const text = Object.entries(fields)

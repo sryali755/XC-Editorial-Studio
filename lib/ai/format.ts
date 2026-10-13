@@ -17,7 +17,26 @@ export function preparationText(data: AgentData): string {
 }
 export function researchSections(data: AgentDataMap["research"]) {
   return [
-    { title: "SUPPLIED EVIDENCE", values: data.suppliedEvidence },
+    { title: "CAMPAIGN NAME", values: [data.campaignName] },
+    { title: "OBJECTIVES", values: [data.objectives] },
+    { title: "AUDIENCE", values: [data.audience] },
+    { title: "PRODUCT INFORMATION", values: [data.productInformation] },
+    {
+      title: "SUPPLIED RESEARCH & SUPPORTING EVIDENCE",
+      values: data.suppliedEvidence,
+    },
+    {
+      title: "VERIFIED EVIDENCE",
+      values: data.verifiedEvidence.length
+        ? data.verifiedEvidence
+        : ["None explicitly identified as verified in the IMC brief."],
+    },
+    {
+      title: "ILLUSTRATIVE ASSUMPTIONS",
+      values: data.illustrativeAssumptions.length
+        ? data.illustrativeAssumptions
+        : ["None identified."],
+    },
     { title: "AUDIENCE CONTEXT", values: data.audienceContext },
     {
       title: "HISTORICAL / CREATIVE PERFORMANCE",

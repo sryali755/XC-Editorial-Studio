@@ -31,7 +31,13 @@ test("Sparks grounding is independently expandable and reaches every perspective
   await expect(sparks.locator(".spark-title")).toHaveCount(6);
   const first = sparks.locator(".spark-choice").first();
   await first.locator("summary").click();
-  await expect(first.locator(".spark-rationale p")).toBeVisible();
+  await expect(first.locator(".spark-rationale p")).toHaveCount(3);
+  await expect(first.locator(".spark-rationale")).toContainText(
+    "Campaign grounding",
+  );
+  await expect(first.locator(".spark-rationale")).toContainText(
+    "Hypothesis to validate",
+  );
   await expect(first.getByRole("checkbox")).not.toBeChecked();
   await first.getByRole("checkbox").check();
   const pack = page.getByRole("region", {

@@ -5,9 +5,11 @@ import {
   getUpstream,
   fieldText,
   sourceContext,
+  resolveRtb,
 } from "./upstream";
 import type {
   PreparationAgentId,
+  PreparationSelectedContent,
   PreparationState,
   StrategyInputPack,
 } from "./types";
@@ -105,11 +107,50 @@ export function currentPreparation(
   id: PreparationAgentId,
 ) {
   const output = state.outputs.find((o) => o.agentId === id);
-  return output?.versions.find((v) => v.id === output.currentVersionId);
+  const current = output?.versions.find(
+    (v) => v.id === output.currentVersionId,
+  );
+  return current?.sourceBrief === state.sourceSnapshot ? current : undefined;
+}
+export function selectedPreparationContent(
+  state: PreparationState,
+): PreparationSelectedContent {
+  const rtb = currentPreparation(state, "reasonToBelieve");
+  const research = currentPreparation(state, "research");
+  const sparks = currentPreparation(state, "sparks");
+  return {
+    ...(rtb
+      ? {
+          reasonToBelieve: {
+            versionId: rtb.id,
+            version: rtb.number,
+            text: rtb.text,
+          },
+        }
+      : {}),
+    ...(research
+      ? {
+          research: {
+            versionId: research.id,
+            version: research.number,
+            text: research.text,
+          },
+        }
+      : {}),
+    selectedSparks:
+      sparks?.sparks
+        .filter((spark) => state.selectedSparkIds.includes(spark.id))
+        .map((spark) => ({
+          ...spark,
+          versionId: sparks.id,
+          version: sparks.number,
+        })) ?? [],
+  };
 }
 export function compileInputPack(state: PreparationState): StrategyInputPack {
   const sparks = currentPreparation(state, "sparks");
   const upstream = getUpstream(state);
+  const rtb = resolveRtb(upstream);
   const selectedSparks =
     sparks?.sparks
       .filter((spark) => state.selectedSparkIds.includes(spark.id))
@@ -122,11 +163,12 @@ export function compileInputPack(state: PreparationState): StrategyInputPack {
     ...sourceContext(upstream),
     upstream,
     parsedIMC: getParsedIMC(state),
-    reasonToBelieve: fieldText(upstream.fields.originalRTB),
+    reasonToBelieve: fieldText(rtb.field),
+    rtbApprovalStatus: rtb.approvalStatus,
     proposedRTB:
-      upstream.fields.originalRTB.status === "Supplied"
+      rtb.field.status === "Supplied"
         ? (currentPreparation(state, "reasonToBelieve")?.text ?? "")
-        : `No adaptation carried forward. Upstream RTB: ${fieldText(upstream.fields.originalRTB)}.`,
+        : `No adaptation carried forward. Upstream RTB: ${fieldText(rtb.field)}.`,
     research: currentPreparation(state, "research")?.text ?? "",
     selectedSparks,
     sparks: selectedSparks.map((spark) => spark.text).join("\n"),
@@ -135,10 +177,34 @@ export function compileInputPack(state: PreparationState): StrategyInputPack {
       "IMC brief → three preparation agents · Selected current outputs",
   };
 }
-export function preparationReady(state: PreparationState) {
+export function validCurrentPreparation(
+  state: PreparationState,
+  id: PreparationAgentId,
+  aiMode: "mock" | "live" = "mock",
+) {
+  const output = state.outputs.find((candidate) => candidate.agentId === id);
+  const current = currentPreparation(state, id);
+  if (!output || !current || output.error) return false;
+  if (output.status === "pending" || output.status === "failed") return false;
+  if (aiMode === "live" && current.provider === "mock") return false;
+  if (!current.text.trim()) return false;
+  if (id === "sparks")
+    return (
+      current.sparks.length === 6 &&
+      current.sparks.every((spark) => spark.id && spark.text.trim())
+    );
+  return true;
+}
+
+export function preparationReady(
+  state: PreparationState,
+  aiMode: "mock" | "live" = "mock",
+) {
   const pack = compileInputPack(state);
   return (
-    preparationAgents.every((agent) => !!currentPreparation(state, agent.id)) &&
+    preparationAgents.every((agent) =>
+      validCurrentPreparation(state, agent.id, aiMode),
+    ) &&
     !state.outputs.some(
       (o) =>
         o.versions.find((v) => v.id === o.currentVersionId)?.sourceBrief !==
@@ -161,6 +227,7 @@ export const preparationService = {
     upstream,
     currentVersion,
     sparkRevision,
+    selectedContent,
   }: {
     agentId: PreparationAgentId;
     parsedIMC: import("./types").ParsedIMCBrief;
@@ -168,6 +235,7 @@ export const preparationService = {
     guidance: string;
     upstream: import("./types").UpstreamContext;
     currentVersion?: import("./types").PreparationVersion;
+    selectedContent?: PreparationSelectedContent;
     sparkRevision?: {
       targetId?: string;
       keptIds: string[];
@@ -181,10 +249,13 @@ export const preparationService = {
     const number = previous.length
       ? Math.max(...previous.map((v) => v.number)) + 1
       : 1;
-    const current = currentVersion ?? previous[0];
+    const current =
+      currentVersion ??
+      previous.find((version) => version.sourceBrief === parsedIMC.sourceText);
+    const existingSelection = selectedContent ?? { selectedSparks: [] };
     const response = await runAgent({
       agentType: agentId === "reasonToBelieve" ? "rtb" : agentId,
-      context: { parsedIMC, upstream },
+      context: { parsedIMC, upstream, selectedContent: existingSelection },
       guidance,
       versionNumber: number,
       ...(sparkRevision ? { sparkRevision } : {}),
@@ -218,9 +289,17 @@ export const preparationService = {
       text: preparationText(response.data),
       guidance: sparkRevision?.targetId
         ? `${sparkRevision.intent === "improve" ? "Improved" : "Replaced"} one Spark. ${guidance}`.trim()
-        : guidance || "Initial preparation from IMC brief",
+        : guidance ||
+          (number === 1
+            ? "Initial preparation from IMC brief"
+            : "Prepared from current IMC brief"),
       createdAt: response.generatedAt,
       sourceBrief: parsedIMC.sourceText,
+      inputContext: {
+        sourceBrief: parsedIMC.sourceText,
+        selectedContent: structuredClone(existingSelection),
+        steeringText: guidance.trim(),
+      },
       sparks:
         "sparks" in response.data
           ? response.data.sparks.map((spark, index) => ({

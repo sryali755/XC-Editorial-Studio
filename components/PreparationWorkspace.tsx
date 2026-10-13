@@ -1,4 +1,5 @@
 import { ResearchOutput, SparkChoices } from "./PreparationOutputs";
+import { AgentRequestError } from "@/lib/ai/client";
 import { parseIMCBrief } from "@/lib/imc-parser";
 import ParsedIMCPreview from "./ParsedIMCPreview";
 import DynamicInputPack from "./DynamicInputPack";
@@ -7,6 +8,7 @@ import {
   getParsedIMC,
   sourceContext,
   extractUpstream,
+  resolveRtb,
 } from "@/lib/upstream";
 import { useRef, useState, type SetStateAction } from "react";
 import {
@@ -29,9 +31,16 @@ import {
   preparationAgents,
   preparationService,
   researchSources,
+  selectedPreparationContent,
 } from "@/lib/preparation";
 
 type Change = (value: SetStateAction<PreparationState>) => void;
+function displayedGuidance(version: PreparationVersion) {
+  return version.number > 1 &&
+    version.guidance === "Initial preparation from IMC brief"
+    ? "Prepared from current IMC brief"
+    : version.guidance;
+}
 function PreparationCard({
   id,
   state,
@@ -45,6 +54,7 @@ function PreparationCard({
   onReviseSpark,
   busy,
   disabled,
+  aiMode,
 }: {
   id: PreparationAgentId;
   state: PreparationState;
@@ -58,11 +68,22 @@ function PreparationCard({
   onReviseSpark: (id: string, intent: "explore" | "improve") => void;
   busy: boolean;
   disabled: boolean;
+  aiMode: "mock" | "live";
 }) {
   const definition = preparationAgents.find((a) => a.id === id)!;
   const current = currentPreparation(state, id);
   const upstream = getUpstream(state);
+  const rtb = resolveRtb(upstream);
   const output = state.outputs.find((o) => o.agentId === id);
+  const outputStatus =
+    output?.status ??
+    (output?.error
+      ? "failed"
+      : current?.provider === "mock"
+        ? "mock"
+        : current
+          ? "success"
+          : "idle");
   const guidance = output?.guidance ?? "";
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -79,9 +100,19 @@ function PreparationCard({
             ? current
               ? "Regenerating…"
               : "Generating…"
-            : current
-              ? `V${current.number} · Current`
-              : "Awaiting brief"}
+            : outputStatus === "failed"
+              ? current
+                ? `Failed · V${current.number} preserved`
+                : "Failed"
+              : outputStatus === "pending"
+                ? current
+                  ? `Pending · V${current.number} preserved`
+                  : "Pending"
+                : current
+                  ? outputStatus === "mock"
+                    ? `V${current.number} · Current · Mock`
+                    : `V${current.number} · Current${aiMode === "live" && current.provider === "mock" ? " · Saved mock" : ""}`
+                  : "Awaiting brief"}
         </span>
       </div>
       <h2>{definition.name}</h2>
@@ -115,26 +146,29 @@ function PreparationCard({
       {id === "reasonToBelieve" && current && (
         <div className="original-rtb-card">
           <span className="eyebrow">ORIGINAL UPSTREAM RTB · PRESERVED</span>
-          <p>
-            {upstream.fields.originalRTB.sourceValue ||
-              "Not supplied in upstream brief"}
-          </p>
+          <p>{rtb.field.sourceValue || "Not supplied in upstream brief"}</p>
           <small>
-            GTM owns the strategic foundation. Proposed XC framing below does
-            not replace or approve it.
+            RTB approval: {rtb.approvalStatus.replace("_", " ")}. GTM owns the
+            strategic foundation. Proposed XC framing below does not replace or
+            approve it.
           </small>
+          {rtb.approvalNote && <small>{rtb.approvalNote}</small>}
         </div>
       )}
       <div className="preparation-result">
         <span className="eyebrow">
           {current
-            ? id === "reasonToBelieve"
-              ? "PROPOSED XC ADAPTATION · NOT APPROVED"
-              : current.provider === "openai"
-                ? "PREPARED OUTPUT · AI PROPOSAL"
-                : current.provider === "manual"
-                  ? "PREPARED OUTPUT · EDITED"
-                  : "PREPARED OUTPUT · MOCK"
+            ? outputStatus === "failed"
+              ? "PREVIOUS OUTPUT PRESERVED · LATEST GENERATION FAILED"
+              : outputStatus === "pending"
+                ? "CURRENT OUTPUT PRESERVED · GENERATION PENDING"
+                : id === "reasonToBelieve"
+                  ? `PROPOSED XC ADAPTATION · ${current.provider === "mock" ? "MOCK · " : ""}NOT APPROVED`
+                  : current.provider === "openai"
+                    ? "PREPARED OUTPUT · AI PROPOSAL"
+                    : current.provider === "manual"
+                      ? "PREPARED OUTPUT · EDITED"
+                      : "PREPARED OUTPUT · MOCK"
             : "OUTPUT WILL APPEAR HERE"}
         </span>
         {current ? (
@@ -155,7 +189,7 @@ function PreparationCard({
               <p className="prepared-text">{current.text}</p>
             )}
             <small className="version-label">
-              V{current.number} · {current.guidance}
+              V{current.number} · {displayedGuidance(current)}
             </small>
             {id === "sparks" && (
               <p className="context-note">
@@ -175,6 +209,16 @@ function PreparationCard({
       {output?.error && (
         <div className="error agent-error" role="alert">
           <p>{output.error}</p>
+          {output.errorCode && (
+            <small>
+              {output.errorCode} ·{" "}
+              {output.errorCode.startsWith("sparks_")
+                ? "Generated Sparks failed validation; retry only this agent."
+                : output.retryable
+                  ? "Temporary failure; retry this agent."
+                  : "Action is required before retrying."}
+            </small>
+          )}
           <button
             className="button small"
             disabled={disabled || busy}
@@ -276,11 +320,22 @@ function PreparationCard({
                       ))}
                     </details>
                   )}
-                <small>Guidance: {v.guidance}</small>
+                <small>Guidance: {displayedGuidance(v)}</small>
                 <details>
                   <summary>IMC source for this version</summary>
                   <p>{v.sourceBrief}</p>
                 </details>
+                {v.inputContext && (
+                  <details>
+                    <summary>Input context for this version</summary>
+                    <p>
+                      Steering: {v.inputContext.steeringText || "None supplied"}
+                    </p>
+                    <pre className="pack-payload">
+                      {JSON.stringify(v.inputContext.selectedContent, null, 2)}
+                    </pre>
+                  </details>
+                )}
                 <button
                   className="button small"
                   disabled={disabled || busy || current.id === v.id}
@@ -306,6 +361,7 @@ export default function PreparationWorkspace({
   onBusyChange,
   generating,
   hasSession,
+  aiMode,
 }: {
   state: PreparationState;
   onChange: Change;
@@ -313,6 +369,7 @@ export default function PreparationWorkspace({
   onBusyChange: (busy: boolean) => void;
   generating: boolean;
   hasSession: boolean;
+  aiMode: "mock" | "live";
 }) {
   const [busy, setBusy] = useState<string[]>([]);
   const locks = useRef(new Set<string>());
@@ -351,6 +408,9 @@ export default function PreparationWorkspace({
               ...o,
               error: undefined,
               retryRequest: undefined,
+              status: v.provider === "mock" ? "mock" : "success",
+              errorCode: undefined,
+              retryable: undefined,
               currentVersionId: v.id,
               versions: [v, ...o.versions],
             }
@@ -390,10 +450,17 @@ export default function PreparationWorkspace({
           ? {
               ...o,
               retryRequest,
+              status: "failed",
               error:
                 error instanceof Error
                   ? error.message
                   : "This agent failed. Please retry.",
+              errorCode:
+                error instanceof AgentRequestError
+                  ? error.code
+                  : "generation_failed",
+              retryable:
+                error instanceof AgentRequestError ? error.retryable : true,
             }
           : o,
       ),
@@ -404,10 +471,13 @@ export default function PreparationWorkspace({
     const source = state.upstreamDraft;
     try {
       const parsedIMC = parseIMCBrief(source);
-      const upstream =
-        source === state.sourceSnapshot
-          ? getUpstream({ ...state, parsedIMC })
-          : extractUpstream(parsedIMC);
+      const sameSource = source === state.sourceSnapshot;
+      const upstream = sameSource
+        ? getUpstream({ ...state, parsedIMC })
+        : extractUpstream(parsedIMC);
+      const selectedContent = sameSource
+        ? selectedPreparationContent(state)
+        : { selectedSparks: [] };
       onChange((s) => ({
         ...s,
         parsedIMC,
@@ -419,35 +489,45 @@ export default function PreparationWorkspace({
         selectionNotice: s.selectedSparkIds.length
           ? "Preparing the brief again cleared your Spark selections. Review the new ideas before continuing."
           : undefined,
-        outputs: preparationAgents.map((agent) => ({
-          agentId: agent.id,
-          versions: [],
-          currentVersionId: "",
-          ...s.outputs.find((o) => o.agentId === agent.id),
-          error: undefined,
-        })),
-      }));
-      await Promise.allSettled(
-        preparationAgents.map(async (agent) => {
-          begin(agent.id);
-          try {
-            const old = state.outputs.find((o) => o.agentId === agent.id);
-            const version = await preparationService.generate({
-              agentId: agent.id,
-              parsedIMC,
-              upstream,
-              previous: old?.versions ?? [],
-              currentVersion: currentPreparation(state, agent.id),
-              guidance: "",
-            });
-            commitVersion(agent.id, version);
-          } catch (error) {
-            agentError(agent.id, error);
-          } finally {
-            end(agent.id);
-          }
+        outputs: preparationAgents.map((agent) => {
+          const existing = s.outputs.find((o) => o.agentId === agent.id);
+          return {
+            ...existing,
+            agentId: agent.id,
+            versions: existing?.versions ?? [],
+            currentVersionId: sameSource
+              ? (existing?.currentVersionId ?? "")
+              : "",
+            status: "pending" as const,
+            error: undefined,
+            errorCode: undefined,
+            retryable: undefined,
+          };
         }),
-      );
+      }));
+      // Keep the three calls independent but avoid a simultaneous traffic burst.
+      for (const agent of preparationAgents) {
+        begin(agent.id);
+        try {
+          const old = state.outputs.find((o) => o.agentId === agent.id);
+          const version = await preparationService.generate({
+            agentId: agent.id,
+            parsedIMC,
+            upstream,
+            previous: old?.versions ?? [],
+            currentVersion: sameSource
+              ? currentPreparation(state, agent.id)
+              : undefined,
+            guidance: "",
+            selectedContent,
+          });
+          commitVersion(agent.id, version);
+        } catch (error) {
+          agentError(agent.id, error);
+        } finally {
+          end(agent.id);
+        }
+      }
     } catch (error) {
       setError(
         error instanceof Error
@@ -465,6 +545,20 @@ export default function PreparationWorkspace({
     intent: "explore" | "improve" = "explore",
   ) {
     if (stale || generating || !begin(id)) return;
+    onChange((s) => ({
+      ...s,
+      outputs: s.outputs.map((output) =>
+        output.agentId === id
+          ? {
+              ...output,
+              status: "pending",
+              error: undefined,
+              errorCode: undefined,
+              retryable: undefined,
+            }
+          : output,
+      ),
+    }));
     try {
       const output = state.outputs.find((o) => o.agentId === id)!;
       const version = await preparationService.generate({
@@ -474,6 +568,7 @@ export default function PreparationWorkspace({
         currentVersion: currentPreparation(state, id),
         guidance,
         upstream: getUpstream(state),
+        selectedContent: selectedPreparationContent(state),
         ...(id === "sparks" && (targetId || state.keptSparkIds?.length)
           ? {
               sparkRevision: {
@@ -499,7 +594,10 @@ export default function PreparationWorkspace({
           ? {
               ...o,
               currentVersionId: version.id,
+              status: version.provider === "mock" ? "mock" : "success",
               error: undefined,
+              errorCode: undefined,
+              retryable: undefined,
               retryRequest: undefined,
             }
           : o,
@@ -535,6 +633,11 @@ export default function PreparationWorkspace({
       promptTemplateVersion: undefined,
       guidance: "Edited by Kevin",
       createdAt: new Date().toISOString(),
+      inputContext: {
+        sourceBrief: current.sourceBrief,
+        selectedContent: selectedPreparationContent(state),
+        steeringText: "Edited by Kevin",
+      },
       sparks: ideas,
     });
   }
@@ -703,6 +806,7 @@ export default function PreparationWorkspace({
             }
             busy={busy.includes(a.id)}
             disabled={stale || generating}
+            aiMode={aiMode}
           />
         ))}
       </div>
@@ -714,6 +818,7 @@ export default function PreparationWorkspace({
         working={working}
         generating={generating}
         hasSession={hasSession}
+        aiMode={aiMode}
       />
     </div>
   );

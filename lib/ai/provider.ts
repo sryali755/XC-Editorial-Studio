@@ -18,7 +18,41 @@ import {
   type GenerationRecord,
 } from "./schemas";
 import { parseIMCBrief } from "../imc-parser";
-import { fieldText, reconcileUpstream } from "../upstream";
+import { fieldText, reconcileUpstream, resolveRtb } from "../upstream";
+import type { SourceField } from "../types";
+
+const disconnectedResearchSource =
+  /\b(?:Tableau|iSpot|ACE|Datorama|Brand Hub|Product\s*\/\s*Audience Research)\b/i;
+
+function exactSourceField(field: SourceField) {
+  return field.status === "Supplied" ? field.sourceValue : fieldText(field);
+}
+
+function isExplicitlyVerified(value: string) {
+  return (
+    /\b(?:verified|validated|confirmed|substantiated)\b/i.test(value) &&
+    !/\b(?:not verified|unverified|pending|illustrative|hypothesis|assumption)\b/i.test(
+      value,
+    )
+  );
+}
+
+function sourceEntry(label: string, field: SourceField) {
+  return `${label} (${field.status}; not independently verified): ${exactSourceField(field)}`;
+}
+
+function sourceGroundedOnly(
+  values: string[],
+  sourceFragments: string[],
+  fallback: string,
+) {
+  const suppliedOnly = values.filter(
+    (value) =>
+      !disconnectedResearchSource.test(value) &&
+      sourceFragments.some((source) => value.includes(source)),
+  );
+  return suppliedOnly.length ? suppliedOnly : [fallback];
+}
 
 // Source decisions are enforced in application code, not entrusted to model adherence.
 export function preserveSource(
@@ -27,8 +61,9 @@ export function preserveSource(
 ): AgentData {
   if ("parsedIMC" in request.context) {
     const parsed = parseIMCBrief(request.context.parsedIMC.sourceText);
+    const upstream = reconcileUpstream(parsed, request.context.upstream);
     if ("originalRtb" in data) {
-      const field = parsed.fields.reason_to_believe;
+      const { field, approvalStatus, approvalNote } = resolveRtb(upstream);
       return {
         ...data,
         originalRtb: field.sourceValue || null,
@@ -38,8 +73,13 @@ export function preserveSource(
             : field.status === "Intentionally excluded"
               ? "intentionally_excluded"
               : "not_supplied",
+        originalRtbApprovalStatus: approvalStatus,
         xcAdaptation: field.status === "Supplied" ? data.xcAdaptation : null,
         adaptationStatus: "not_approved",
+        reviewNotes: [
+          ...data.reviewNotes,
+          ...(approvalNote ? [approvalNote] : []),
+        ],
         evidenceGaps:
           field.status !== "Supplied"
             ? [
@@ -49,15 +89,79 @@ export function preserveSource(
             : data.evidenceGaps,
       };
     }
-    if ("suppliedEvidence" in data)
+    if ("suppliedEvidence" in data) {
+      const fields = upstream.fields;
+      const evidenceFields = [fields.research, fields.substantiation];
+      const illustrative = evidenceFields
+        .filter(
+          (field) =>
+            field.status === "Supplied" &&
+            /\b(?:illustrative|hypothesis|assumption|proposed|to be validated)\b/i.test(
+              field.sourceValue,
+            ),
+        )
+        .map((field) => field.sourceValue);
+      const verified = evidenceFields
+        .filter(
+          (field) =>
+            field.status === "Supplied" &&
+            isExplicitlyVerified(field.sourceValue),
+        )
+        .map((field) => field.sourceValue);
+      const evidenceFragments = evidenceFields.flatMap((field) =>
+        field.sourceValue
+          .split(/\r?\n/)
+          .map((value) => value.trim())
+          .filter((value) => value.length >= 4),
+      );
+      const campaign = exactSourceField(fields.campaignName);
       return {
         ...data,
+        campaignName: campaign,
+        objectives: exactSourceField(fields.objective),
+        audience: exactSourceField(fields.audience),
+        productInformation: exactSourceField(fields.product),
         suppliedEvidence: [
-          fieldText(
-            reconcileUpstream(parsed, request.context.upstream).fields.research,
+          sourceEntry("Research", fields.research),
+          sourceEntry("Supporting evidence", fields.substantiation),
+        ],
+        verifiedEvidence: verified,
+        illustrativeAssumptions: [
+          ...illustrative,
+          ...data.illustrativeAssumptions.map(
+            (value) => `AI-proposed assumption to validate: ${value}`,
           ),
         ],
+        audienceContext: [sourceEntry("Audience", fields.audience)],
+        historicalPerformance: sourceGroundedOnly(
+          data.historicalPerformance,
+          evidenceFragments,
+          `No connected historical performance results were retrieved for ${campaign}.`,
+        ),
+        creativePerformance: sourceGroundedOnly(
+          data.creativePerformance,
+          evidenceFragments,
+          `No connected creative testing results were retrieved for ${campaign}.`,
+        ),
+        marketContext: sourceGroundedOnly(
+          data.marketContext,
+          evidenceFragments,
+          `No connected market or category results were retrieved for ${campaign}.`,
+        ),
+        sourceNotes: [
+          `Supporting source references: ${exactSourceField(fields.sourceReferences)}`,
+          "Campaign fields and supplied evidence above are preserved from the IMC brief. No enterprise research connector was queried.",
+          ...((request.versionNumber ?? 1) > 1
+            ? [`REFINEMENT V${request.versionNumber}`]
+            : []),
+          ...(request.guidance?.trim()
+            ? [
+                `Strategist steering (direction, not evidence): ${request.guidance.trim()}`,
+              ]
+            : []),
+        ],
       };
+    }
   }
   if (request.agentType === "finalBrief" && "approvedStrategy" in data) {
     const f = request.context.foundation,
@@ -89,6 +193,7 @@ export function preserveSource(
       approvalNotes: [
         ...data.approvalNotes,
         `Strategy explicitly approved by ${request.context.approvedStrategy.approvedBy} at ${request.context.approvedStrategy.approvedAt}. Source: ${request.context.approvedStrategy.source}.`,
+        `Upstream RTB approval status: ${f.currentRtb.approvalStatus.replace("_", " ")}.`,
         "Upstream claims, messaging and partner approvals retain their recorded statuses. XC proposals remain unapproved.",
       ],
     };
@@ -111,6 +216,7 @@ export async function generateAgentResponse(
     request = {
       ...request,
       context: {
+        ...request.context,
         parsedIMC,
         upstream: reconcileUpstream(parsedIMC, request.context.upstream),
       },
@@ -169,16 +275,18 @@ export async function generateAgentResponse(
     merge();
     const issue = () =>
       "sparks" in generated
-        ? sparkSetIssue(generated, request.previousVersion)
+        ? sparkSetIssue(
+            generated,
+            request.previousVersion,
+            parseIMCBrief(request.context.parsedIMC.sourceText),
+          )
         : "Invalid Sparks response.";
     if (issue() && config.mode === "live") {
       generated = await generateOpenAI(request, undefined, 1, requestId);
       merge();
     }
-    if (issue())
-      throw new AgentError(
-        `${issue()} Your previous Sparks and selections are preserved; retry for new directions.`,
-      );
+    const finalIssue = issue();
+    if (finalIssue) throw sparksValidationError(finalIssue);
   }
   // A new API call is necessary but insufficient: never add an exact duplicate to history.
   const oldLines =
@@ -218,6 +326,17 @@ export async function generateAgentResponse(
     ...(generation ? { generation } : {}),
     promptTemplateVersion: agentPromptVersion(request.agentType),
   };
+}
+
+export function sparksValidationError(issue: string) {
+  return new AgentError(
+    `${issue} Your previous Sparks and selections are preserved; retry for new directions.`,
+    422,
+    issue.includes("exact excerpt")
+      ? "sparks_source_validation_failed"
+      : "sparks_output_validation_failed",
+    true,
+  );
 }
 
 function normalizeLine(line: string) {

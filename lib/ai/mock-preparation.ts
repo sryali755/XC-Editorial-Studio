@@ -79,7 +79,11 @@ export const mockPreparationService: PreparationService = {
       id: crypto.randomUUID(),
       number,
       text,
-      guidance: guidance || "Initial preparation from IMC brief",
+      guidance:
+        guidance ||
+        (number === 1
+          ? "Initial preparation from IMC brief"
+          : "Prepared from current IMC brief"),
       createdAt: new Date().toISOString(),
       sourceBrief: parsedIMC.sourceText,
       sparks,
