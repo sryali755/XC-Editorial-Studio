@@ -1,0 +1,66 @@
+{
+  "imc-brief-xfinity-home-wifi.md": [
+    {
+      "agent": "humor",
+      "line": "The living room has three agendas and one internet connection holding the meeting.",
+      "tension": "A shared household treats work, homework, and entertainment like separate worlds, even though they all converge through the same home internet.",
+      "promptVersion": "witty-v1.1"
+    },
+    {
+      "agent": "culture",
+      "line": "One home can contain a meeting, a math problem, and a movie night.",
+      "tension": "Shared households often ask one internet connection to support very different activities happening at the same time.",
+      "promptVersion": "cultural-v1.1"
+    },
+    {
+      "agent": "audience",
+      "line": "The kitchen table can be an office, a classroom, and a theater before dinner.",
+      "tension": "A shared household needs one home internet role to make sense across very different daily activities in the same space.",
+      "promptVersion": "audience-v1.1"
+    },
+    {
+      "agent": "market",
+      "line": "The category talks like a utility; shared homes behave like a traffic pattern.",
+      "tension": "Category convention challenged: home internet is usually framed as a utility or technical service, while this brief asks us to frame the household's moving pattern of work, homework and entertainment.",
+      "promptVersion": "market-v1.1"
+    },
+    {
+      "agent": "brand",
+      "line": "Every screen in the house has a different job at the same time.",
+      "tension": "Shared households feel ordinary online life as a pileup of work, homework and entertainment, while the brand must stay human-first rather than technical.",
+      "promptVersion": "brand-v1.1"
+    }
+  ],
+  "imc-brief-xfinity-mobile-v2.md": [
+    {
+      "agent": "humor",
+      "line": "The phone runs the day; the plan should not get a speaking role.",
+      "tension": "People depend on their phones for nearly everything, yet the service decision itself feels like one more needy app in their life.",
+      "promptVersion": "witty-v1.1"
+    },
+    {
+      "agent": "culture",
+      "line": "The family group chat should be messy; choosing mobile service should not.",
+      "tension": "Phones carry the chaos of shared family life, but people do not want the same chaos when deciding on mobile service.",
+      "promptVersion": "cultural-v1.1"
+    },
+    {
+      "agent": "audience",
+      "line": "The phone can run the day without the plan hijacking it.",
+      "tension": "The audience depends on their phone constantly, but resents when choosing mobile service becomes another task competing for attention.",
+      "promptVersion": "audience-v1.1"
+    },
+    {
+      "agent": "market",
+      "line": "The phone plan should stop acting like another device to manage.",
+      "tension": "Category convention challenged: mobile brands often make the plan itself feel like an active thing people must compare, manage, and think about.",
+      "promptVersion": "market-v1.1"
+    },
+    {
+      "agent": "brand",
+      "line": "When the phone runs everything, choosing mobile shouldn't become another chore.",
+      "tension": "The brand wants recognizable everyday phone behavior, but the campaign must avoid making mobile choice feel like another complicated task in that same day.",
+      "promptVersion": "brand-v1.1"
+    }
+  ]
+}

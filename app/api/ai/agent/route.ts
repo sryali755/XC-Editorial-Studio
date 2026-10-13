@@ -4,7 +4,8 @@ import { AgentError } from "@/lib/ai/errors";
 import { requestSchema } from "@/lib/ai/schemas";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+// Allows one bounded provider retry while remaining statically analyzable by Next.js.
+export const maxDuration = 300;
 const MAX_BODY = 1_000_000;
 export async function GET() {
   return Response.json(publicAIStatus(), {

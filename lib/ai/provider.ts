@@ -1,15 +1,32 @@
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
-import { defaultPersonality, isPerspective } from "../creative-controls";
+import {
+  currentPersonality,
+  defaultPersonality,
+  isPerspective,
+} from "../creative-controls";
 import { agentPromptVersion } from "./prompts";
 import { validatedModelSettings } from "./capabilities";
-import { outputTokenBudget } from "./generation-settings";
-import { sparkSetIssue } from "./spark-quality";
+import {
+  outputTokenBudget,
+  perspectiveReasoningEffort,
+} from "./generation-settings";
+import {
+  invalidSparkExcerptIndexes,
+  markSparkExcerptVerification,
+  sparkRevisionIssue,
+  sparkStructuralIssue,
+} from "./spark-quality";
 import { applySparkRevision, sparkRevisionPlan } from "./spark-revision";
 import { aiConfig } from "./config";
 import { AgentError } from "./errors";
 import { generateMock } from "./mock-provider";
 import { generateOpenAI } from "./openai-provider";
+import {
+  perspectiveQualityReview,
+  perspectiveRetryInstruction,
+  type PerspectiveQualityCheck,
+} from "./perspective-quality";
 import {
   outputSchemas,
   type AgentData,
@@ -20,6 +37,7 @@ import {
 import { parseIMCBrief } from "../imc-parser";
 import { fieldText, reconcileUpstream, resolveRtb } from "../upstream";
 import type { SourceField } from "../types";
+import { ROUND_TABLE_PROMPT_VERSIONS } from "../roundtable-prompts";
 
 const disconnectedResearchSource =
   /\b(?:Tableau|iSpot|ACE|Datorama|Brand Hub|Product\s*\/\s*Audience Research)\b/i;
@@ -237,7 +255,10 @@ export async function generateAgentResponse(
       );
     const effective =
       config.mode === "live"
-        ? validatedModelSettings("openai", config.model, settings)
+        ? validatedModelSettings("openai", config.model, {
+            reasoningEffort: perspectiveReasoningEffort(request.versionNumber),
+            ...settings,
+          })
         : {};
     generation = {
       agentId: request.agentType,
@@ -245,7 +266,7 @@ export async function generateAgentResponse(
       foundation: structuredClone(request.context),
       personality: structuredClone(
         "personality" in request
-          ? (request.personality ?? defaultPersonality())
+          ? currentPersonality(request.personality)
           : defaultPersonality(),
       ),
       steeringText: request.guidance?.trim() ?? "",
@@ -255,18 +276,34 @@ export async function generateAgentResponse(
       modelSettings:
         config.mode === "live"
           ? {
-              reasoningEffort: "medium",
               ...effective,
               maxOutputTokens: outputTokenBudget(request.agentType),
             }
           : {},
       promptTemplateVersion: agentPromptVersion(request.agentType),
+      promptVersion: ROUND_TABLE_PROMPT_VERSIONS[request.agentType],
       requestId,
     };
   }
-  let generated = await (config.mode === "live"
-    ? generateOpenAI(request, undefined, 0, requestId)
-    : generateMock(request));
+  let generationAttempt = 0;
+  let generated: AgentData;
+  try {
+    generated = await (config.mode === "live"
+      ? generateOpenAI(request, undefined, 0, requestId)
+      : generateMock(request));
+  } catch (error) {
+    if (
+      config.mode !== "live" ||
+      (!isPerspective(request.agentType) && request.agentType !== "sparks") ||
+      !(error instanceof AgentError) ||
+      !["model_output_invalid_json", "model_output_schema_invalid"].includes(
+        error.code,
+      )
+    )
+      throw error;
+    generationAttempt = 1;
+    generated = await generateOpenAI(request, undefined, 1, requestId);
+  }
   if (request.agentType === "sparks") {
     const merge = () => {
       if ("sparks" in generated)
@@ -275,38 +312,151 @@ export async function generateAgentResponse(
     merge();
     const issue = () =>
       "sparks" in generated
-        ? sparkSetIssue(
-            generated,
-            request.previousVersion,
-            parseIMCBrief(request.context.parsedIMC.sourceText),
-          )
+        ? sparkStructuralIssue(generated, request.previousVersion) ||
+          sparkRevisionIssue(generated, request)
         : "Invalid Sparks response.";
-    if (issue() && config.mode === "live") {
-      generated = await generateOpenAI(request, undefined, 1, requestId);
+    if (issue() && config.mode === "live" && generationAttempt === 0) {
+      generationAttempt = 1;
+      generated = await generateOpenAI(
+        request,
+        undefined,
+        1,
+        requestId,
+        `Correct this validation failure: ${issue()} Return the requested item count and do not repeat another Spark or a previous idea.`,
+      );
       merge();
     }
     const finalIssue = issue();
     if (finalIssue) throw sparksValidationError(finalIssue);
+    if ("sparks" in generated) {
+      const sourceBrief = request.context.parsedIMC.sourceText;
+      const targetId = request.sparkRevision?.targetId;
+      generated = markSparkExcerptVerification(
+        generated,
+        sourceBrief,
+        targetId,
+      );
+      const invalidIndexes = invalidSparkExcerptIndexes(
+        generated,
+        sourceBrief,
+        targetId,
+      );
+      if (config.mode === "live")
+        for (const index of invalidIndexes) {
+          const invalidSpark = generated.sparks[index];
+          const repairRequest: AgentRequest = {
+            ...request,
+            previousVersion: {
+              number: request.versionNumber ?? request.previousVersion?.number ?? 1,
+              text: generated.sparks
+                .map((spark, sparkIndex) =>
+                  `${sparkIndex + 1}. ${spark.idea || spark.text}`,
+                )
+                .join("\n\n"),
+              data: generated,
+            },
+            sparkRevision: {
+              targetId: invalidSpark.id,
+              keptIds: generated.sparks
+                .filter((spark) => spark.id !== invalidSpark.id)
+                .map((spark) => spark.id),
+              intent: "improve",
+            },
+          };
+          const repaired = await generateOpenAI(
+            repairRequest,
+            undefined,
+            1,
+            requestId,
+            'Repair only the excerpt. Copy fewer than 30 words exactly from the IMC BRIEF, preserving the words and punctuation; do not add a field label or paraphrase.',
+          );
+          if (!("sparks" in repaired))
+            throw sparksValidationError(
+              "The excerpt repair did not return a Spark.",
+            );
+          generated = applySparkRevision(repairRequest, repaired);
+          generated = markSparkExcerptVerification(
+            generated,
+            sourceBrief,
+            invalidSpark.id,
+          );
+          console.info(
+            `[sparks-quality] request=${requestId} spark=${invalidSpark.id} check=excerpt_verbatim retried=true passed=${generated.sparks[index].excerpt_verified === true}`,
+          );
+        }
+      const repairedIssue = sparkStructuralIssue(
+        generated,
+        request.previousVersion,
+      ) || sparkRevisionIssue(generated, request);
+      if (repairedIssue) throw sparksValidationError(repairedIssue);
+    }
   }
-  // A new API call is necessary but insufficient: never add an exact duplicate to history.
   const oldLines =
     "priorCandidates" in request ? (request.priorCandidates ?? []) : [];
   const previous = [
     ...oldLines,
     ...(request.previousVersion ? [request.previousVersion.text] : []),
   ];
-  const duplicate = (data: AgentData) =>
-    generation &&
-    "briefLines" in data &&
-    previous.some(
-      (line) => normalizeLine(line) === normalizeLine(data.briefLines[0].line),
+  if (
+    isPerspective(request.agentType) &&
+    "campaignContext" in request.context &&
+    "options" in generated
+  ) {
+    const initialReview = perspectiveQualityReview(
+      generated,
+      request.context,
+      previous,
     );
-  if (duplicate(generated) && config.mode === "live")
-    generated = await generateOpenAI(request, undefined, 1, requestId);
-  if (duplicate(generated))
-    throw new AgentError(
-      "This agent repeated a previous candidate. Your versions are preserved; retry for a different angle.",
-    );
+    let review = initialReview;
+    const needsRetry =
+      Boolean(review.blockingIssue) || review.retryChecks.length > 0;
+    if (needsRetry && config.mode === "live" && generationAttempt === 0) {
+      generationAttempt = 1;
+      generated = await generateOpenAI(
+        request,
+        undefined,
+        1,
+        requestId,
+        perspectiveRetryInstruction(review),
+      );
+      review =
+        "options" in generated
+          ? perspectiveQualityReview(generated, request.context, previous)
+          : {
+              blockingIssue:
+                "The response did not contain Round Table options.",
+              retryChecks: [],
+            };
+      const loggedChecks = new Set([
+        ...initialReview.retryChecks,
+        ...review.retryChecks,
+      ]);
+      for (const check of loggedChecks)
+        logPerspectiveQualityCheck({
+          requestId,
+          agent: request.agentType,
+          check,
+          retried: true,
+          passed: !review.retryChecks.includes(check),
+        });
+    } else {
+      for (const check of review.retryChecks)
+        logPerspectiveQualityCheck({
+          requestId,
+          agent: request.agentType,
+          check,
+          retried: false,
+          passed: false,
+        });
+    }
+    if (review.blockingIssue)
+      throw new AgentError(
+        `${review.blockingIssue} The previous version is preserved; retry this perspective.`,
+        422,
+        "perspective_output_validation_failed",
+        true,
+      );
+  }
   const result = outputSchemas[request.agentType].safeParse(
     preserveSource(request, generated),
   );
@@ -325,7 +475,30 @@ export async function generateAgentResponse(
     generatedAt: new Date().toISOString(),
     ...(generation ? { generation } : {}),
     promptTemplateVersion: agentPromptVersion(request.agentType),
+    ...(isPerspective(request.agentType)
+      ? { promptVersion: ROUND_TABLE_PROMPT_VERSIONS[request.agentType] }
+      : request.agentType === "sparks"
+        ? { promptVersion: agentPromptVersion("sparks") }
+        : {}),
   };
+}
+
+function logPerspectiveQualityCheck({
+  requestId,
+  agent,
+  check,
+  retried,
+  passed,
+}: {
+  requestId: string;
+  agent: string;
+  check: PerspectiveQualityCheck;
+  retried: boolean;
+  passed: boolean;
+}) {
+  console.info(
+    `[roundtable-quality] request=${requestId} agent=${agent} check=${check} retried=${retried} passed=${passed}`,
+  );
 }
 
 export function sparksValidationError(issue: string) {
@@ -339,9 +512,6 @@ export function sparksValidationError(issue: string) {
   );
 }
 
-function normalizeLine(line: string) {
-  return line.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
-}
 function canonicalJSON(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJSON).join(",")}]`;
   if (value && typeof value === "object") {

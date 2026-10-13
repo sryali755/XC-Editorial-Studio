@@ -48,6 +48,10 @@ test("an individual Spark can be replaced or improved without changing other ide
   let after = (await state(page)).preparation;
   const replaced = currentPreparation(after, "sparks")!;
   expect(replaced.sparks[1].text).not.toBe(original.sparks[1].text);
+  expect(replaced.sparks[1].territory).not.toBe(original.sparks[1].territory);
+  expect(replaced.sparks[1].territory_type).toBe(
+    original.sparks[1].territory_type,
+  );
   expect(replaced.sparks.filter((_, i) => i !== 1)).toEqual(
     original.sparks.filter((_, i) => i !== 1),
   );
@@ -107,7 +111,7 @@ test("an individual Spark can be replaced or improved without changing other ide
   await expect(card.locator(".card-top")).toContainText("V5 · Current");
 });
 
-test("completed perspectives are usable before a slow agent finishes, with isolated failures", async ({
+test("the perspective page waits for the complete batch before showing all five agents", async ({
   page,
 }) => {
   await prepare(page);
@@ -131,6 +135,32 @@ test("completed perspectives are usable before a slow agent finishes, with isola
       exact: true,
     })
     .click();
+  await expect(
+    page.getByRole("button", {
+      name: "Generate Strategic Perspectives",
+      exact: true,
+    }),
+  ).toContainText("Generating all five perspectives");
+  await expect(
+    page.getByRole("heading", { name: "Prepare the Inputs", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("article", { name: "Humorous / Witty", exact: true }),
+  ).toHaveCount(0);
+  expect((await state(page)).step).toBe(0);
+  try {
+    await expect(
+      page.getByRole("heading", { name: "Prepare the Inputs", exact: true }),
+    ).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(
+    page.getByRole("heading", {
+      name: "Five perspectives. One shared ambition.",
+      exact: true,
+    }),
+  ).toBeVisible();
   const humor = page.getByRole("article", {
     name: "Humorous / Witty",
     exact: true,
@@ -139,29 +169,16 @@ test("completed perspectives are usable before a slow agent finishes, with isola
     name: "Proven-pattern / Brand",
     exact: true,
   });
-  try {
-    await expect(humor.locator(".current-output")).toContainText(
-      "V0 · Current",
-    );
-    await expect(brand).toHaveAttribute("aria-busy", "true");
-    await humor.getByRole("slider", { name: "Wit & Humor" }).fill("9");
-    await humor
-      .locator(".current-output")
-      .getByRole("button", { name: "Select this version" })
-      .click();
-    await expect(
-      page
-        .getByRole("article", { name: "Market / Landscape", exact: true })
-        .getByRole("alert"),
-    ).toContainText("Market temporarily unavailable");
-    expect((await state(page)).selected).toHaveLength(1);
-  } finally {
-    release();
-  }
+  await expect(humor.locator(".current-output")).toContainText("V0 · Current");
   await expect(brand.locator(".current-output")).toContainText("V0 · Current");
-  await expect(humor.getByRole("slider", { name: "Wit & Humor" })).toHaveValue(
-    "9",
-  );
+  await expect(
+    page
+      .getByRole("article", { name: "Market / Landscape", exact: true })
+      .getByRole("alert"),
+  ).toContainText("Market temporarily unavailable");
+  await expect(page.locator(".agent-card")).toHaveCount(5);
+  expect((await state(page)).outputs).toHaveLength(5);
+  expect((await state(page)).step).toBe(1);
 });
 
 test("refinement intent is sent and shortlisted directions can be compared", async ({

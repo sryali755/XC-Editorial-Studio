@@ -12,8 +12,15 @@ export const modelSettingsSchema = z
   })
   .strict();
 export type ModelSettings = z.infer<typeof modelSettingsSchema>;
+export function perspectiveReasoningEffort(versionNumber = 0) {
+  void versionNumber;
+  return "low" as const;
+}
 export function outputTokenBudget(agentType: string) {
-  // Six developed Sparks plus their rationales need more headroom than one brief line.
+  // Three developed Round Table options need room for both reasoning and JSON.
+  if (["humor", "culture", "audience", "market", "brand"].includes(agentType))
+    return 5000;
+  // Six developed Sparks plus their rationales need the most headroom.
   return agentType === "finalBrief" || agentType === "sparks"
     ? 6000
     : agentType === "research"

@@ -3,12 +3,20 @@ import type { GenerationRecord } from "./ai/schemas";
 import type { PersonalitySettings } from "./creative-controls";
 export interface GenerationMetadata {
   promptTemplateVersion?: string;
+  promptVersion?: string;
   generation?: GenerationRecord;
   provider?: "mock" | "openai" | "manual";
   model?: string;
   generatedAt?: string;
   data?: AgentData;
 }
+export type SparkTerritoryType =
+  | "human_truth"
+  | "social_cultural"
+  | "category_convention"
+  | "product_truth"
+  | "moment"
+  | "wildcard";
 export interface StrategyInputPack {
   selectedSparks?: {
     id: string;
@@ -17,6 +25,12 @@ export interface StrategyInputPack {
     rationale?: string;
     campaignGrounding?: string;
     hypothesisToValidate?: string;
+    territory_type?: SparkTerritoryType;
+    territory?: string;
+    idea?: string;
+    excerpt?: string;
+    hypothesis?: string;
+    excerpt_verified?: boolean;
     versionId: string;
     version: number;
   }[];
@@ -141,6 +155,12 @@ export interface PreparationSelectedContent {
     rationale?: string;
     campaignGrounding?: string;
     hypothesisToValidate?: string;
+    territory_type?: SparkTerritoryType;
+    territory?: string;
+    idea?: string;
+    excerpt?: string;
+    hypothesis?: string;
+    excerpt_verified?: boolean;
   }[];
 }
 export interface PreparationVersion extends AgentVersion {
@@ -157,6 +177,12 @@ export interface PreparationVersion extends AgentVersion {
     rationale?: string;
     campaignGrounding?: string;
     hypothesisToValidate?: string;
+    territory_type?: SparkTerritoryType;
+    territory?: string;
+    idea?: string;
+    excerpt?: string;
+    hypothesis?: string;
+    excerpt_verified?: boolean;
   }[];
 }
 export interface PreparationOutput {

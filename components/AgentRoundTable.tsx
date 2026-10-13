@@ -25,6 +25,38 @@ import type {
 export function BriefLineOutput({ text }: { text: string }) {
   return <blockquote>“{text}”</blockquote>;
 }
+
+type DirectionOption = {
+  tension: string;
+  territory: string;
+  why_on_strategy: string;
+  evidence: string[];
+};
+
+function directionOption(data: unknown): DirectionOption | undefined {
+  if (!data || typeof data !== "object" || !("options" in data)) return;
+  const options = (data as { options?: unknown }).options;
+  if (!Array.isArray(options) || !options[0] || typeof options[0] !== "object")
+    return;
+  const option = options[0] as Partial<DirectionOption>;
+  if (
+    typeof option.tension !== "string" ||
+    typeof option.territory !== "string" ||
+    typeof option.why_on_strategy !== "string" ||
+    !Array.isArray(option.evidence)
+  )
+    return;
+  return option as DirectionOption;
+}
+
+function legacyRationale(data: unknown) {
+  if (!data || typeof data !== "object" || !("briefLines" in data)) return "";
+  const lines = (data as { briefLines?: unknown }).briefLines;
+  if (!Array.isArray(lines) || !lines[0] || typeof lines[0] !== "object")
+    return "";
+  const rationale = (lines[0] as { rationale?: unknown }).rationale;
+  return typeof rationale === "string" ? rationale : "";
+}
 function VersionActions({
   version,
   persona,
@@ -157,6 +189,8 @@ export function AgentCard({
 }) {
   const guidance = output.steeringText ?? "";
   const current = output.versions.find((v) => v.id === output.currentVersionId);
+  const detail = directionOption(current?.data);
+  const oldRationale = legacyRationale(current?.data);
   return (
     <article
       className={"agent-card " + persona.color}
@@ -188,10 +222,33 @@ export function AgentCard({
             <span className="version-label">V{current.number} · Current</span>
           </div>
           <BriefLineOutput text={current.text} />
-          {current.data && "briefLines" in current.data && (
+          {(detail || oldRationale) && (
             <details className="candidate-rationale">
               <summary>Why this direction</summary>
-              <p>{current.data.briefLines[0].rationale}</p>
+              {detail ? (
+                <>
+                  <p>
+                    <strong>Tension:</strong> {detail.tension}
+                  </p>
+                  <p>
+                    <strong>Creative territory:</strong> {detail.territory}
+                  </p>
+                  <p>
+                    <strong>Why it is on strategy:</strong>{" "}
+                    {detail.why_on_strategy}
+                  </p>
+                  <p>
+                    <strong>Evidence from the Input Pack:</strong>
+                  </p>
+                  <ul>
+                    {detail.evidence.map((excerpt) => (
+                      <li key={excerpt}>“{excerpt}”</li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p>{oldRationale}</p>
+              )}
             </details>
           )}
           <VersionActions

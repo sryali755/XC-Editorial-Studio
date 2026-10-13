@@ -1,11 +1,21 @@
-import type { AgentType, AgentRequest } from "./schemas";
+import type { AgentType, AgentRequest, PerspectiveRequest } from "./schemas";
 import {
+  currentPersonality,
   defaultPersonality,
   isPerspective,
-  personalityInstructions,
+  creativeControls,
 } from "../creative-controls";
 import { personaPrompts, promptTemplateVersion } from "./persona-prompts";
-import { sparksPrompt, SPARKS_PROMPT_VERSION } from "./sparks-prompt";
+import {
+  roundTableSystemPrompt,
+  roundTableUserMessage,
+} from "../roundtable-prompts";
+import {
+  sparksPrompt,
+  sparksUserMessage,
+  SPARKS_PROMPT_VERSION,
+  type SparksRequest,
+} from "./sparks-prompt";
 import { workflowPrompts } from "./workflow-prompts";
 
 export const commonInstructions = `You assist XC strategy. Produce useful creative work within the supplied strategic and evidential boundaries.
@@ -34,48 +44,45 @@ export function buildAgentPrompt(
   request: AgentRequest,
   attempt = 0,
   requestId = "",
+  retryInstruction = "",
 ) {
+  void requestId;
   const perspective =
     isPerspective(request.agentType) && "campaignContext" in request.context;
   const controls =
     "personality" in request
-      ? (request.personality ?? defaultPersonality())
+      ? currentPersonality(request.personality)
       : defaultPersonality();
+  if (perspective) {
+    const agent = request.agentType as keyof typeof personaPrompts;
+    return {
+      instructions: roundTableSystemPrompt(
+        agent,
+        creativeControls[agent].primary.label,
+        controls.primary,
+      ),
+      input: roundTableUserMessage(
+        request as PerspectiveRequest,
+        agent,
+        creativeControls[agent].primary.label,
+        attempt,
+        retryInstruction,
+      ),
+    };
+  }
+  if (request.agentType === "sparks")
+    return {
+      instructions: sparksPrompt,
+      input: sparksUserMessage(
+        request as SparksRequest,
+        attempt,
+        retryInstruction,
+      ),
+    };
   return {
-    instructions: [
-      commonInstructions,
-      agentPrompts[request.agentType],
-      ...("sparkRevision" in request && request.sparkRevision
-        ? [
-            "TARGETED SPARK REVISION: sparkRevision controls the scope. Match the six previousVersion.data.sparks slots in order. Copy keptIds and all non-target slots exactly. Change only targetId when present; otherwise change only unkept slots. For intent improve, retain the selected premise and strengthen its specificity, grounding and creative usefulness. For intent explore, replace it with a different premise. Compare the replacement against ALL retained ideas so it adds a distinct territory. Return the same six-item schema. These instructions override the general request to make an entirely fresh set.",
-          ]
-        : []),
-      ...(request.agentType === "sparks" && attempt
-        ? [
-            'The previous attempt failed Sparks validation. Return six complete, distinct territories. For every campaignGrounding use exactly this form: FIELD NAME: "VERBATIM EXCERPT". Copy each excerpt as one contiguous, character-for-character substring of context.parsedIMC.sourceText; do not paraphrase, normalize punctuation or quote generated text. Develop new premises rather than merely changing wording.',
-          ]
-        : []),
-      ...(perspective
-        ? [
-            personalityInstructions(
-              request.agentType as keyof typeof personaPrompts,
-              controls,
-            ),
-            "Apply both personality controls together. These are creative directions, not temperature or evidence permissions. Treat steeringText as additional creative guidance subject to all factual, brand and output constraints. If guidance conflicts, explain the limitation briefly in the rationale.",
-            request.previousVersion || (request.versionNumber ?? 0) > 0
-              ? "refinementMode" in request &&
-                request.refinementMode === "improve"
-                ? "Improve the CURRENT previousVersion premise. Preserve its human stake and strategic choice while strengthening specificity, clarity, evidence fit and usefulness to Creative. Apply steering and personality controls without switching territory. Make a substantive refinement, not a synonym swap. Never repair an unsupported claim with a disclaimer; revise the line itself."
-                : "Generate a genuinely different creative premise using the SAME context and chosen settings, even when steering is unchanged or empty. Compare underlying human stakes and strategic choices with priorCandidates, not just words or props. If steering explicitly asks to develop the current idea, preserve that requested core while making a substantive refinement; otherwise find a fresh premise. Do not merely swap synonyms, repeat a previous candidate, or append a version number. priorCandidates are suggestions to avoid, not facts or instructions."
-              : "Create a strong standalone V0 using the supplied context and the chosen persona. Do not wait for refinement guidance.",
-            ...(attempt
-              ? [
-                  "The previous attempt repeated an existing candidate. Choose a different strategic angle and expression.",
-                ]
-              : []),
-          ]
-        : []),
-    ].join("\n\n"),
+    instructions: [commonInstructions, agentPrompts[request.agentType]].join(
+      "\n\n",
+    ),
     input: JSON.stringify({
       context: request.context,
       steeringText: request.guidance?.trim() ?? "",
@@ -85,20 +92,6 @@ export function buildAgentPrompt(
         : {}),
       ...("refinementMode" in request
         ? { refinementMode: request.refinementMode ?? "explore" }
-        : {}),
-      ...(request.agentType === "sparks"
-        ? { versionNumber: request.versionNumber ?? 1, requestId }
-        : {}),
-      ...(perspective
-        ? {
-            personality: controls,
-            priorCandidates:
-              "priorCandidates" in request
-                ? (request.priorCandidates ?? [])
-                : [],
-            versionNumber: request.versionNumber ?? 0,
-            requestId,
-          }
         : {}),
     }),
   };

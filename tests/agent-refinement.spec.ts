@@ -68,22 +68,30 @@ async function openRoundTable(page: Page, failFirst = false) {
                 steeringText: request.guidance ?? "",
                 modelSettings: {
                   reasoningEffort: "medium",
-                  maxOutputTokens: 2500,
+                  maxOutputTokens: 5000,
                 },
                 promptTemplateVersion: "xc-roundtable-2.1",
+                promptVersion: `${request.agentType}-test-v1`,
                 requestId: `test-${calls.length}`,
               },
             }
           : {}),
+        promptVersion: `${request.agentType}-test-v1`,
         data: {
-          briefLines: [
-            {
-              id: `${request.agentType}-${calls.length}`,
-              line: `A fresh ${request.agentType} direction, attempt ${calls.length}.`,
-              rationale: "A distinct alternative using the shared foundation.",
-            },
-          ],
-          perspectiveSummary: "A proposed direction for human review.",
+          options: [0, 1, 2].map((option) => ({
+            brief_line: `A fresh ${request.agentType} direction, attempt ${calls.length}, option ${option + 1}.`,
+            tension: `A distinct ${request.agentType} tension ${option + 1}.`,
+            evidence: [
+              "campaignContext" in request.context
+                ? request.context.campaignContext.objective
+                : "Supplied evidence.",
+            ],
+            territory: "A distinct alternative using the shared foundation.",
+            why_on_strategy: "It supports the supplied objective.",
+            assumptions: [],
+          })),
+          steering_note: request.guidance ? `Applied: ${request.guidance}` : "",
+          change_note: (request.versionNumber ?? 0) > 0 ? "Changed." : "",
         },
       },
     });
@@ -120,6 +128,14 @@ test("all five agents generate without guidance and retain independent histories
       guidance: "",
       versionNumber: 1,
       previousVersion: { number: 0, text: previous.versions[0].text },
+      previousVersions: [
+        {
+          number: 0,
+          line: previous.versions[0].text,
+          sliderValue: 5,
+          steering: "",
+        },
+      ],
     });
     expect(after.approved).toBeNull();
   }
@@ -164,16 +180,22 @@ test("a failed regeneration preserves the candidate and retries from the restore
     versionNumber: 2,
     previousVersion: { number: 0, text: before.outputs[0].versions[0].text },
   });
+  const lastCall = calls.at(-1);
+  expect(
+    lastCall && "previousVersions" in lastCall
+      ? lastCall.previousVersions
+      : undefined,
+  ).toHaveLength(2);
   await expect(card.locator(".history-version")).toHaveCount(3);
 });
 
-test("creative controls are independent, persist and version together with steering", async ({
+test("one agent-specific control per perspective persists and versions with steering", async ({
   page,
 }) => {
   const calls = await openRoundTable(page);
   for (const persona of personas) {
     const card = page.getByRole("article", { name: persona.name, exact: true });
-    await expect(card.getByRole("slider")).toHaveCount(2);
+    await expect(card.getByRole("slider")).toHaveCount(1);
     await expect(card.getByRole("slider", { name: "Temperature" })).toHaveCount(
       0,
     );
@@ -189,9 +211,6 @@ test("creative controls are independent, persist and version together with steer
     const id = persona.id as keyof typeof creativeControls;
     await expect(
       card.getByRole("slider", { name: creativeControls[id].primary.label }),
-    ).toHaveValue("5");
-    await expect(
-      card.getByRole("slider", { name: creativeControls[id].secondary.label }),
     ).toHaveValue("5");
   }
   const humor = page.getByRole("article", {
@@ -218,8 +237,9 @@ test("creative controls are independent, persist and version together with steer
   await expect(humor.locator(".current-output")).toContainText("V1 · Current");
   const saved = (await state(page)).outputs[0].versions[0];
   expect(calls.at(-1)).not.toHaveProperty("modelSettings");
+  expect(saved.promptVersion).toBe("humor-test-v1");
   expect(saved.generation).toMatchObject({
-    personality: { primary: 8, secondary: 5 },
+    personality: { primary: 8 },
     steeringText: "Make this more playful and less corporate.",
     inputPackVersion: "pack-test-snapshot",
   });

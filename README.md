@@ -113,7 +113,6 @@ Updated integration files: `app/page.tsx`, `app/globals.css`, `components/Prepar
 
 Add a Writer/Palmyra adapter behind `generateAgentResponse` in `lib/ai/provider.ts`, implementing the same validated schemas and metadata. Keep prompts and provider credentials server-side. Writer Playbook authentication and invocation still need their approved integration contract. No Writer endpoint is assumed by this prototype.
 
-
 ## Round Table creative controls and quality review
 
 Current workflow improvements:
@@ -121,19 +120,19 @@ Current workflow improvements:
 - `Brand:` / `Brand name:` is parsed as supplemental metadata, separate from the 19 required IMC fields and the campaign name. Original source text remains intact. Legacy unedited extraction is repaired from source; reviewed values and approved snapshots are preserved.
 - **Keep this Spark** protects that idea during set regeneration. **Improve** develops one idea; **Replace** requests a new premise for one idea. Other Spark text, titles, rationales and selection IDs are retained by code. Failed revisions keep their original scope when retried, including after reloading. Changing an idea clears only its own selection. A full new set still clears changed selections.
 - The Round Table opens immediately and each result appears as its request finishes. Other agents' failures or delays do not block reviewing finished candidates.
-- **Next version** distinguishes improving the current premise from exploring a new one. Prompts record the intent; `xc-roundtable-3.1` and `xc-sparks-3.1` implement it. Evaluation review includes premise distinction, evidence traceability and requested intent; mock tests do not establish live creative quality.
+- **Next version** distinguishes improving the current premise from exploring a new one. Prompts record the intent; `xc-roundtable-3.2` and `xc-sparks-3.3` implement it. Evaluation review includes premise distinction, evidence traceability and requested intent; mock tests do not establish live creative quality.
 - Sliders show control-specific level names with no visible numbers. Agent explanations expand on demand, and **Compare selected** places shortlisted candidates together for review.
 - **Saved projects** stores named, immutable snapshots in this browser's local storage. Save again to capture later edits. Opening another snapshot first saves the current working draft; if storage fails, switching is blocked. This is local persistence, not cross-device collaboration or authenticated approval. The existing working tab continues to use session storage.
 
-Each card has **Creative Controls**, expanded by default, and **Steer This Agent**. Both sliders start at 5/10 and affect only that agent. Their four bands (1–3, 4–6, 7–8, 9–10) translate into specific prompt instructions. Nothing generates while a slider moves. Click **Generate another version** to combine the same shared foundation, the persona prompt, both control descriptions, steering text and regeneration instructions. Empty or unchanged steering still requests a new premise. An exact repeated candidate triggers one live retry; if it repeats again, a recoverable error preserves the history.
+Each card has **Creative Controls**, expanded by default, and **Steer This Agent**. One agent-specific intensity slider starts at 5/10 and affects only that agent. Its four bands (1–3, 4–6, 7–8, 9–10) translate into specific prompt instructions. Nothing generates while a slider moves. Click **Generate another version** to combine the same shared foundation, the persona prompt, that agent's intensity description, steering text and regeneration instructions. Empty or unchanged steering still requests a new premise. An exact repeated candidate triggers one live retry; if it repeats again, a recoverable error preserves the history. Legacy saved sessions with a second control still load, but that retired value is ignored by new generations.
 
-| Agent | Controls | Prompt emphasis |
-| --- | --- | --- |
-| Humorous / Witty | Wit & Humor; Creative Boldness | Specific human contradictions, incongruity and playful reversals; no forced puns or product promises disguised as jokes. |
-| Cultural / Social | Cultural Relevance; Unexpected Connections | Household rituals, social negotiation and belonging; cultural readings are hypotheses unless supported by supplied evidence. |
-| Audience-first | Audience Empathy; Emotional Resonance | Practical jobs, motivations and human stakes; no stereotyped or invented audience truths. |
-| Market / Landscape | Strategic Differentiation; Exploratory Thinking | Positioning and category reframing; no invented competitive weakness or superiority. |
-| Proven-pattern / Brand | Brand Alignment; Pattern Exploration | Supplied brand principles and historical learning; untested techniques never become “proven” results. |
+| Agent                  | Controls                  | Prompt emphasis                                                                                                              |
+| ---------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Humorous / Witty       | Wit & Humor               | Specific human contradictions, incongruity and playful reversals; no forced puns or product promises disguised as jokes.     |
+| Cultural / Social      | Cultural Relevance        | Household rituals, social negotiation and belonging; cultural readings are hypotheses unless supported by supplied evidence. |
+| Audience-first         | Audience Empathy          | Practical jobs, motivations and human stakes; no stereotyped or invented audience truths.                                    |
+| Market / Landscape     | Strategic Differentiation | Positioning and category reframing; no invented competitive weakness or superiority.                                         |
+| Proven-pattern / Brand | Brand Alignment           | Supplied brand principles and historical learning; untested techniques never become “proven” results.                        |
 
 Brand, factual and legal constraints apply at all intensities. Selected Sparks are exploratory suggestions, supplied research retains its qualifications, and upstream values are unchanged. The brief line carries the idea; the rationale explains its objective, RTB and evidence boundaries. Strong-output examples in prompts use unrelated fictional products and explicitly prohibit importing those facts or copying their wording.
 
@@ -164,9 +163,7 @@ The retained `evaluations/baselines/` show why prompts were refined: initial hum
 
 Implementation files for this iteration: `lib/creative-controls.ts`; `lib/ai/persona-prompts.ts`, `prompts.ts`, `generation-settings.ts`, `capabilities.ts`, `schemas.ts`, `client.ts`, `provider.ts`, `openai-provider.ts`, `mock-perspective.ts`, `mock-provider.ts`; `lib/types.ts`, `lib/services.ts`; `components/CreativeControls.tsx`, `AgentRoundTable.tsx`, `StrategyWorkspace.tsx`; `app/globals.css`; `tests/ai/creative-controls.spec.ts`, `tests/ai/provider.spec.ts`, `tests/agent-refinement.spec.ts`; `evaluations/`; `playwright.evaluation.config.ts`; `package.json`; this README. No dependencies were added.
 
-
 Validation for this iteration: 22 browser/workflow cases passed (the full 21-case suite plus the new pending-request isolation case); 14 server/prompt/capability tests passed; lint, TypeScript and production build passed. Ten sequential live agent evaluations produced 70 candidates across baseline/revised prompts, with 35 current candidates retained for review. One additional live call verified optional low reasoning and low verbosity. An early simulated-transport test fixture omitted the Responses object discriminator; it was corrected and all final checks passed. No unresolved automated test failures. Kevin's creative approval remains pending, especially for generic positioning, metaphor similarity and wording that could suggest one-at-a-time internet access.
-
 
 ## Strategic Sparks refinement
 
@@ -181,7 +178,6 @@ Mock mode has two distinct fixture sets with titles and labeled hypothetical rat
 Run the optional paid evaluation with `npm run eval:agents -- --grep 'sparks quality'`. It uses five fictional cases: initial household exploration, unchanged-steering regeneration, shared-calendar steering, excluded RTB with missing research, and a shop-owner brief with a qualified illustrative interview. See `evaluations/results/sparks.html` and its JSON for results; earlier examples are retained in `evaluations/baselines/sparks-v1.*` and `sparks-v2.0.*`. These are assistant review artifacts, not approved campaign work.
 
 Validation: all 24 browser cases passed (23 in the full run, then the corrected title-aware workflow assertion passed separately), all 18 server/prompt tests passed, and TypeScript, lint and production build passed. The revised five-case GPT-5.5 run completed with 30 Sparks. `evaluations/results/sparks-review.json` records a provisional assessment, including remaining semantic overlap that exact duplicate checks cannot detect. Refresh the app and regenerate Sparks to use the new prompt; saved versions are preserved.
-
 
 ## Prompt strengthening v3
 

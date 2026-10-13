@@ -5,12 +5,26 @@ import { aiConfig } from "./config";
 import { AgentError } from "./errors";
 import { buildAgentPrompt } from "./prompts";
 import { modelCapabilities, validatedModelSettings } from "./capabilities";
-import { outputTokenBudget } from "./generation-settings";
-import { outputSchemas, type AgentRequest, type AgentData } from "./schemas";
+import {
+  outputTokenBudget,
+  perspectiveReasoningEffort,
+} from "./generation-settings";
+import {
+  outputSchemas,
+  sparkGenerationSchema,
+  sparkRevisionGenerationSchema,
+  type AgentRequest,
+  type AgentData,
+} from "./schemas";
+import { isPerspective } from "../creative-controls";
 
 let client: OpenAI | undefined;
-const MAX_PROVIDER_RETRIES = 1;
-const MAX_AUTOMATIC_RETRY_DELAY_MS = 20_000;
+export function resetOpenAIClientForTests() {
+  client = undefined;
+}
+export const MAX_PROVIDER_RETRIES = 1;
+export const OPENAI_REQUEST_TIMEOUT_MS = 120_000;
+export const MAX_AUTOMATIC_RETRY_DELAY_MS = 20_000;
 const quotaCodes = new Set([
   "insufficient_quota",
   "credit_balance_exhausted",
@@ -172,7 +186,9 @@ function getClient() {
   // Lazy initialization keeps mock mode/builds functional without credentials.
   return (client ??= new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
-    timeout: 45000,
+    // Perspective responses can legitimately take more than a minute. Keep the
+    // SDK window inside the route budget so its one bounded retry can finish.
+    timeout: OPENAI_REQUEST_TIMEOUT_MS,
     // Retry only after inspecting status + provider code; not every 429 is transient.
     maxRetries: 0,
   }));
@@ -182,15 +198,34 @@ export async function generateOpenAI(
   sdk?: OpenAI,
   attempt = 0,
   requestId = "",
+  retryInstruction = "",
 ): Promise<AgentData> {
   try {
     const model = aiConfig().model;
+    const requestedSettings =
+      "modelSettings" in request ? request.modelSettings : {};
     const settings = validatedModelSettings(
       "openai",
       model,
-      "modelSettings" in request ? request.modelSettings : {},
+      isPerspective(request.agentType)
+        ? {
+            reasoningEffort: perspectiveReasoningEffort(request.versionNumber),
+            ...requestedSettings,
+          }
+        : requestedSettings,
     );
-    const prompt = buildAgentPrompt(request, attempt, requestId);
+    const prompt = buildAgentPrompt(
+      request,
+      attempt,
+      requestId,
+      retryInstruction,
+    );
+    const responseSchema =
+      request.agentType === "sparks"
+        ? request.sparkRevision?.targetId
+          ? sparkRevisionGenerationSchema
+          : sparkGenerationSchema
+        : outputSchemas[request.agentType];
     const budget = outputTokenBudget(request.agentType);
     if (budget > modelCapabilities("openai", model)!.maxOutputTokens)
       throw new AgentError(
@@ -212,18 +247,41 @@ export async function generateOpenAI(
         text: {
           ...(settings.verbosity ? { verbosity: settings.verbosity } : {}),
           format: zodTextFormat(
-            outputSchemas[request.agentType],
+            responseSchema,
             `xc_${request.agentType}`,
           ),
         },
         max_output_tokens: budget,
       }),
     );
-    if (response.status !== "completed" || !response.output_text)
+    if (response.status !== "completed") {
+      const reason = response.incomplete_details?.reason;
+      if (reason === "max_output_tokens")
+        throw new AgentError(
+          `OpenAI used the full ${budget.toLocaleString()}-token generation budget, including reasoning tokens, before it could finish the structured response.`,
+          502,
+          "model_output_max_tokens",
+          true,
+        );
+      if (reason === "content_filter")
+        throw new AgentError(
+          "OpenAI stopped this response because of its content filter. Revise the brief or steering and retry this agent.",
+          422,
+          "model_output_content_filter",
+          true,
+        );
       throw new AgentError(
-        "This agent could not return a complete response. Please retry with a shorter brief or guidance.",
+        `OpenAI ended this response with status ${response.status}${reason ? ` (${reason})` : ""}. Retry this agent; the previous version is preserved.`,
         502,
         "model_output_incomplete",
+        true,
+      );
+    }
+    if (!response.output_text)
+      throw new AgentError(
+        "OpenAI completed the request without a structured text response. Retry this agent; the previous version is preserved.",
+        502,
+        "model_output_empty",
         true,
       );
     if (
@@ -249,7 +307,7 @@ export async function generateOpenAI(
         true,
       );
     }
-    const result = outputSchemas[request.agentType].safeParse(decoded);
+    const result = responseSchema.safeParse(decoded);
     if (!result.success)
       throw new AgentError(
         "OpenAI returned structured output that does not match this agent's schema. Retry this agent; the previous version is preserved.",
@@ -257,7 +315,18 @@ export async function generateOpenAI(
         "model_output_schema_invalid",
         true,
       );
-    return result.data;
+    if (request.agentType === "sparks" && "sparks" in result.data)
+      return {
+        sparks: result.data.sparks.map((spark, index) => ({
+          ...spark,
+          id: `spark-${index + 1}`,
+          text: spark.idea,
+          campaignGrounding: spark.excerpt,
+          hypothesisToValidate: spark.hypothesis,
+          excerpt_verified: false,
+        })),
+      };
+    return result.data as AgentData;
   } catch (error) {
     if (error instanceof AgentError) throw error;
     throw new AgentError(

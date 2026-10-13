@@ -1,0 +1,66 @@
+{
+  "fictional-household-handoffs-fixture": [
+    {
+      "agent": "humor",
+      "line": "The couch becomes mission control when three people need the internet differently.",
+      "tension": "A shared household treats ordinary rooms like coordination hubs because everyone needs the same home internet for different activities at once.",
+      "promptVersion": "witty-v1.2"
+    },
+    {
+      "agent": "culture",
+      "line": "One screen gets handed over, and the whole household changes what it is doing.",
+      "tension": "Shared households often coordinate around devices in sequence, while home internet is usually noticed only as an invisible backdrop.",
+      "promptVersion": "cultural-v1.2"
+    },
+    {
+      "agent": "audience",
+      "line": "The laptop closes, the homework opens, and the house still needs one place online.",
+      "tension": "The relief of one shared home rhythm rubs against the constant handoff between work, school, and entertainment.",
+      "promptVersion": "audience-v1.2"
+    },
+    {
+      "agent": "market",
+      "line": "Don’t compare internet by specs; compare it by who needs the kitchen table next.",
+      "tension": "Category convention challenged: home internet is usually compared through technical specs, while this brief asks for household activities over technical boasting.",
+      "promptVersion": "market-v1.2"
+    },
+    {
+      "agent": "brand",
+      "line": "The internet matters most when the house is doing five different things.",
+      "tension": "Xfinity’s warm, human-first voice can turn a technical category into the recognizable reality of many household activities happening at once.",
+      "promptVersion": "brand-v1.2"
+    }
+  ],
+  "fictional-mobile-prototype-fixture": [
+    {
+      "agent": "humor",
+      "line": "The device that remembers every birthday shouldn’t require a spreadsheet to choose service.",
+      "tension": "People use phones to organize their lives, yet choosing mobile service can feel like another organizing project.",
+      "promptVersion": "witty-v1.2"
+    },
+    {
+      "agent": "culture",
+      "line": "The group chat should be the complicated part, not choosing the phone plan.",
+      "tension": "Phones carry the messy social logistics of modern life, while mobile plan decisions can feel like another layer of confusion people do not want.",
+      "promptVersion": "cultural-v1.2"
+    },
+    {
+      "agent": "audience",
+      "line": "The tiny-print comparison tab is stealing time from the actual phone.",
+      "tension": "A phone supports daily life, but choosing service can pull attention into confusing comparison work instead.",
+      "promptVersion": "audience-v1.2"
+    },
+    {
+      "agent": "market",
+      "line": "The next phone plan shouldn’t start from a blank spreadsheet.",
+      "tension": "Category convention challenged: mobile brands ask people to choose by comparing plans from scratch, while this audience already has an Xfinity relationship that can narrow the decision.",
+      "promptVersion": "market-v1.2"
+    },
+    {
+      "agent": "brand",
+      "line": "The phone can run the day; picking mobile shouldn’t hijack it.",
+      "tension": "Xfinity’s relatable everyday voice can contrast everything people do on their phones with the irritation of having to overthink mobile service.",
+      "promptVersion": "brand-v1.2"
+    }
+  ]
+}

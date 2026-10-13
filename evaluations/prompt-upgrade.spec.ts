@@ -53,10 +53,15 @@ function artifact(response: AgentResponse) {
           `<h4>${escape(s.title)}</h4><p>${escape(s.text)}</p><small>${escape(s.rationale)}</small>`,
       )
       .join("");
-  if ("briefLines" in data || "synthesizedLines" in data) {
-    const lines =
-      "briefLines" in data ? data.briefLines : data.synthesizedLines;
-    return lines
+  if ("options" in data)
+    return data.options
+      .map(
+        (option) =>
+          `<blockquote>${escape(option.brief_line)}</blockquote><p>${escape(option.tension)}</p>`,
+      )
+      .join("");
+  if ("synthesizedLines" in data) {
+    return data.synthesizedLines
       .map(
         (s) =>
           `<blockquote>${escape(s.line)}</blockquote><p>${escape(s.rationale)}</p>`,
@@ -276,7 +281,7 @@ test("live prompt v3 comparison and evidence boundaries", async () => {
       `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>XC prompt v3 comparison</title><style>body{font:16px/1.6 system-ui;color:#24243b;max-width:1200px;margin:40px auto;padding:0 24px}h1,h2{color:#6539bd}.comparison{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}article{border:1px solid #ddd;border-radius:12px;padding:20px;min-width:0}small{color:#59596e}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 system-ui}blockquote{margin:12px 0;font-size:21px}</style><h1>XC prompt v3 review</h1><p>Fictional fixtures only. Same stored request for before/after comparisons. One sample per condition; generated work needs human creative review. Comparisons do not isolate model variability or establish a quality guarantee.</p>${runs.map((r) => `<section><h2>${escape(r.label)}</h2><small>${escape(r.response.promptTemplateVersion!)} · ${escape(r.response.model!)} · ${(r.elapsedMs / 1000).toFixed(1)}s</small><div class="comparison">${r.before ? `<article><h3>Previous prompt</h3>${artifact(r.before)}</article>` : ""}<article><h3>Prompt v3</h3>${artifact(r.response)}</article></div></section>`).join("")}</html>`,
     );
     console.log(
-      `${c.label}: ${saved ? "reused identical completed comparison" : "briefLines" in response.data ? response.data.briefLines[0].line : "sparks" in response.data ? response.data.sparks.map((s) => s.title).join(" | ") : "completed"}`,
+      `${c.label}: ${saved ? "reused identical completed comparison" : "options" in response.data ? response.data.options[0].brief_line : "sparks" in response.data ? response.data.sparks.map((s) => s.title).join(" | ") : "completed"}`,
     );
   }
 });

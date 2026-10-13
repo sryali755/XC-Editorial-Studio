@@ -466,7 +466,7 @@ export default function DynamicInputPack({
                   aria-label="Generate Strategic Perspectives"
                 >
                   {generating ? (
-                    "Preparing perspectives…"
+                    "Generating all five perspectives…"
                   ) : (
                     <>
                       Generate{" "}

@@ -43,6 +43,33 @@ export function applySparkRevision(
 ) {
   const plan = sparkRevisionPlan(request);
   if (!plan) return generated;
+  const revision =
+    "sparkRevision" in request ? request.sparkRevision : undefined;
+  if (revision?.targetId && generated.sparks.length === 1) {
+    const targetIndex = plan.old.findIndex(
+      (spark) => spark.id === revision.targetId,
+    );
+    const replacement = generated.sparks[0];
+    return {
+      sparks: plan.old.map((spark, index) =>
+        index === targetIndex
+          ? {
+              ...replacement,
+              id: spark.id,
+              territory_type:
+                spark.territory_type ?? replacement.territory_type,
+            }
+          : spark,
+      ),
+    };
+  }
+  if (generated.sparks.length !== plan.old.length)
+    throw new AgentError(
+      "The Sparks response did not return the expected number of ideas.",
+      422,
+      "sparks_output_validation_failed",
+      true,
+    );
   return {
     sparks: generated.sparks.map((spark, index) =>
       plan.replace[index] ? spark : plan.old[index],

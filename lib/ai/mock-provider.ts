@@ -7,6 +7,7 @@ import { mockStrategyService, mockBriefService } from "./mock-strategy";
 import { foundationPack } from "./context";
 import {
   isPerspectiveRequest,
+  outputSchemas,
   type AgentData,
   type AgentRequest,
 } from "./schemas";
@@ -64,10 +65,21 @@ export async function generateMock(request: AgentRequest): Promise<AgentData> {
           evidenceGaps: [],
         };
       })();
-    if (request.agentType === "sparks")
+    if (request.agentType === "sparks") {
+      const previousSparks = outputSchemas.sparks.safeParse(
+        previousVersion?.data,
+      );
       return {
-        sparks: version.sparks.map((spark) => ({
+        sparks: version.sparks.map((spark, index) => ({
           ...spark,
+          ...(previousSparks.success
+            ? {
+                id: previousSparks.data.sparks[index].id,
+                territory_type:
+                  previousSparks.data.sparks[index].territory_type ??
+                  spark.territory_type,
+              }
+            : {}),
           title: spark.title ?? "",
           rationale:
             spark.rationale ??
@@ -80,6 +92,7 @@ export async function generateMock(request: AgentRequest): Promise<AgentData> {
             "Validate this creative hypothesis with the intended audience.",
         })),
       };
+    }
     return {
       campaignName: fieldText(upstream.fields.campaignName),
       objectives: fieldText(upstream.fields.objective),

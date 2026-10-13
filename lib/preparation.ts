@@ -191,7 +191,12 @@ export function validCurrentPreparation(
   if (id === "sparks")
     return (
       current.sparks.length === 6 &&
-      current.sparks.every((spark) => spark.id && spark.text.trim())
+      current.sparks.every(
+        (spark) =>
+          spark.id &&
+          (spark.idea || spark.text).trim() &&
+          spark.excerpt_verified !== false,
+      )
     );
   return true;
 }
@@ -259,6 +264,21 @@ export const preparationService = {
       guidance,
       versionNumber: number,
       ...(sparkRevision ? { sparkRevision } : {}),
+      ...(agentId === "sparks"
+        ? {
+            sparkHistory: previous.slice(0, 50).map((version) => ({
+              number: version.number,
+              sparks: version.sparks.map((spark) => ({
+                id: spark.id,
+                title: spark.title,
+                text: spark.text,
+                territory_type: spark.territory_type,
+                territory: spark.territory,
+                idea: spark.idea,
+              })),
+            })),
+          }
+        : {}),
       ...(current
         ? {
             previousVersion: {

@@ -2,6 +2,33 @@ import { fieldText } from "../upstream";
 import type { UpstreamContext } from "../types";
 import type { AgentDataMap } from "./schemas";
 
+const territoryTypes = [
+  "human_truth",
+  "social_cultural",
+  "category_convention",
+  "product_truth",
+  "moment",
+  "wildcard",
+] as const;
+const territoryLabels = [
+  [
+    "Individual human tension",
+    "Shared social ritual",
+    "Category convention break",
+    "Supplied product truth",
+    "Peak need moment",
+    "Unexpected outside analogy",
+  ],
+  [
+    "Unspoken personal ambition",
+    "Routine disrupted by absence",
+    "Role-reversal learning",
+    "Deferred decision question",
+    "Observed product use",
+    "Audience challenges the premise",
+  ],
+] as const;
+
 // Deterministic UI fixtures, not a simulation of live creative quality or free-form steering.
 const sets = [
   [
@@ -89,24 +116,38 @@ export function mockSparks(
   const campaign = fieldText(upstream.fields.campaignName);
   const objective = fieldText(upstream.fields.objective);
   const audience = fieldText(upstream.fields.audience);
-  const candidates = sets[0].map(
-    (fallback, index) =>
-      sets
-        .map((set) => set[index])
-        .find(([, text]) => !previousText.includes(text)) ?? fallback,
-  );
-  return candidates.map(([title, text, field, validation], i) => {
-    const excerpt =
-      upstream.fields[field].sourceValue ||
-      upstream.fields.campaignName.sourceValue ||
-      fieldText(upstream.fields[field]);
-    return {
-      id: `spark-${i + 1}`,
-      title,
-      text: `${text} For ${campaign}, connect the opportunity to ${audience} and the supplied objective: ${objective}`,
-      campaignGrounding: `${field}: "${excerpt}"`,
-      hypothesisToValidate: validation,
-      rationale: `Premise: ${text} Grounding: ${excerpt} Validate: ${validation}`,
-    };
+  const candidates = sets[0].map((fallback, index) => {
+    const candidate = sets
+      .map((set, setIndex) => ({
+        spark: set[index],
+        territory: territoryLabels[setIndex][index],
+      }))
+      .find(({ spark: [, text] }) => !previousText.includes(text));
+    return (
+      candidate ?? { spark: fallback, territory: territoryLabels[0][index] }
+    );
   });
+  return candidates.map(
+    ({ spark: [title, text, field, validation], territory }, i) => {
+      const excerpt =
+        upstream.fields[field].sourceValue ||
+        upstream.fields.campaignName.sourceValue ||
+        fieldText(upstream.fields[field]);
+      const idea = `${text} For ${campaign}, connect the opportunity to ${audience} and the supplied objective: ${objective}`;
+      return {
+        id: `spark-${i + 1}`,
+        title,
+        text: idea,
+        campaignGrounding: `${field}: "${excerpt}"`,
+        hypothesisToValidate: validation,
+        rationale: `Premise: ${text} Grounding: ${excerpt} Validate: ${validation}`,
+        territory_type: territoryTypes[i],
+        territory,
+        idea,
+        excerpt,
+        hypothesis: validation,
+        excerpt_verified: true,
+      };
+    },
+  );
 }

@@ -42,6 +42,17 @@ async function perspective(
     personality: { ...personality },
     refinementMode,
     priorCandidates: versions.slice(0, 50).map((v) => v.text),
+    previousVersions: [...versions]
+      .sort((a, b) => a.number - b.number)
+      .slice(-50)
+      .map((version) => ({
+        number: version.number,
+        line: version.text,
+        sliderValue: version.generation?.personality.primary ?? 5,
+        steering:
+          version.generation?.steeringText ??
+          (version.guidance === "Initial perspective" ? "" : version.guidance),
+      })),
     ...(current
       ? {
           previousVersion: {
@@ -56,7 +67,7 @@ async function perspective(
     ...response,
     id: crypto.randomUUID(),
     number,
-    text: response.data.briefLines[0].line,
+    text: response.data.options[0].brief_line,
     guidance:
       direction ||
       (current

@@ -32,21 +32,19 @@ for (const agentType of perspectiveIds) {
       prompt: ReturnType<typeof buildAgentPrompt>;
     }[] = [];
     const cases = [
-      { label: "V0 · balanced", primary: 5, secondary: 5, guidance: "" },
-      { label: "Restrained", primary: 2, secondary: 2, guidance: "" },
-      { label: "Adventurous", primary: 8, secondary: 8, guidance: "" },
-      { label: "Experimental", primary: 10, secondary: 10, guidance: "" },
-      { label: "Steering only", primary: 5, secondary: 5, guidance: steering },
+      { label: "V0 · balanced", primary: 5, guidance: "" },
+      { label: "Restrained", primary: 2, guidance: "" },
+      { label: "Adventurous", primary: 8, guidance: "" },
+      { label: "Experimental", primary: 10, guidance: "" },
+      { label: "Steering only", primary: 5, guidance: steering },
       {
         label: "Controls + steering",
         primary: 8,
-        secondary: 7,
         guidance: steering,
       },
       {
         label: "Unchanged configuration",
         primary: 8,
-        secondary: 7,
         guidance: steering,
       },
     ];
@@ -57,18 +55,21 @@ for (const agentType of perspectiveIds) {
       const request: PerspectiveRequest = {
         agentType,
         context: foundation,
-        personality: {
-          primary: configuration.primary,
-          secondary: configuration.secondary,
-        },
+        personality: { primary: configuration.primary },
         guidance: configuration.guidance,
         versionNumber: index,
-        priorCandidates: runs.map((r) => r.response.data.briefLines[0].line),
+        priorCandidates: runs.map((r) => r.response.data.options[0].brief_line),
+        previousVersions: runs.map((run) => ({
+          number: run.request.versionNumber ?? 0,
+          line: run.response.data.options[0].brief_line,
+          sliderValue: run.request.personality?.primary ?? 5,
+          steering: run.request.guidance ?? "",
+        })),
         ...(previous
           ? {
               previousVersion: {
                 number: previous.request.versionNumber!,
-                text: previous.response.data.briefLines[0].line,
+                text: previous.response.data.options[0].brief_line,
               },
             }
           : {}),
@@ -78,11 +79,11 @@ for (const agentType of perspectiveIds) {
       expect(response.provider).toBe("openai");
       expect(response.generation?.personality).toEqual(request.personality);
       expect(response.generation?.foundation).toEqual(foundation);
-      expect("briefLines" in response.data).toBe(true);
+      expect("options" in response.data).toBe(true);
       const result = response as AgentResponse<AgentDataMap["humor"]>;
-      expect(runs.map((r) => r.response.data.briefLines[0].line)).not.toContain(
-        result.data.briefLines[0].line,
-      );
+      expect(
+        runs.map((r) => r.response.data.options[0].brief_line),
+      ).not.toContain(result.data.options[0].brief_line);
       runs.push({
         label: configuration.label,
         request,
@@ -99,7 +100,7 @@ for (const agentType of perspectiveIds) {
         renderEvaluation(agentType, runs),
       );
       console.log(
-        `${agentType} ${configuration.label}: ${result.data.briefLines[0].line}`,
+        `${agentType} ${configuration.label}: ${result.data.options[0].brief_line}`,
       );
     }
   });
@@ -117,7 +118,7 @@ test("live model-settings capability smoke", async () => {
   expect(response.generation?.modelSettings).toMatchObject({
     reasoningEffort: "low",
     verbosity: "low",
-    maxOutputTokens: 2500,
+    maxOutputTokens: 5000,
   });
   mkdirSync("evaluations/results", { recursive: true });
   writeFileSync(

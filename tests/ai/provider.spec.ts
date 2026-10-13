@@ -3,7 +3,11 @@ import OpenAI from "openai";
 import {
   classifyOpenAIError,
   generateOpenAI,
+  MAX_AUTOMATIC_RETRY_DELAY_MS,
+  MAX_PROVIDER_RETRIES,
+  OPENAI_REQUEST_TIMEOUT_MS,
 } from "../../lib/ai/openai-provider";
+import { AGENT_REQUEST_TIMEOUT_MS } from "../../lib/ai/client";
 import { generateAgentResponse, preserveSource } from "../../lib/ai/provider";
 import { publicAIStatus } from "../../lib/ai/config";
 import {
@@ -21,7 +25,7 @@ import {
 } from "../../lib/preparation";
 import { parseIMCBrief } from "../../lib/imc-parser";
 import { extractUpstream } from "../../lib/upstream";
-import { POST } from "../../app/api/ai/agent/route";
+import { maxDuration, POST } from "../../app/api/ai/agent/route";
 import { agentPromptVersion } from "../../lib/ai/prompts";
 
 const originalEnvironment = {
@@ -45,6 +49,14 @@ test.afterEach(() => {
 const preparationContext = () => ({
   parsedIMC: parseIMCBrief(demoIMCBrief),
   upstream: extractUpstream(demoIMCBrief),
+});
+
+test("agent timeout windows allow a slow response and its bounded provider retry to finish", () => {
+  const providerWorstCaseMs =
+    OPENAI_REQUEST_TIMEOUT_MS * (MAX_PROVIDER_RETRIES + 1) +
+    MAX_AUTOMATIC_RETRY_DELAY_MS;
+  expect(maxDuration * 1000).toBeGreaterThan(providerWorstCaseMs);
+  expect(AGENT_REQUEST_TIMEOUT_MS).toBeGreaterThan(maxDuration * 1000);
 });
 const prep = (agentType: "rtb" | "research" | "sparks"): AgentRequest => ({
   agentType,
@@ -567,5 +579,28 @@ test("malformed model JSON reports an actionable parser error", async () => {
   await expect(generateOpenAI(prep("rtb"), sdk)).rejects.toMatchObject({
     code: "model_output_invalid_json",
     retryable: true,
+  });
+});
+
+test("incomplete responses distinguish output-token exhaustion", async () => {
+  const sdk = new OpenAI({
+    apiKey: "sk-test-private-sentinel",
+    maxRetries: 0,
+    fetch: async () =>
+      new Response(
+        JSON.stringify({
+          id: "resp_incomplete",
+          object: "response",
+          status: "incomplete",
+          incomplete_details: { reason: "max_output_tokens" },
+          output: [],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+  });
+  await expect(generateOpenAI(prep("rtb"), sdk)).rejects.toMatchObject({
+    code: "model_output_max_tokens",
+    retryable: true,
+    message: expect.stringContaining("including reasoning tokens"),
   });
 });

@@ -14,12 +14,14 @@ const envelope = z.object({
   data: z.unknown(),
   generation: generationRecordSchema.optional(),
   promptTemplateVersion: z.string().optional(),
+  promptVersion: z.string().optional(),
 });
 const errorEnvelope = z.object({
   error: z.string(),
   code: z.string().optional(),
   retryable: z.boolean().optional(),
 });
+export const AGENT_REQUEST_TIMEOUT_MS = 310_000;
 export class AgentRequestError extends Error {
   constructor(
     message: string,
@@ -39,13 +41,19 @@ export async function runAgent<T extends AgentType>(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
-      signal: AbortSignal.timeout(115000),
+      // Keep this slightly longer than the server route. The browser must not
+      // abandon a valid response while the five perspectives are still working.
+      signal: AbortSignal.timeout(AGENT_REQUEST_TIMEOUT_MS),
     });
-  } catch {
+  } catch (error) {
+    const errorName = error instanceof Error ? error.name : "";
+    const timedOut = errorName === "TimeoutError" || errorName === "AbortError";
     throw new AgentRequestError(
-      "This agent could not reach the server or timed out. Please retry.",
-      503,
-      "server_unreachable",
+      timedOut
+        ? "This perspective exceeded the server generation window. Your other perspectives and saved versions are preserved; retry this agent."
+        : "This agent could not reach the server. Check the connection and retry this agent.",
+      timedOut ? 504 : 503,
+      timedOut ? "client_generation_timeout" : "server_unreachable",
       true,
     );
   }

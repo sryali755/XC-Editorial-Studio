@@ -13,8 +13,50 @@ const text = z.string().max(60000);
 const item = z.string().min(1).max(12000);
 const list = z.array(item).max(30);
 const line = z.object({ id: item, line: item, rationale: text }).strict();
+export const sparkTerritoryTypes = [
+  "human_truth",
+  "social_cultural",
+  "category_convention",
+  "product_truth",
+  "moment",
+  "wildcard",
+] as const;
+export const sparkModelSchema = z
+  .object({
+    territory_type: z.enum(sparkTerritoryTypes),
+    title: item,
+    territory: item,
+    idea: item,
+    excerpt: item,
+    rationale: text,
+    hypothesis: item,
+  })
+  .strict();
+export const sparkGenerationSchema = z
+  .object({ sparks: z.array(sparkModelSchema).length(6) })
+  .strict();
+export const sparkRevisionGenerationSchema = z
+  .object({ sparks: z.array(sparkModelSchema).length(1) })
+  .strict();
 const perspective = z
-  .object({ briefLines: z.array(line).length(1), perspectiveSummary: text })
+  .object({
+    options: z
+      .array(
+        z
+          .object({
+            brief_line: z.string().min(1).max(500),
+            tension: item,
+            evidence: z.array(item).min(1).max(4),
+            territory: text,
+            why_on_strategy: text,
+            assumptions: list,
+          })
+          .strict(),
+      )
+      .length(3),
+    steering_note: text,
+    change_note: text,
+  })
   .strict();
 const spark = z
   .object({
@@ -24,6 +66,13 @@ const spark = z
     rationale: text,
     campaignGrounding: item,
     hypothesisToValidate: item,
+    // Canonical v1 fields. Optional only so pre-v1 saved sessions remain usable.
+    territory_type: z.enum(sparkTerritoryTypes).optional(),
+    territory: item.optional(),
+    idea: item.optional(),
+    excerpt: item.optional(),
+    hypothesis: item.optional(),
+    excerpt_verified: z.boolean().optional(),
   })
   .strict();
 export const outputSchemas = {
@@ -126,11 +175,13 @@ const campaignContext = z
     product: text,
     channel: text,
     constraints: text,
+    jobToBeDone: text.optional(),
   })
   .strict();
 export const foundationSchema = z
   .object({
     campaignContext,
+    sourceBrief: text.optional(),
     currentRtb: z
       .object({
         original: text,
@@ -158,6 +209,12 @@ export const foundationSchema = z
             rationale: text.optional(),
             campaignGrounding: text.optional(),
             hypothesisToValidate: text.optional(),
+            territory_type: z.enum(sparkTerritoryTypes).optional(),
+            territory: text.optional(),
+            idea: text.optional(),
+            excerpt: text.optional(),
+            hypothesis: text.optional(),
+            excerpt_verified: z.boolean().optional(),
           })
           .strict(),
       )
@@ -197,6 +254,12 @@ const preparation = z
                 rationale: text.optional(),
                 campaignGrounding: text.optional(),
                 hypothesisToValidate: text.optional(),
+                territory_type: z.enum(sparkTerritoryTypes).optional(),
+                territory: text.optional(),
+                idea: text.optional(),
+                excerpt: text.optional(),
+                hypothesis: text.optional(),
+                excerpt_verified: z.boolean().optional(),
               })
               .strict(),
           )
@@ -257,6 +320,28 @@ export const requestSchema = z.discriminatedUnion("agentType", [
         })
         .strict()
         .optional(),
+      sparkHistory: z
+        .array(
+          z
+            .object({
+              number: z.number().int().min(1).max(10000),
+              sparks: z.array(
+                z
+                  .object({
+                    id: item,
+                    title: text.optional(),
+                    text: item,
+                    territory_type: z.enum(sparkTerritoryTypes).optional(),
+                    territory: text.optional(),
+                    idea: text.optional(),
+                  })
+                  .strict(),
+              ),
+            })
+            .strict(),
+        )
+        .max(50)
+        .optional(),
     })
     .strict(),
   z
@@ -267,6 +352,19 @@ export const requestSchema = z.discriminatedUnion("agentType", [
       personality: personalitySchema.optional(),
       modelSettings: modelSettingsSchema.optional(),
       priorCandidates: z.array(text).max(50).optional(),
+      previousVersions: z
+        .array(
+          z
+            .object({
+              number: z.number().int().min(0).max(10000),
+              line: text,
+              sliderValue: z.number().int().min(1).max(10),
+              steering: z.string().max(8000),
+            })
+            .strict(),
+        )
+        .max(50)
+        .optional(),
       refinementMode: z.enum(["explore", "improve"]).optional(),
     })
     .strict(),
@@ -328,6 +426,7 @@ export const generationRecordSchema = z
       maxOutputTokens: z.number().int().positive().optional(),
     }),
     promptTemplateVersion: z.string(),
+    promptVersion: z.string(),
     requestId: z.string(),
   })
   .strict();
@@ -335,6 +434,7 @@ export type GenerationRecord = z.infer<typeof generationRecordSchema>;
 
 export interface AgentResponse<T = AgentData> {
   promptTemplateVersion?: string;
+  promptVersion?: string;
   provider: "mock" | "openai";
   model?: string;
   data: T;

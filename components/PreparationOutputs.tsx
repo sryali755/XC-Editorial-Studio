@@ -58,8 +58,11 @@ export function SparkChoices({
                 {spark.title && (
                   <strong className="spark-title">{spark.title}</strong>
                 )}
+                {spark.territory && <small>{spark.territory}</small>}
                 <small>CREATIVE OPPORTUNITY</small>
-                <span className="spark-description">{spark.text}</span>
+                <span className="spark-description">
+                  {spark.idea || spark.text}
+                </span>
               </span>
               <Check size={15} />
             </label>
@@ -104,20 +107,25 @@ export function SparkChoices({
               </button>
             ) : (
               (spark.rationale ||
+                spark.excerpt ||
                 spark.campaignGrounding ||
+                spark.hypothesis ||
                 spark.hypothesisToValidate) && (
                 <details className="spark-rationale">
                   <summary>Why this spark · grounding & hypothesis</summary>
-                  {spark.campaignGrounding && (
+                  {(spark.excerpt || spark.campaignGrounding) && (
                     <p>
                       <strong>Campaign grounding:</strong>{" "}
-                      {spark.campaignGrounding}
+                      {spark.excerpt || spark.campaignGrounding}
                     </p>
                   )}
-                  {spark.hypothesisToValidate && (
+                  {spark.excerpt_verified === false && (
+                    <p className="error">Excerpt not verified</p>
+                  )}
+                  {(spark.hypothesis || spark.hypothesisToValidate) && (
                     <p>
                       <strong>Hypothesis to validate:</strong>{" "}
-                      {spark.hypothesisToValidate}
+                      {spark.hypothesis || spark.hypothesisToValidate}
                     </p>
                   )}
                   {spark.rationale && <p>{spark.rationale}</p>}

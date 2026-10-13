@@ -2,7 +2,6 @@
 import type { AIStatus } from "@/lib/ai/schemas";
 import Link from "next/link";
 import { personas } from "@/lib/demo";
-import { defaultPersonality } from "@/lib/creative-controls";
 import { campaignDisplayName } from "@/lib/campaign-display";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -147,47 +146,30 @@ export default function StrategyWorkspace({
       return;
     await run("perspectives", async () => {
       const sharedPack = structuredClone(compileInputPack(session.preparation));
-      const outputs = personas.map((persona) => ({
-        agentId: persona.id,
-        versions: [],
-        currentVersionId: "",
-        personality: defaultPersonality(),
-        steeringText: "",
-      }));
-      const pending = new Set(personas.map((p) => p.id));
       for (const persona of personas) locks.current.add(persona.id);
       setAgentBusy(personas.map((p) => p.id));
-      update({
-        sharedPack,
-        outputs,
-        selected: [],
-        synthesis: [],
-        synthesisResults: [],
-        synthesisSources: [],
-        finalSourceLines: [],
-        finalLine: "",
-        finalSource: "",
-        approved: null,
-        brief: null,
-        step: 1,
-      });
-      setBlending(false);
-      window.scrollTo({ top: 0 });
       try {
-        await strategyService.generatePerspectives(sharedPack, (output) => {
-          setSession((s) => ({
-            ...s,
-            outputs: s.outputs.map((old) =>
-              old.agentId === output.agentId ? output : old,
-            ),
-          }));
-          locks.current.delete(output.agentId);
-          pending.delete(output.agentId);
-          setAgentBusy((ids) => ids.filter((id) => id !== output.agentId));
-        });
+        const outputs = await strategyService.generatePerspectives(sharedPack);
+        setSession((s) => ({
+          ...s,
+          sharedPack,
+          outputs,
+          selected: [],
+          synthesis: [],
+          synthesisResults: [],
+          synthesisSources: [],
+          finalSourceLines: [],
+          finalLine: "",
+          finalSource: "",
+          approved: null,
+          brief: null,
+          step: 1,
+        }));
+        setBlending(false);
+        window.scrollTo({ top: 0 });
       } finally {
-        for (const id of pending) locks.current.delete(id);
-        setAgentBusy((ids) => ids.filter((id) => !pending.has(id)));
+        for (const persona of personas) locks.current.delete(persona.id);
+        setAgentBusy([]);
       }
     });
   }
