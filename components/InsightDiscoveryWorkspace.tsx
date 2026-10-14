@@ -48,12 +48,14 @@ function statusLabel(status: string) {
 function FindingCard({
   finding,
   state,
+  currentPackVersion,
   busy,
   onChange,
   onInvestigate,
 }: {
   finding: DiscoveryFinding;
   state: DiscoveryState;
+  currentPackVersion: string;
   busy: boolean;
   onChange: (next: DiscoveryState) => void;
   onInvestigate: (request: {
@@ -76,7 +78,7 @@ function FindingCard({
   const selected =
     state.selectedFindingIds.includes(findingRef) ||
     state.selectedFindingIds.includes(finding.id);
-  const stale = finding.inputPackVersion !== state.contextVersion;
+  const stale = finding.inputPackVersion !== currentPackVersion;
   const thread = state.findingThreads[finding.id] ?? [];
   const toggle = (key: "savedFindingIds" | "selectedFindingIds") => {
     const active = key === "savedFindingIds" ? saved : selected;
@@ -309,6 +311,7 @@ export default function InsightDiscoveryWorkspace({
     .map((id) => allFindings.get(id))
     .filter((finding): finding is DiscoveryFinding => Boolean(finding));
   const coverage = version?.sourceCoverage ?? discoverySourceCoverage(pack);
+  const currentPackVersion = inputPackVersion(pack);
   const lens = discoveryLenses.find(
     (candidate) => candidate.id === state.selectedLensId,
   )!;
@@ -325,7 +328,7 @@ export default function InsightDiscoveryWorkspace({
             </p>
           </div>
           <span className="pack-version">
-            Input pack {state.contextVersion}
+            Input pack {currentPackVersion}
           </span>
         </div>
         <div className="investigation-controls">
@@ -484,6 +487,7 @@ export default function InsightDiscoveryWorkspace({
                 key={finding.id}
                 finding={finding}
                 state={state}
+                currentPackVersion={currentPackVersion}
                 busy={busy.includes(lens.id)}
                 onChange={onChange}
                 onInvestigate={onRunLens}
@@ -597,7 +601,7 @@ export default function InsightDiscoveryWorkspace({
                   <small>
                     {finding.lensId} · V{finding.runVersion} ·{" "}
                     {finding.inputPackVersion}
-                    {finding.inputPackVersion !== state.contextVersion
+                    {finding.inputPackVersion !== currentPackVersion
                       ? " · Needs refresh"
                       : ""}
                   </small>
@@ -701,8 +705,8 @@ export default function InsightDiscoveryWorkspace({
             </button>
           </details>
           <small className="context-integrity">
-            Current context: {inputPackVersion(pack)}. Saved findings retain
-            their original input-pack version.
+            Current context: {currentPackVersion}. Findings retain the exact
+            input-pack version they analyzed.
           </small>
         </aside>
       </div>

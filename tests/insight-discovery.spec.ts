@@ -155,7 +155,15 @@ test("flagged Discovery uses the current pack, preserves versions, and hands off
   await expect(dialog.locator(".discovery-demo-notice")).toContainText(
     "not live research",
   );
+  const originalPackVersion = await dialog.locator(".pack-version").textContent();
 
+  await page.evaluate(() => {
+    const key = "xc-strategy-session-v1";
+    const current = JSON.parse(sessionStorage.getItem(key)!);
+    current.preparation.upstream.fields.constraints.value +=
+      " Updated input-pack constraint for stale-finding validation.";
+    sessionStorage.setItem(key, JSON.stringify(current));
+  });
   await dialog.getByRole("button", { name: "Close Insight Discovery" }).click();
   await expect(page.locator(".insight-discovery-entry")).toBeVisible();
   await page
@@ -163,10 +171,19 @@ test("flagged Discovery uses the current pack, preserves versions, and hands off
     .getByRole("button", { name: "Start Insight Discovery" })
     .click();
   const reopened = page.getByRole("dialog", { name: "Insight Discovery" });
+  await expect(reopened.locator(".pack-version")).not.toHaveText(
+    originalPackVersion ?? "",
+  );
+  await expect(reopened.locator(".stale-flag").first()).toContainText(
+    "Needs refresh",
+  );
   await expect(
     reopened.getByRole("textbox", { name: "Working hypothesis" }),
   ).toHaveValue("The barrier may be attention, not demand; this remains a hypothesis.");
   await expect(reopened.locator(".connection-note")).toHaveCount(1);
+  await reopened.getByRole("button", { name: "Refresh all lenses" }).click();
+  await expect(reopened.locator(".discovery-run-status")).toHaveCount(0);
+  await expect(reopened.locator(".stale-flag")).toHaveCount(0);
   await reopened
     .getByRole("button", { name: "Approve human-authored strategy" })
     .click();
