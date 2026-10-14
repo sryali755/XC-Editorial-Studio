@@ -1,24 +1,30 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Search, X } from "lucide-react";
 import {
   connectDiscoveryFindings,
-  currentDiscoveryVersion,
   discoveryLenses,
   emptyDiscoveryState,
   generateDiscoveryVersion,
   inputPackVersion,
   knownDiscoveryFindings,
+  currentDiscoveryVersion,
 } from "@/lib/discovery";
+import {
+  beginDiscoveryRequest,
+  completeDiscoveryRequest,
+  discoveryDrafts,
+  failDiscoveryRequest,
+  recoverDiscoveryState,
+} from "@/lib/discovery-state";
 import type {
-  DiscoveryAction,
-  DiscoveryFinding,
-  DiscoveryLensId,
+  DiscoveryRetryRequest,
   DiscoveryState,
   StrategyInputPack,
 } from "@/lib/types";
 import InsightDiscoveryWorkspace from "./InsightDiscoveryWorkspace";
+import { useDiscoveryDialog } from "./useDiscoveryDialog";
 
 function seededState(pack: StrategyInputPack): DiscoveryState {
   const state = emptyDiscoveryState();
@@ -33,9 +39,11 @@ function seededState(pack: StrategyInputPack): DiscoveryState {
 export function InsightDiscoveryEntry({
   ready,
   onOpen,
+  returning = false,
 }: {
   ready: boolean;
   onOpen: () => void;
+  returning?: boolean;
 }) {
   return (
     <section className="panel insight-discovery-entry">
@@ -48,7 +56,8 @@ export function InsightDiscoveryEntry({
         </p>
       </div>
       <button className="button" disabled={!ready} onClick={onOpen}>
-        Start Insight Discovery <ArrowRight size={15} />
+        {returning ? "Return to Insight Discovery" : "Start Insight Discovery"}{" "}
+        <ArrowRight size={15} />
       </button>
     </section>
   );
@@ -60,276 +69,108 @@ export default function InsightDiscoveryFeature({
   state,
   briefLine,
   onStateChange,
-  onBriefLineChange,
   onApprove,
   onClose,
+  approvalError,
 }: {
   open: boolean;
   pack: StrategyInputPack;
   state?: DiscoveryState;
   briefLine: string;
   onStateChange: (state: DiscoveryState) => void;
-  onBriefLineChange: (value: string) => void;
   onApprove: (briefLine: string) => void;
   onClose: () => void;
+  approvalError?: string;
 }) {
   const packVersion = inputPackVersion(pack);
-  const seeded = seededState(pack);
-  const [draft, setDraft] = useState<DiscoveryState>(state ?? seeded);
+  const seeded = useMemo(() => seededState(pack), [pack]);
+  const [draft, setDraft] = useState(() =>
+    recoverDiscoveryState(state ?? seeded),
+  );
   const draftRef = useRef(draft);
-  const onStateChangeRef = useRef(onStateChange);
-  onStateChangeRef.current = onStateChange;
   const [busy, setBusy] = useState<string[]>([]);
   const [error, setError] = useState("");
-  const attemptedPack = useRef("");
-  const locked = useRef(new Set<string>());
-
-  useEffect(() => {
-    if (state) {
-      if (state !== draftRef.current) {
-        draftRef.current = state;
-        setDraft(state);
-      }
-      return;
-    }
-    if (open) {
-      draftRef.current = seeded;
-      setDraft(seeded);
-      onStateChangeRef.current(seeded);
-    }
-  }, [state, open, seeded]);
+  const attempted = useRef(false);
+  const controllers = useRef(new Map<string, AbortController>());
+  const dialogRef = useRef<HTMLElement>(null);
 
   function commit(next: DiscoveryState) {
     draftRef.current = next;
     setDraft(next);
     onStateChange(next);
   }
-
   function update(change: (current: DiscoveryState) => DiscoveryState) {
     commit(change(draftRef.current));
   }
 
-  async function runLens({
-    lensId,
-    action,
-    guidance,
-    selectedFinding,
-    routedFromLens,
-  }: {
-    lensId: DiscoveryLensId;
-    action: DiscoveryAction;
-    guidance: string;
-    selectedFinding?: DiscoveryFinding;
-    routedFromLens?: DiscoveryLensId;
-  }) {
-    const lock = `discovery-${lensId}`;
-    if (locked.current.has(lock)) return;
-    locked.current.add(lock);
-    setBusy((items) => [...new Set([...items, lensId])]);
+  function cancelLens(lensId: string) {
+    controllers.current.get(lensId)?.abort();
+    const run = draftRef.current.runs.find((item) => item.lensId === lensId);
+    if (run?.retryRequest)
+      update((current) =>
+        failDiscoveryRequest(
+          current,
+          run.retryRequest!,
+          "The request was cancelled. Previous findings and drafts are preserved; retry this lens.",
+          true,
+        ),
+      );
+  }
+  function close() {
+    for (const key of controllers.current.keys()) cancelLens(key);
+    onClose();
+  }
+  useDiscoveryDialog(dialogRef, close);
+
+  useEffect(() => {
+    const pending = controllers.current;
+    return () => {
+      for (const controller of pending.values()) controller.abort();
+    };
+  }, []);
+
+  async function runLens(request: DiscoveryRetryRequest): Promise<boolean> {
+    if (controllers.current.has(request.lensId)) return false;
+    const controller = new AbortController();
+    controllers.current.set(request.lensId, controller);
+    setBusy((items) => [...new Set([...items, request.lensId])]);
     setError("");
-    const current = draftRef.current;
-    const userMessage = guidance.trim() || action.replaceAll("_", " ");
-    update((previous) => ({
-      ...previous,
-      question: previous.question.trim() || seeded.question,
-      runs: previous.runs.map((run) =>
-        run.lensId === lensId
-          ? {
-              ...run,
-              status: "researching",
-              error: undefined,
-              thread: [
-                ...run.thread,
-                {
-                  id: crypto.randomUUID(),
-                  author: "Kevin",
-                  text: userMessage,
-                  createdAt: new Date().toISOString(),
-                  action,
-                },
-              ],
-            }
-          : run,
-      ),
-      ...(selectedFinding
-        ? {
-            findingThreads: {
-              ...previous.findingThreads,
-              [selectedFinding.id]: [
-                ...(previous.findingThreads[selectedFinding.id] ?? []),
-                {
-                  id: crypto.randomUUID(),
-                  author: "Kevin" as const,
-                  text: userMessage,
-                  createdAt: new Date().toISOString(),
-                  action,
-                },
-              ],
-            },
-          }
-        : {}),
-    }));
+    const snapshot = draftRef.current;
+    const question = snapshot.question.trim() || seeded.question;
+    update((current) =>
+      beginDiscoveryRequest({ ...current, question }, request, packVersion),
+    );
     try {
       const result = await generateDiscoveryVersion({
-        lensId,
+        ...request,
         pack,
-        question: current.question.trim() || seeded.question,
-        investigationType: current.investigationType,
-        action,
-        guidance,
+        question,
+        investigationType: snapshot.investigationType,
         previous:
-          current.runs.find((run) => run.lensId === lensId)?.versions ?? [],
-        selectedFinding,
-        routedFromLens,
+          snapshot.runs.find((run) => run.lensId === request.lensId)
+            ?.versions ?? [],
+        signal: controller.signal,
       });
-      update((previous) => ({
-        ...previous,
-        contextVersion: packVersion,
-        selectedLensId: lensId,
-        runs: previous.runs.map((run) =>
-          run.lensId === lensId
-            ? {
-                ...run,
-                status: "complete",
-                error: undefined,
-                currentVersionId: result.id,
-                versions: [result, ...run.versions],
-                thread: [
-                  ...run.thread,
-                  {
-                    id: crypto.randomUUID(),
-                    author: "Agent",
-                    text: `${result.findings.length} finding${result.findings.length === 1 ? "" : "s"} returned. ${result.provider === "mock" ? "DEMO DATA: simulated analysis; " : ""}Supplied evidence only; no external source was searched.`,
-                    createdAt: result.createdAt,
-                    action,
-                    usedNewRetrieval: false,
-                  },
-                ],
-              }
-            : run,
-        ),
-        ...(selectedFinding
-          ? {
-              findingThreads: {
-                ...previous.findingThreads,
-                [selectedFinding.id]: [
-                  ...(previous.findingThreads[selectedFinding.id] ?? []),
-                  {
-                    id: crypto.randomUUID(),
-                    author: "Agent" as const,
-                    text: `The finding was updated in V${result.number}. Only supplied evidence was re-analyzed; no new source was retrieved.`,
-                    createdAt: result.createdAt,
-                    action,
-                    usedNewRetrieval: false,
-                  },
-                ],
-              },
-            }
-          : {}),
-      }));
+      if (controller.signal.aborted) return false;
+      update((current) => completeDiscoveryRequest(current, request, result));
+      return true;
     } catch (failure) {
-      update((previous) => ({
-        ...previous,
-        runs: previous.runs.map((run) =>
-          run.lensId === lensId
-            ? {
-                ...run,
-                status: "failed",
-                error:
-                  failure instanceof Error
-                    ? failure.message
-                    : "This lens failed. Previous findings are preserved.",
-              }
-            : run,
-        ),
-      }));
+      if (!controller.signal.aborted)
+        update((current) =>
+          failDiscoveryRequest(
+            current,
+            request,
+            failure instanceof Error
+              ? failure.message
+              : "This lens failed. Previous findings and drafts are preserved.",
+          ),
+        );
+      return false;
     } finally {
-      locked.current.delete(lock);
-      setBusy((items) => items.filter((item) => item !== lensId));
+      controllers.current.delete(request.lensId);
+      setBusy((items) => items.filter((item) => item !== request.lensId));
     }
   }
-
-  async function runAll() {
-    const previous = draftRef.current;
-    const hasHistory = previous.runs.some((run) => run.versions.length > 0);
-    update((current) => ({
-      ...current,
-      question: current.question.trim() || seeded.question,
-      contextVersion: packVersion,
-      runs: current.runs.map((run) => ({
-        ...run,
-        status: "researching",
-        error: undefined,
-      })),
-    }));
-    for (const lens of discoveryLenses) locked.current.add(`discovery-${lens.id}`);
-    setBusy(discoveryLenses.map((lens) => lens.id));
-    await Promise.all(
-      discoveryLenses.map(async (lens) => {
-        try {
-          const result = await generateDiscoveryVersion({
-            lensId: lens.id,
-            pack,
-            question: previous.question.trim() || seeded.question,
-            investigationType: previous.investigationType,
-            action: hasHistory ? "refresh" : "initial",
-            guidance: "",
-            previous:
-              previous.runs.find((run) => run.lensId === lens.id)?.versions ??
-              [],
-          });
-          update((currentState) => ({
-            ...currentState,
-            contextVersion: packVersion,
-            runs: currentState.runs.map((run) =>
-              run.lensId === lens.id
-                ? {
-                    ...run,
-                    status: "complete",
-                    error: undefined,
-                    versions: [result, ...run.versions],
-                    currentVersionId: result.id,
-                    thread: [
-                      ...run.thread,
-                      {
-                        id: crypto.randomUUID(),
-                        author: "Agent",
-                        text: `${result.findings.length} finding${result.findings.length === 1 ? "" : "s"} returned. ${result.provider === "mock" ? "DEMO DATA: simulated analysis; " : ""}Supplied evidence only; no external source was searched.`,
-                        createdAt: result.createdAt,
-                        action: hasHistory ? "refresh" : "initial",
-                        usedNewRetrieval: false,
-                      },
-                    ],
-                  }
-                : run,
-            ),
-          }));
-        } catch (failure) {
-          update((currentState) => ({
-            ...currentState,
-            runs: currentState.runs.map((run) =>
-              run.lensId === lens.id
-                ? {
-                    ...run,
-                    status: "failed",
-                    error:
-                      failure instanceof Error
-                        ? failure.message
-                        : "This lens failed. Retry it independently.",
-                  }
-                : run,
-            ),
-          }));
-        } finally {
-          locked.current.delete(`discovery-${lens.id}`);
-          setBusy((items) => items.filter((item) => item !== lens.id));
-        }
-      }),
-    );
-  }
-
-  const runAllRef = useRef(runAll);
-  runAllRef.current = runAll;
 
   async function refreshAll() {
     await Promise.all(
@@ -343,55 +184,87 @@ export default function InsightDiscoveryFeature({
     );
   }
 
-  async function connect(guidance: string) {
-    if (locked.current.has("connections")) return;
+  async function connect(guidance: string): Promise<boolean> {
+    if (controllers.current.has("connections")) return false;
     const snapshot = draftRef.current;
     const byId = knownDiscoveryFindings(snapshot);
-    const findings = snapshot.selectedFindingIds
-      .map((id) => byId.get(id))
-      .filter((finding): finding is DiscoveryFinding => Boolean(finding));
-    if (findings.length < 2) return;
-    locked.current.add("connections");
+    const findings = snapshot.selectedFindingIds.flatMap((id) =>
+      byId.get(id) ? [byId.get(id)!] : [],
+    );
+    if (findings.length < 2 || findings.length > 12) {
+      setError("Select between 2 and 12 exact finding versions to connect.");
+      return false;
+    }
+    const controller = new AbortController();
+    controllers.current.set("connections", controller);
     setBusy((items) => [...new Set([...items, "connections"])]);
+    setError("");
     try {
-      const note = await connectDiscoveryFindings({ pack, findings, guidance });
-      update((current) => ({
-        ...current,
-        connectionNotes: [note, ...current.connectionNotes],
-      }));
+      const note = await connectDiscoveryFindings({
+        pack,
+        findings,
+        guidance,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return false;
+      update((current) => {
+        const drafts = discoveryDrafts(current);
+        return {
+          ...current,
+          connectionNotes: [note, ...current.connectionNotes],
+          drafts: {
+            ...drafts,
+            connections:
+              drafts.connections === guidance ? "" : drafts.connections,
+          },
+        };
+      });
+      return true;
     } catch (failure) {
-      setError(
-        failure instanceof Error
-          ? failure.message
-          : "The selected findings could not be connected.",
-      );
+      if (!controller.signal.aborted)
+        setError(
+          failure instanceof Error
+            ? failure.message
+            : "The selected findings could not be connected. Your draft is preserved.",
+        );
+      return false;
     } finally {
-      locked.current.delete("connections");
+      controllers.current.delete("connections");
       setBusy((items) => items.filter((item) => item !== "connections"));
     }
   }
 
+  const runRef = useRef(runLens);
+  runRef.current = runLens;
   useEffect(() => {
-    if (!open || attemptedPack.current === packVersion) return;
-    const hasVersion = draftRef.current.runs.some(
-      (run) => run.versions.length > 0,
-    );
-    if (hasVersion) {
-      attemptedPack.current = packVersion;
-      return;
-    }
-    attemptedPack.current = packVersion;
-    void runAllRef.current();
-  }, [open, packVersion]);
+    if (!open) return;
+    // Defer until mount effects settle. React development Strict Mode replays
+    // effects; it must not start and cancel a paid batch during that replay.
+    const frame = window.requestAnimationFrame(() => {
+      if (attempted.current) return;
+      attempted.current = true;
+      // Reopened failed/cancelled runs require an explicit scoped retry.
+      if (
+        draftRef.current.runs.some(
+          (run) => run.versions.length || run.status !== "idle",
+        )
+      )
+        return;
+      for (const lens of discoveryLenses)
+        void runRef.current({
+          lensId: lens.id,
+          action: "initial",
+          guidance: "",
+        });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
 
   if (!open) return null;
-  const version = currentDiscoveryVersion(
-    draft.runs.find((run) => run.lensId === draft.selectedLensId),
-  );
-
   return (
     <div className="discovery-modal-backdrop">
       <section
+        ref={dialogRef}
         className="discovery-modal"
         role="dialog"
         aria-modal="true"
@@ -404,7 +277,7 @@ export default function InsightDiscoveryFeature({
           </div>
           <button
             className="button small"
-            onClick={onClose}
+            onClick={close}
             aria-label="Close Insight Discovery"
           >
             <X size={15} /> Close
@@ -415,17 +288,23 @@ export default function InsightDiscoveryFeature({
             {error}
           </div>
         )}
+        {approvalError && (
+          <div className="error" role="alert">
+            {approvalError}
+          </div>
+        )}
         {busy.length > 0 && (
           <div className="discovery-run-status" role="status">
             <Search size={14} />{" "}
             {busy.filter((id) => id !== "connections").length} of 5 lenses
             working
+            {busy.includes("connections") && " · Connecting selected findings"}
           </div>
         )}
         <InsightDiscoveryWorkspace
           state={draft}
           pack={pack}
-          briefLine={briefLine}
+          briefLine={draft.humanBriefLine ?? briefLine}
           busy={busy}
           onChange={commit}
           onQuestionChange={(question, investigationType) =>
@@ -434,10 +313,30 @@ export default function InsightDiscoveryFeature({
           onRunLens={runLens}
           onRefreshAll={refreshAll}
           onConnect={connect}
-          onBriefLineChange={onBriefLineChange}
-          onApprove={() => onApprove(briefLine)}
+          onRetryLens={(lensId) => {
+            const retry = draftRef.current.runs.find(
+              (run) => run.lensId === lensId,
+            )?.retryRequest;
+            return runLens(
+              retry ?? {
+                lensId,
+                action: "refresh",
+                guidance:
+                  "Retry this lens against the current supplied evidence.",
+              },
+            );
+          }}
+          onCancelLens={cancelLens}
+          onBriefLineChange={(humanBriefLine) =>
+            update((current) => ({ ...current, humanBriefLine }))
+          }
+          onApprove={() =>
+            onApprove(draftRef.current.humanBriefLine ?? briefLine)
+          }
         />
-        {version?.provider === "mock" && (
+        {draft.runs.some(
+          (run) => currentDiscoveryVersion(run)?.provider === "mock",
+        ) && (
           <div className="discovery-demo-notice" role="note">
             DEMO DATA · Simulated analysis of supplied inputs. This is not live
             research.

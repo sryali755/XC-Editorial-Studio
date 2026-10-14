@@ -1,6 +1,7 @@
 import { carryUpstream } from "../upstream";
 import type { AgentData, AgentDataMap, AgentResponse } from "./schemas";
 import type { BriefPayload, GeneratedBrief } from "../types";
+import { withDiscoveryCanvas } from "../discovery-brief";
 
 export function preparationText(data: AgentData): string {
   if ("originalRtb" in data)
@@ -58,7 +59,7 @@ export function renderBrief(
   const d = response.data,
     p = payload.strategyInputPack,
     e = payload.executionDirection;
-  return {
+  const brief: GeneratedBrief = {
     ...response,
     id: crypto.randomUUID(),
     createdAt: response.generatedAt,
@@ -115,4 +116,5 @@ export function renderBrief(
       },
     ],
   };
+  return withDiscoveryCanvas(brief, payload);
 }

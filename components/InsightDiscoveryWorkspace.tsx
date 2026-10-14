@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   ArrowRight,
   Bookmark,
@@ -22,6 +22,10 @@ import {
   knownDiscoveryFindings,
 } from "@/lib/discovery";
 import { extractJobToBeDone } from "@/lib/ai/context";
+import { selectedFoundation } from "@/lib/ai/context";
+import { discoverySourceDocuments } from "@/lib/discovery-sources";
+import { discoveryDrafts } from "@/lib/discovery-state";
+import SavedDiscoveryFinding from "./SavedDiscoveryFinding";
 import type {
   DiscoveryAction,
   DiscoveryFinding,
@@ -42,13 +46,16 @@ const actionLabels: Record<DiscoveryAction, string> = {
 };
 
 function statusLabel(status: string) {
-  return status.replaceAll("_", " ");
+  return status === "connected_searched"
+    ? "Supplied context analyzed"
+    : status.replaceAll("_", " ");
 }
 
 function FindingCard({
   finding,
   state,
   currentPackVersion,
+  pack,
   busy,
   onChange,
   onInvestigate,
@@ -56,6 +63,7 @@ function FindingCard({
   finding: DiscoveryFinding;
   state: DiscoveryState;
   currentPackVersion: string;
+  pack: StrategyInputPack;
   busy: boolean;
   onChange: (next: DiscoveryState) => void;
   onInvestigate: (request: {
@@ -64,14 +72,20 @@ function FindingCard({
     guidance: string;
     selectedFinding: DiscoveryFinding;
     routedFromLens?: DiscoveryLensId;
-  }) => Promise<void>;
+  }) => Promise<boolean>;
 }) {
-  const [comment, setComment] = useState("");
-  const [routeLens, setRouteLens] = useState<DiscoveryLensId>(
-    discoveryLenses.find((lens) => lens.id !== finding.lensId)?.id ??
-      "consumer",
-  );
   const findingRef = discoveryFindingRef(finding);
+  const drafts = discoveryDrafts(state);
+  const comment = drafts.findings[findingRef] ?? "";
+  const routeLens =
+    drafts.routes[findingRef] ??
+    discoveryLenses.find((lens) => lens.id !== finding.lensId)!.id;
+  const snapshot =
+    state.runs
+      .find((run) => run.lensId === finding.lensId)
+      ?.versions.find((version) => version.id === finding.researchRunId)
+      ?.inputPackSnapshot ?? pack;
+  const sources = discoverySourceDocuments(selectedFoundation(snapshot));
   const saved =
     state.savedFindingIds.includes(findingRef) ||
     state.savedFindingIds.includes(finding.id);
@@ -101,7 +115,6 @@ function FindingCard({
       selectedFinding: finding,
       ...(lensId !== finding.lensId ? { routedFromLens: finding.lensId } : {}),
     });
-    setComment("");
   };
   return (
     <article className="discovery-card" aria-label={finding.title}>
@@ -113,9 +126,10 @@ function FindingCard({
             ? "Research gap"
             : "Supplied evidence"}
         </span>
-        {currentDiscoveryVersion(
-          state.runs.find((run) => run.lensId === finding.lensId),
-        )?.provider === "mock" && (
+        {(finding.provider ??
+          currentDiscoveryVersion(
+            state.runs.find((run) => run.lensId === finding.lensId),
+          )?.provider) === "mock" && (
           <span className="evidence-state gap">DEMO DATA</span>
         )}
         <span>Run V{finding.runVersion}</span>
@@ -137,6 +151,28 @@ function FindingCard({
                 Date: {evidence.date} · Audience: {evidence.audience} · Context:{" "}
                 {evidence.context} · Access: {evidence.accessScope}
               </small>
+              <details>
+                <summary>Inspect supplied source</summary>
+                <small>
+                  {evidence.locator ||
+                    sources.find((source) =>
+                      [source.identity, ...source.aliases].some(
+                        (name) =>
+                          name.toLowerCase() === evidence.source.toLowerCase(),
+                      ),
+                    )?.locator ||
+                    "Original supplied context"}
+                </small>
+                <p>
+                  {sources.find((source) =>
+                    [source.identity, ...source.aliases].some(
+                      (name) =>
+                        name.toLowerCase() === evidence.source.toLowerCase(),
+                    ),
+                  )?.text ||
+                    "This source is not in the current snapshot. Inspect the original run's input context."}
+                </p>
+              </details>
             </div>
           ))}
         </details>
@@ -173,6 +209,23 @@ function FindingCard({
           />
           Select to connect
         </label>
+        <button
+          type="button"
+          className="button small"
+          onClick={() =>
+            onChange({
+              ...state,
+              asideFindingIds: [
+                ...new Set([...(state.asideFindingIds ?? []), findingRef]),
+              ],
+              selectedFindingIds: state.selectedFindingIds.filter(
+                (id) => id !== findingRef && id !== finding.id,
+              ),
+            })
+          }
+        >
+          Set aside
+        </button>
       </div>
       <div
         className="quick-actions"
@@ -203,7 +256,16 @@ function FindingCard({
           value={routeLens}
           disabled={busy}
           onChange={(event) =>
-            setRouteLens(event.target.value as DiscoveryLensId)
+            onChange({
+              ...state,
+              drafts: {
+                ...drafts,
+                routes: {
+                  ...drafts.routes,
+                  [findingRef]: event.target.value as DiscoveryLensId,
+                },
+              },
+            })
           }
         >
           {discoveryLenses
@@ -237,7 +299,18 @@ function FindingCard({
             value={comment}
             disabled={busy}
             placeholder="Compare it, challenge it, or ask for a narrower read…"
-            onChange={(event) => setComment(event.target.value)}
+            onChange={(event) =>
+              onChange({
+                ...state,
+                drafts: {
+                  ...drafts,
+                  findings: {
+                    ...drafts.findings,
+                    [findingRef]: event.target.value,
+                  },
+                },
+              })
+            }
           />
         </label>
         <button className="button small" disabled={busy || !comment.trim()}>
@@ -250,6 +323,10 @@ function FindingCard({
           {thread.map((message) => (
             <p key={message.id}>
               <b>{message.author}:</b> {message.text}
+              <small>
+                {message.inputPackVersion} · {message.findingRef} ·{" "}
+                {message.question}
+              </small>
               {message.author === "Agent" && (
                 <small>
                   {message.usedNewRetrieval
@@ -277,6 +354,8 @@ export default function InsightDiscoveryWorkspace({
   onConnect,
   onBriefLineChange,
   onApprove,
+  onRetryLens,
+  onCancelLens,
 }: {
   state: DiscoveryState;
   pack: StrategyInputPack;
@@ -290,14 +369,17 @@ export default function InsightDiscoveryWorkspace({
     guidance: string;
     selectedFinding?: DiscoveryFinding;
     routedFromLens?: DiscoveryLensId;
-  }) => Promise<void>;
+  }) => Promise<boolean>;
   onRefreshAll: () => Promise<void>;
-  onConnect: (guidance: string) => Promise<void>;
+  onConnect: (guidance: string) => Promise<boolean>;
+  onRetryLens: (lensId: DiscoveryLensId) => Promise<boolean>;
+  onCancelLens: (lensId: DiscoveryLensId) => void;
   onBriefLineChange: (value: string) => void;
   onApprove: () => void;
 }) {
-  const [agentGuidance, setAgentGuidance] = useState("");
-  const [connectionGuidance, setConnectionGuidance] = useState("");
+  const drafts = discoveryDrafts(state);
+  const agentGuidance = drafts.agents[state.selectedLensId] ?? "";
+  const connectionGuidance = drafts.connections;
   const run = state.runs.find(
     (candidate) => candidate.lensId === state.selectedLensId,
   );
@@ -310,6 +392,28 @@ export default function InsightDiscoveryWorkspace({
   const selected = state.selectedFindingIds
     .map((id) => allFindings.get(id))
     .filter((finding): finding is DiscoveryFinding => Boolean(finding));
+  const aside = (state.asideFindingIds ?? []).flatMap((id) =>
+    allFindings.get(id) ? [allFindings.get(id)!] : [],
+  );
+  const inspect = (finding: DiscoveryFinding) =>
+    onChange({
+      ...state,
+      workspaceView: "discovery",
+      selectedLensId: finding.lensId,
+      runs: state.runs.map((run) =>
+        run.lensId === finding.lensId
+          ? {
+              ...run,
+              currentVersionId:
+                finding.researchRunId ??
+                run.versions.find(
+                  (version) => version.number === finding.runVersion,
+                )?.id ??
+                run.currentVersionId,
+            }
+          : run,
+      ),
+    });
   const coverage = version?.sourceCoverage ?? discoverySourceCoverage(pack);
   const currentPackVersion = inputPackVersion(pack);
   const lens = discoveryLenses.find(
@@ -327,9 +431,22 @@ export default function InsightDiscoveryWorkspace({
               Kevin’s strategy; they do not write or approve it.
             </p>
           </div>
-          <span className="pack-version">
-            Input pack {currentPackVersion}
-          </span>
+          <span className="pack-version">Input pack {currentPackVersion}</span>
+          <button
+            type="button"
+            className="button small"
+            onClick={() =>
+              onChange({
+                ...state,
+                workspaceView:
+                  state.workspaceView === "canvas" ? "discovery" : "canvas",
+              })
+            }
+          >
+            {state.workspaceView === "canvas"
+              ? "Return to Discovery"
+              : "Open strategy canvas"}
+          </button>
         </div>
         <div className="investigation-controls">
           <label className="field investigation-type">
@@ -397,23 +514,69 @@ export default function InsightDiscoveryWorkspace({
             <button
               key={candidate.id}
               role="tab"
+              id={`discovery-tab-${candidate.id}`}
+              data-lens={candidate.id}
+              aria-controls={`discovery-lens-${candidate.id}`}
+              tabIndex={candidate.id === state.selectedLensId ? 0 : -1}
               aria-selected={candidate.id === state.selectedLensId}
               className={`${candidate.color} ${candidate.id === state.selectedLensId ? "active" : ""}`}
               onClick={() =>
                 onChange({ ...state, selectedLensId: candidate.id })
               }
+              onKeyDown={(event) => {
+                if (
+                  !["ArrowLeft", "ArrowRight", "Home", "End"].includes(
+                    event.key,
+                  )
+                )
+                  return;
+                event.preventDefault();
+                const index = discoveryLenses.findIndex(
+                  (item) => item.id === candidate.id,
+                );
+                const next =
+                  event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? discoveryLenses.length - 1
+                      : (index +
+                          (event.key === "ArrowRight" ? 1 : -1) +
+                          discoveryLenses.length) %
+                        discoveryLenses.length;
+                onChange({
+                  ...state,
+                  selectedLensId: discoveryLenses[next].id,
+                });
+                event.currentTarget.parentElement
+                  ?.querySelector<HTMLButtonElement>(
+                    `[data-lens="${discoveryLenses[next].id}"]`,
+                  )
+                  ?.focus();
+              }}
             >
               <span>{candidate.icon}</span>
               <b>{candidate.shortName}</b>
-              <small>{candidateRun?.status ?? "idle"}</small>
+              <small>
+                {candidateRun?.status ?? "idle"}
+                {currentDiscoveryVersion(candidateRun)?.findings.some(
+                  (finding) => finding.inputPackVersion !== currentPackVersion,
+                )
+                  ? " · Needs refresh"
+                  : ""}
+              </small>
             </button>
           );
         })}
       </div>
 
-      <div className="discovery-layout">
+      <div
+        className={`discovery-layout ${state.workspaceView === "canvas" ? "canvas-view" : ""}`}
+      >
         <section
           className="discoveries-column"
+          role="tabpanel"
+          id={`discovery-lens-${lens.id}`}
+          aria-labelledby={`discovery-tab-${lens.id}`}
           aria-label={`${lens.name} findings`}
         >
           <div className="section-title compact">
@@ -456,18 +619,20 @@ export default function InsightDiscoveryWorkspace({
               <button
                 className="button small"
                 disabled={busy.includes(lens.id)}
-                onClick={() =>
-                  onRunLens({
-                    lensId: lens.id,
-                    action: "refresh",
-                    guidance:
-                      "Retry this lens against the current supplied evidence.",
-                  })
-                }
+                onClick={() => onRetryLens(lens.id)}
               >
                 <RefreshCw size={13} /> Retry this lens
               </button>
             </div>
+          )}
+          {busy.includes(lens.id) && (
+            <button
+              type="button"
+              className="button small"
+              onClick={() => onCancelLens(lens.id)}
+            >
+              Cancel this lens
+            </button>
           )}
           {run?.status === "researching" && !findings.length && (
             <div className="discovery-loading">
@@ -482,17 +647,25 @@ export default function InsightDiscoveryWorkspace({
             </div>
           )}
           <div className="discovery-cards">
-            {findings.map((finding) => (
-              <FindingCard
-                key={finding.id}
-                finding={finding}
-                state={state}
-                currentPackVersion={currentPackVersion}
-                busy={busy.includes(lens.id)}
-                onChange={onChange}
-                onInvestigate={onRunLens}
-              />
-            ))}
+            {findings
+              .filter(
+                (finding) =>
+                  !(state.asideFindingIds ?? []).includes(
+                    discoveryFindingRef(finding),
+                  ),
+              )
+              .map((finding) => (
+                <FindingCard
+                  key={finding.id}
+                  finding={finding}
+                  state={state}
+                  currentPackVersion={currentPackVersion}
+                  pack={pack}
+                  busy={busy.includes(lens.id)}
+                  onChange={onChange}
+                  onInvestigate={onRunLens}
+                />
+              ))}
           </div>
           <form
             className="panel agent-volley"
@@ -503,7 +676,6 @@ export default function InsightDiscoveryWorkspace({
                 action: "explore_deeper",
                 guidance: agentGuidance,
               });
-              setAgentGuidance("");
             }}
           >
             <span className="eyebrow">
@@ -516,7 +688,18 @@ export default function InsightDiscoveryWorkspace({
                 value={agentGuidance}
                 disabled={busy.includes(lens.id)}
                 placeholder="Focus the investigation, identify a conflict, or narrow the audience…"
-                onChange={(event) => setAgentGuidance(event.target.value)}
+                onChange={(event) =>
+                  onChange({
+                    ...state,
+                    drafts: {
+                      ...drafts,
+                      agents: {
+                        ...drafts.agents,
+                        [lens.id]: event.target.value,
+                      },
+                    },
+                  })
+                }
               />
             </label>
             <button
@@ -526,6 +709,19 @@ export default function InsightDiscoveryWorkspace({
               Explore deeper
             </button>
           </form>
+          {!!run?.thread.length && (
+            <details className="agent-thread">
+              <summary>Lens conversation · {run.thread.length}</summary>
+              {run.thread.map((message) => (
+                <p key={message.id}>
+                  <b>{message.author}:</b> {message.text}
+                  <small>
+                    {message.inputPackVersion} · {message.question}
+                  </small>
+                </p>
+              ))}
+            </details>
+          )}
         </section>
 
         <aside className="my-thinking" aria-label="My Thinking">
@@ -590,42 +786,85 @@ export default function InsightDiscoveryWorkspace({
               }
             />
           </label>
+          <label className="field">
+            <span>Private working notes</span>
+            <textarea
+              rows={3}
+              value={state.notes}
+              onChange={(event) =>
+                onChange({ ...state, notes: event.target.value })
+              }
+            />
+          </label>
           <div className="saved-findings">
             <h3>
               Saved discoveries <span className="count">{saved.length}</span>
             </h3>
             {saved.length ? (
               saved.map((finding) => (
-                <div key={finding.id}>
-                  <b>{finding.title}</b>
-                  <small>
-                    {finding.lensId} · V{finding.runVersion} ·{" "}
-                    {finding.inputPackVersion}
-                    {finding.inputPackVersion !== currentPackVersion
-                      ? " · Needs refresh"
-                      : ""}
-                  </small>
-                </div>
+                <SavedDiscoveryFinding
+                  key={discoveryFindingRef(finding)}
+                  finding={finding}
+                  currentPackVersion={currentPackVersion}
+                  onInspect={() => inspect(finding)}
+                />
               ))
             ) : (
               <p className="muted">Save findings worth considering here.</p>
             )}
           </div>
+          {!!aside.length && (
+            <details className="aside-findings">
+              <summary>Set aside findings · {aside.length}</summary>
+              {aside.map((finding) => (
+                <div key={discoveryFindingRef(finding)}>
+                  <SavedDiscoveryFinding
+                    finding={finding}
+                    currentPackVersion={currentPackVersion}
+                    onInspect={() => inspect(finding)}
+                  />
+                  <button
+                    type="button"
+                    className="button small"
+                    onClick={() =>
+                      onChange({
+                        ...state,
+                        asideFindingIds: (state.asideFindingIds ?? []).filter(
+                          (id) => id !== discoveryFindingRef(finding),
+                        ),
+                      })
+                    }
+                  >
+                    Restore finding
+                  </button>
+                </div>
+              ))}
+            </details>
+          )}
           <div className="connect-findings">
             <h3>Connect selected findings</h3>
-            <p>{selected.length} selected from current lens versions.</p>
+            <p>{selected.length} exact finding versions selected.</p>
             <textarea
               rows={2}
               value={connectionGuidance}
+              aria-label="Connection guidance"
               placeholder="Optional: what relationship should the connection examine?"
-              onChange={(event) => setConnectionGuidance(event.target.value)}
+              onChange={(event) =>
+                onChange({
+                  ...state,
+                  drafts: { ...drafts, connections: event.target.value },
+                })
+              }
             />
             <button
               className="button"
-              disabled={selected.length < 2 || busy.includes("connections")}
+              disabled={
+                selected.length < 2 ||
+                selected.length > 12 ||
+                busy.includes("connections")
+              }
               onClick={async () => {
                 await onConnect(connectionGuidance);
-                setConnectionGuidance("");
               }}
             >
               <GitMerge size={14} /> Connect these findings
@@ -633,9 +872,11 @@ export default function InsightDiscoveryWorkspace({
             {state.connectionNotes.map((connection) => (
               <div className="connection-note" key={connection.id}>
                 <span>INTERPRETATION · NOT VALIDATION</span>
+                {connection.demo && <span>DEMO DATA</span>}
                 <textarea
                   rows={5}
                   value={connection.note}
+                  aria-label="Edit connection note"
                   onChange={(event) =>
                     onChange({
                       ...state,
@@ -653,6 +894,15 @@ export default function InsightDiscoveryWorkspace({
                 />
                 <details>
                   <summary>Relationships, tensions and questions</summary>
+                  {connection.findingVersions.map((reference) => (
+                    <small
+                      key={`${reference.findingId}@${reference.runVersion}`}
+                    >
+                      {reference.findingId} · V{reference.runVersion} ·{" "}
+                      {reference.inputPackVersion} · Run{" "}
+                      {reference.researchRunId}
+                    </small>
+                  ))}
                   {[
                     ...connection.relationships,
                     ...connection.tensions,
@@ -680,6 +930,11 @@ export default function InsightDiscoveryWorkspace({
                 {extractJobToBeDone(pack.parsedIMC?.sourceText) ||
                   "Not supplied"}
               </dd>
+              <dt>Upstream RTB approval</dt>
+              <dd>
+                {pack.rtbApprovalStatus ?? "unknown"} · strategy approval does
+                not approve product proof
+              </dd>
               <dt>Product</dt>
               <dd>{pack.product || "Not supplied"}</dd>
               <dt>Channel</dt>
@@ -698,7 +953,7 @@ export default function InsightDiscoveryWorkspace({
             </label>
             <button
               className="button primary"
-              disabled={!briefLine.trim() || busy.length > 0}
+              disabled={!briefLine.trim()}
               onClick={onApprove}
             >
               Approve human-authored strategy <ArrowRight size={14} />
