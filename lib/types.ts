@@ -87,6 +87,7 @@ export interface SynthesisRequest {
   weights: Record<string, number>;
 }
 export interface ApprovedStrategy {
+  discoveryCanvas?: DiscoveryApprovedCanvas;
   approvalState?: "Approved";
   sourcePerspectives?: SelectedBriefLine[];
   briefLine: string;
@@ -154,6 +155,7 @@ export interface DiscoveryEvidenceReference {
   accessScope: "supplied" | "connected" | "restricted";
 }
 export interface DiscoveryFinding {
+  provider?: "mock" | "openai";
   id: string;
   researchRunId?: string;
   createdAt?: string;
@@ -171,6 +173,12 @@ export interface DiscoveryFinding {
   runVersion: number;
 }
 export interface DiscoveryThreadMessage {
+  inputPackVersion?: string;
+  question?: string;
+  investigationType?: "problem" | "hypothesis";
+  lensId?: DiscoveryLensId;
+  findingRef?: string;
+  researchRunId?: string;
   id: string;
   author: "Kevin" | "Agent";
   text: string;
@@ -179,6 +187,8 @@ export interface DiscoveryThreadMessage {
   usedNewRetrieval?: boolean;
 }
 export interface DiscoveryRunVersion {
+  cards?: import("./discovery-contract").DiscoveryCardContract[];
+  inputPackSnapshot?: StrategyInputPack;
   id: string;
   number: number;
   question: string;
@@ -194,16 +204,23 @@ export interface DiscoveryRunVersion {
 }
 export interface DiscoveryLensRun {
   lensId: DiscoveryLensId;
-  status: "idle" | "researching" | "complete" | "failed";
+  status: "idle" | "researching" | "complete" | "failed" | "cancelled";
+  retryRequest?: DiscoveryRetryRequest;
   versions: DiscoveryRunVersion[];
   currentVersionId: string;
   thread: DiscoveryThreadMessage[];
   error?: string;
 }
 export interface DiscoveryConnectionNote {
+  demo?: boolean;
   id: string;
   findingIds: string[];
-  findingVersions: { findingId: string; runVersion: number }[];
+  findingVersions: {
+    findingId: string;
+    runVersion: number;
+    researchRunId?: string;
+    inputPackVersion?: string;
+  }[];
   relationships: string[];
   tensions: string[];
   questions: string[];
@@ -212,6 +229,14 @@ export interface DiscoveryConnectionNote {
   editedByKevin: boolean;
 }
 export interface DiscoveryState {
+  drafts?: {
+    agents: Partial<Record<DiscoveryLensId, string>>;
+    findings: Record<string, string>;
+    routes: Record<string, DiscoveryLensId>;
+    connections: string;
+  };
+  asideFindingIds?: string[];
+  workspaceView?: "discovery" | "canvas";
   investigationType: "problem" | "hypothesis";
   problemStatement?: string;
   evidenceInsights?: string;
@@ -228,6 +253,24 @@ export interface DiscoveryState {
   strategicDirection?: string;
   humanBriefLine?: string;
   openQuestions: string;
+}
+export interface DiscoveryRetryRequest {
+  lensId: DiscoveryLensId;
+  action: DiscoveryAction;
+  guidance: string;
+  selectedFinding?: DiscoveryFinding;
+  routedFromLens?: DiscoveryLensId;
+}
+export interface DiscoveryApprovedCanvas {
+  problem: string;
+  evidenceInsights: string;
+  hypothesis: string;
+  strategicDirection: string;
+  briefLine: string;
+  openQuestions: string;
+  notes: string;
+  inputPackVersion: string;
+  findingReferences: string[];
 }
 export interface StrategySession {
   synthesisResults?: AgentResponse<AgentDataMap["synthesis"]>[];

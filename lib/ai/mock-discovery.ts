@@ -1,4 +1,5 @@
 import type { AgentDataMap, AgentRequest } from "./schemas";
+import { discoverySourceDocuments } from "../discovery-sources";
 
 type DiscoveryRequest = Extract<AgentRequest, { agentType: "discovery" }>;
 
@@ -67,15 +68,20 @@ export function mockDiscovery(
     lens === "consumer"
       ? usable(foundation.campaignContext.audience)
       : lens === "culture"
-        ? usable(foundation.currentResearch)
+        ? usable(
+            discoverySourceDocuments(foundation).find(
+              (source) => source.identity === "Original upstream research",
+            )?.text,
+          )
         : lens === "category"
           ? usable(foundation.campaignContext.objective)
           : lens === "brand"
-            ? usable(foundation.currentRtb.original)
-            : usable(
-                foundation.selectedSparks[0]?.excerpt ||
-                  foundation.selectedSparks[0]?.text,
-              );
+            ? usable(
+                discoverySourceDocuments(foundation).find(
+                  (source) => source.identity === "Original RTB",
+                )?.text,
+              )
+            : "";
   const source =
     lens === "consumer"
       ? "IMC brief — audience"
@@ -86,7 +92,9 @@ export function mockDiscovery(
           : lens === "brand"
             ? "Original RTB"
             : "Selected Spark";
-  const supported = Boolean(primary);
+  const supported =
+    Boolean(primary) &&
+    !["find_contrary", "check_recency"].includes(request.context.action);
   const actionLead =
     request.context.action === "find_contrary"
       ? "A competing explanation remains plausible"
@@ -102,7 +110,11 @@ export function mockDiscovery(
                 ? "The finding points to a more specific evidence need"
                 : copy.title;
   const finding = {
-    title: selected ? actionLead : copy.title,
+    title:
+      selected ||
+      ["find_contrary", "check_recency"].includes(request.context.action)
+        ? actionLead
+        : copy.title,
     whatWeFound: supported
       ? `The supplied material documents a relevant starting point for the ${lens} investigation, but it does not by itself establish the cause of the campaign problem.`
       : `The supplied material does not contain enough evidence to establish a ${lens} finding for this investigation.`,

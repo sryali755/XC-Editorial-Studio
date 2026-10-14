@@ -98,6 +98,7 @@ const discoveryFinding = z
   })
   .strict();
 const discoveryFindingWithProvenance = discoveryFinding.extend({
+  provider: z.enum(["mock", "openai"]).optional(),
   id: item,
   researchRunId: text.optional(),
   createdAt: text.optional(),

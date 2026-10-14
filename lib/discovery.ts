@@ -1,6 +1,7 @@
-import { runAgent } from "./ai/client";
+import { runDiscoveryAgent } from "./ai/discovery-client";
 import { selectedFoundation } from "./ai/context";
-import { researchSources } from "./preparation";
+import { discoveryCoverage } from "./discovery-sources";
+import { discoveryCardContract } from "./discovery-contract";
 import type {
   DiscoveryAction,
   DiscoveryConnectionNote,
@@ -80,13 +81,7 @@ function canonical(value: unknown): string {
 }
 
 export function inputPackVersion(pack: StrategyInputPack) {
-  const text = canonical({
-    source: pack.parsedIMC?.sourceText ?? "",
-    rtb: pack.reasonToBelieve,
-    research: pack.research,
-    sparks: pack.selectedSparks,
-    constraints: pack.constraints,
-  });
+  const text = canonical(selectedFoundation(pack));
   let hash = 2166136261;
   for (let index = 0; index < text.length; index++) {
     hash ^= text.charCodeAt(index);
@@ -118,6 +113,9 @@ export function emptyDiscoveryState(): DiscoveryState {
     hypothesis: "",
     strategicDirection: "",
     openQuestions: "",
+    drafts: { agents: {}, findings: {}, routes: {}, connections: "" },
+    asideFindingIds: [],
+    workspaceView: "discovery",
   };
 }
 
@@ -149,36 +147,9 @@ export function knownDiscoveryFindings(state: DiscoveryState) {
 
 export function discoverySourceCoverage(
   pack: StrategyInputPack,
+  analyzed = false,
 ): DiscoverySourceCoverage[] {
-  const suppliedResearch = Boolean(pack.research.trim());
-  return [
-    {
-      source: "Current XC Input Pack",
-      status: "connected_searched",
-      detail: `Shared context ${inputPackVersion(pack)} was analyzed.`,
-    },
-    {
-      source: "Supplied IMC brief",
-      status: pack.parsedIMC?.sourceText.trim()
-        ? "connected_searched"
-        : "insufficient_evidence",
-      detail: pack.parsedIMC?.sourceText.trim()
-        ? "Supplied text is available to every lens."
-        : "No source brief is present in the current pack.",
-    },
-    {
-      source: "Prepared research",
-      status: suppliedResearch ? "connected_searched" : "insufficient_evidence",
-      detail: suppliedResearch
-        ? "Current Research Agent output is available; it is not automatically verified evidence."
-        : "No current prepared research is available.",
-    },
-    ...researchSources.map((source) => ({
-      source: source.name,
-      status: "not_connected" as const,
-      detail: `${source.purpose}. No live retrieval was performed.`,
-    })),
-  ];
+  return discoveryCoverage(selectedFoundation(pack), analyzed);
 }
 
 export async function generateDiscoveryVersion({
@@ -191,6 +162,7 @@ export async function generateDiscoveryVersion({
   previous,
   selectedFinding,
   routedFromLens,
+  signal,
 }: {
   lensId: DiscoveryLensId;
   pack: StrategyInputPack;
@@ -201,6 +173,7 @@ export async function generateDiscoveryVersion({
   previous: DiscoveryRunVersion[];
   selectedFinding?: DiscoveryFinding;
   routedFromLens?: DiscoveryLensId;
+  signal?: AbortSignal;
 }): Promise<DiscoveryRunVersion> {
   const number = previous.length
     ? Math.max(...previous.map((version) => version.number)) + 1
@@ -208,36 +181,45 @@ export async function generateDiscoveryVersion({
   const preserveFindingId = selectedFinding?.lensId === lensId;
   const current = preserveFindingId
     ? previous.find((version) =>
-        version.findings.some((finding) => finding.id === selectedFinding.id),
+        selectedFinding.researchRunId
+          ? version.id === selectedFinding.researchRunId
+          : version.findings.some(
+              (finding) =>
+                finding.id === selectedFinding.id &&
+                finding.runVersion === selectedFinding.runVersion,
+            ),
       )
     : undefined;
   const previousFindings = previous
     .flatMap((version) => version.findings)
     .slice(0, 30);
-  const response = await runAgent({
-    agentType: "discovery",
-    context: {
-      foundation: selectedFoundation(pack),
-      lens: lensId,
-      investigationType,
-      question,
-      action,
-      previousFindings,
-      ...(selectedFinding ? { selectedFinding } : {}),
-      ...(routedFromLens ? { routedFromLens } : {}),
+  const response = await runDiscoveryAgent(
+    {
+      agentType: "discovery",
+      context: {
+        foundation: selectedFoundation(pack),
+        lens: lensId,
+        investigationType,
+        question,
+        action,
+        previousFindings,
+        ...(selectedFinding ? { selectedFinding } : {}),
+        ...(routedFromLens ? { routedFromLens } : {}),
+      },
+      guidance,
+      versionNumber: number,
+      ...(current
+        ? {
+            previousVersion: {
+              number: current.number,
+              text: current.findings.map((finding) => finding.title).join("\n"),
+              data: responseData(current),
+            },
+          }
+        : {}),
     },
-    guidance,
-    versionNumber: number,
-    ...(current
-      ? {
-          previousVersion: {
-            number: current.number,
-            text: current.findings.map((finding) => finding.title).join("\n"),
-            data: responseData(current),
-          },
-        }
-      : {}),
-  });
+    signal,
+  );
   const versionId = crypto.randomUUID();
   const packVersion = inputPackVersion(pack);
   const createdAt = response.generatedAt;
@@ -250,6 +232,7 @@ export async function generateDiscoveryVersion({
     lensId,
     inputPackVersion: packVersion,
     runVersion: number,
+    provider: response.provider,
     version: number,
     researchRunId: versionId,
     createdAt,
@@ -270,8 +253,10 @@ export async function generateDiscoveryVersion({
     guidance,
     createdAt,
     inputPackVersion: packVersion,
+    inputPackSnapshot: structuredClone(pack),
+    cards: findings.map(discoveryCardContract),
     findings,
-    sourceCoverage: discoverySourceCoverage(pack),
+    sourceCoverage: discoverySourceCoverage(pack, true),
     provider: response.provider,
     ...(response.model ? { model: response.model } : {}),
   };
@@ -297,22 +282,32 @@ export async function connectDiscoveryFindings({
   pack,
   findings,
   guidance,
+  signal,
 }: {
   pack: StrategyInputPack;
   findings: DiscoveryFinding[];
   guidance: string;
+  signal?: AbortSignal;
 }): Promise<DiscoveryConnectionNote> {
-  const response = await runAgent({
-    agentType: "connections",
-    context: { foundation: selectedFoundation(pack), findings },
-    guidance,
-  });
+  const response = await runDiscoveryAgent(
+    {
+      agentType: "connections",
+      context: { foundation: selectedFoundation(pack), findings },
+      guidance,
+    },
+    signal,
+  );
   return {
     id: crypto.randomUUID(),
+    demo:
+      response.provider === "mock" ||
+      findings.some((finding) => finding.provider === "mock"),
     findingIds: findings.map((finding) => finding.id),
     findingVersions: findings.map((finding) => ({
       findingId: finding.id,
       runVersion: finding.runVersion,
+      researchRunId: finding.researchRunId,
+      inputPackVersion: finding.inputPackVersion,
     })),
     relationships: response.data.relationships,
     tensions: response.data.tensions,
