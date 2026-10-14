@@ -139,6 +139,32 @@ test("source coverage is honest and input-pack versions change with evidence con
   expect(state.runs.map((run) => run.lensId)).toEqual(discoveryLensIds);
 });
 
+test("follow-up requests accept exact finding-version provenance", async () => {
+  const first = await generateAgentResponse(request("brand"));
+  const raw = outputSchemas.discovery.parse(first.data).findings[0];
+  const selectedFinding = {
+    ...raw,
+    id: "brand-finding-v1",
+    researchRunId: "brand-run-v1",
+    createdAt: first.generatedAt,
+    updatedAt: first.generatedAt,
+    version: 1,
+    lensId: "brand" as const,
+    inputPackVersion: inputPackVersion(demoPack),
+    runVersion: 1,
+  };
+  const initial = request("brand", "explore_deeper");
+  const followUp = {
+    ...initial,
+    context: {
+      ...initial.context,
+      selectedFinding,
+      previousFindings: [selectedFinding],
+    },
+  };
+  expect(requestSchema.safeParse(followUp).success).toBe(true);
+});
+
 test("connections remain editable interpretations tied to selected finding versions", async () => {
   const consumer = await generateAgentResponse(request("consumer"));
   const brand = await generateAgentResponse(request("brand"));

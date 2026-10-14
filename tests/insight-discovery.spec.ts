@@ -1,192 +1,184 @@
-import { expect, test } from "@playwright/test";
-import { selectedFoundation } from "../lib/ai/context";
+import { expect, test, type Page } from "@playwright/test";
 import { mockConnections, mockDiscovery } from "../lib/ai/mock-discovery";
-import { requestSchema } from "../lib/ai/schemas";
-import {
-  discoveryLenses,
-  discoverySourceCoverage,
-  emptyDiscoveryState,
-  inputPackVersion,
-} from "../lib/discovery";
-import { demoPack } from "../lib/demo";
-import { emptyExecution } from "../lib/execution";
-import { emptyPreparation } from "../lib/preparation";
-import type { DiscoveryRunVersion, StrategySession } from "../lib/types";
+import { requestSchema, type AgentRequest } from "../lib/ai/schemas";
+import type { StrategySession } from "../lib/types";
 
-async function openDiscovery(page: import("@playwright/test").Page) {
-  const packVersion = inputPackVersion(demoPack);
-  const question = "What might explain the campaign problem?";
-  const discovery = emptyDiscoveryState();
-  discovery.question = question;
-  discovery.contextVersion = packVersion;
-  discovery.runs = discoveryLenses.map((lens) => {
-    const request = requestSchema.parse({
-      agentType: "discovery",
-      context: {
-        foundation: selectedFoundation(demoPack),
-        lens: lens.id,
-        investigationType: "problem",
-        question,
-        action: "initial",
-        previousFindings: [],
-      },
-      versionNumber: 1,
-    });
-    if (request.agentType !== "discovery") throw new Error("Invalid fixture");
-    const data = mockDiscovery(request);
-    const version: DiscoveryRunVersion = {
-      id: `${lens.id}-v1`,
-      number: 1,
-      question,
-      investigationType: "problem",
-      action: "initial",
-      guidance: "",
-      createdAt: "2026-10-14T12:00:00.000Z",
-      inputPackVersion: packVersion,
-      findings: data.findings.map((finding, index) => ({
-        ...finding,
-        id: `${lens.id}-finding-${index + 1}`,
-        lensId: lens.id,
-        inputPackVersion: packVersion,
-        runVersion: 1,
-      })),
-      sourceCoverage: discoverySourceCoverage(demoPack),
-      provider: "mock",
-    };
-    return {
-      lensId: lens.id,
-      status: "complete" as const,
-      versions: [version],
-      currentVersionId: version.id,
-      thread: [],
-    };
-  });
-  const session: StrategySession = {
-    step: 1,
-    pack: demoPack,
-    preparation: emptyPreparation,
-    sharedPack: demoPack,
-    outputs: [],
-    selected: [],
-    synthesis: [],
-    synthesisResults: [],
-    synthesisSources: [],
-    finalSourceLines: [],
-    finalLine: "",
-    finalSource: "",
-    approved: null,
-    execution: emptyExecution,
-    brief: null,
-    discovery,
-  };
-  await page.addInitScript(
-    ({ session }) =>
-      sessionStorage.setItem("xc-strategy-session-v1", JSON.stringify(session)),
-    { session },
+const flagEnabled = process.env.NEXT_PUBLIC_INSIGHT_DISCOVERY === "true";
+const readSession = (page: Page): Promise<StrategySession> =>
+  page.evaluate(() =>
+    JSON.parse(sessionStorage.getItem("xc-strategy-session-v1")!),
   );
-  await page.route("**/api/ai/agent", async (route) => {
-    const request = requestSchema.parse(route.request().postDataJSON());
-    const data =
-      request.agentType === "discovery"
-        ? mockDiscovery(request)
-        : request.agentType === "connections"
-          ? mockConnections(request)
-          : null;
-    if (!data) return route.abort();
-    await route.fulfill({
-      json: {
-        provider: "mock",
-        generatedAt: new Date().toISOString(),
-        data,
-      },
-    });
-  });
+
+async function prepareInputPack(page: Page) {
   await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "Insight Discovery", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.locator(".lens-tabs button small", { hasText: "complete" }),
-  ).toHaveCount(5);
+  await page.getByRole("button", { name: "Load sample IMC brief" }).click();
+  await page
+    .getByRole("button", { name: "Prepare XC Input Pack", exact: true })
+    .click();
+  const pack = page.getByRole("region", {
+    name: "Dynamic XC Input Pack",
+    exact: true,
+  });
+  await expect(pack.getByRole("checkbox")).toHaveCount(6);
+  await expect(pack.locator(".pack-checks")).toContainText(
+    "3 / 3 preparation outputs match the brief",
+  );
+  await pack.getByRole("checkbox").first().check();
 }
 
-test("discovery preserves lens versions and human work through the downstream handoff", async ({
+test("flag off leaves the restored Round Table entry surface unchanged", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 1100 });
-  await openDiscovery(page);
-
-  await expect(page.locator(".lens-tabs button")).toHaveCount(5);
-  await expect(page.locator(".discovery-card")).toHaveCount(2);
-  await page.locator(".source-coverage > summary").click();
+  test.skip(flagEnabled, "Run this assertion in the flag-off browser suite.");
+  await prepareInputPack(page);
   await expect(
-    page.locator(".source-status.not_connected").first(),
+    page.getByRole("button", { name: "Generate Strategic Perspectives" }),
   ).toBeVisible();
-  await expect(page.locator(".source-coverage-grid")).toContainText(
-    "No live retrieval was performed",
+  await expect(page.locator(".insight-discovery-entry")).toHaveCount(0);
+});
+
+test("flagged Discovery uses the current pack, preserves versions, and hands off only human-approved strategy", async ({
+  page,
+}) => {
+  test.skip(!flagEnabled, "Run this assertion in the flag-on browser suite.");
+  await prepareInputPack(page);
+
+  const calls: Extract<AgentRequest, { agentType: "discovery" }>[] = [];
+  let categoryAttempts = 0;
+  await page.route("**/api/ai/agent", async (route) => {
+    const parsed = requestSchema.parse(route.request().postDataJSON());
+    if (parsed.agentType === "discovery") {
+      calls.push(parsed);
+      if (parsed.context.lens === "category" && categoryAttempts++ === 1) {
+        return route.fulfill({
+          status: 503,
+          json: { error: "Category source temporarily unavailable." },
+        });
+      }
+      return route.fulfill({
+        json: {
+          provider: "mock",
+          generatedAt: new Date().toISOString(),
+          data: mockDiscovery(parsed),
+        },
+      });
+    }
+    if (parsed.agentType === "connections") {
+      return route.fulfill({
+        json: {
+          provider: "mock",
+          generatedAt: new Date().toISOString(),
+          data: mockConnections(parsed),
+        },
+      });
+    }
+    return route.continue();
+  });
+
+  const entry = page.locator(".insight-discovery-entry");
+  await expect(entry).toBeVisible();
+  await entry.getByRole("button", { name: "Start Insight Discovery" }).click();
+  const dialog = page.getByRole("dialog", { name: "Insight Discovery" });
+  await expect(dialog).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Consumer complete/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Category complete/ })).toBeVisible();
+  expect(calls.map((request) => request.context.lens).sort()).toEqual([
+    "analogous",
+    "brand",
+    "category",
+    "consumer",
+    "culture",
+  ]);
+  for (const call of calls) {
+    expect(call.context.foundation).toEqual(calls[0].context.foundation);
+    expect(call.context.foundation.selectedSparks).toHaveLength(1);
+  }
+  await expect(dialog.locator(".discovery-demo-notice")).toContainText(
+    "DEMO DATA",
   );
 
-  const consumerCard = page.locator(".discovery-card").first();
+  await page.getByRole("tab", { name: /Category complete/ }).click();
+  await dialog
+    .locator(".discovery-card")
+    .first()
+    .getByRole("button", { name: "Explore deeper" })
+    .click();
+  await expect(dialog.locator(".lens-error")).toContainText(
+    "Category source temporarily unavailable",
+  );
+  await dialog.getByRole("button", { name: "Retry this lens" }).click();
+  await expect(page.getByRole("tab", { name: /Category complete/ })).toBeVisible();
+  await expect(dialog.locator(".version-picker option")).toHaveCount(2);
+  const updatedCategory = calls.at(-1)!;
+  expect(updatedCategory.context.lens).toBe("category");
+  expect(updatedCategory.context.action).toBe("refresh");
+
+  await page.getByRole("tab", { name: /Consumer complete/ }).click();
+  const consumerCard = dialog.locator(".discovery-card").first();
   await consumerCard
     .getByRole("button", { name: "Save to My Thinking" })
     .click();
   await consumerCard.getByLabel("Select to connect").check();
-  await expect(page.locator(".saved-findings")).toContainText(
-    "The audience definition carries the first unanswered question",
-  );
-
-  await page
-    .locator(".agent-volley")
-    .getByRole("textbox", { name: "Redirect this lens" })
-    .fill(
-      "Focus on existing customers without treating the segment as proven.",
-    );
-  await page
-    .locator(".agent-volley")
-    .getByRole("button", { name: "Explore deeper" })
-    .click();
-  await expect(page.locator(".version-picker option")).toHaveCount(2);
-  await expect(page.locator(".saved-findings")).toContainText(
+  await expect(dialog.locator(".saved-findings")).toContainText(
     "The audience definition carries the first unanswered question",
   );
 
   await page.getByRole("tab", { name: /Brand complete/ }).click();
-  await page
+  await dialog
     .locator(".discovery-card")
     .first()
     .getByLabel("Select to connect")
     .check();
-  await expect(page.locator(".connect-findings")).toContainText("2 selected");
-  await page
+  await dialog
     .locator(".connect-findings")
     .getByRole("button", { name: "Connect these findings" })
     .click();
-  await expect(page.locator(".connection-note")).toContainText(
+  await expect(dialog.locator(".connection-note")).toContainText(
     "INTERPRETATION · NOT VALIDATION",
   );
 
-  await page
+  await dialog
+    .getByRole("textbox", { name: "Problem statement · human authored" })
+    .fill("Households may not see how connectivity helps everyday life.");
+  await dialog
+    .getByRole("textbox", { name: "Evidence / insights · human synthesis" })
+    .fill("The supplied brief names work, entertainment, and everyday life.");
+  await dialog
     .getByRole("textbox", { name: "Working hypothesis" })
-    .fill(
-      "The barrier may be attention, not demand; this remains a hypothesis.",
-    );
-  await page
+    .fill("The barrier may be attention, not demand; this remains a hypothesis.");
+  await dialog
+    .getByRole("textbox", { name: "Strategic direction · human authored" })
+    .fill("Make dependable connection feel useful in the moments that matter.");
+  await dialog
     .getByRole("textbox", { name: "Brief line · written by Kevin" })
-    .fill(
-      "Show how dependable connection gives busy households room for life.",
-    );
+    .fill("Show how dependable connection gives busy households room for life.");
+  await expect(dialog.locator(".discovery-demo-notice")).toContainText(
+    "not live research",
+  );
+
+  await dialog.getByRole("button", { name: "Close Insight Discovery" }).click();
+  await expect(page.locator(".insight-discovery-entry")).toBeVisible();
   await page
+    .locator(".insight-discovery-entry")
+    .getByRole("button", { name: "Start Insight Discovery" })
+    .click();
+  const reopened = page.getByRole("dialog", { name: "Insight Discovery" });
+  await expect(
+    reopened.getByRole("textbox", { name: "Working hypothesis" }),
+  ).toHaveValue("The barrier may be attention, not demand; this remains a hypothesis.");
+  await expect(reopened.locator(".connection-note")).toHaveCount(1);
+  await reopened
     .getByRole("button", { name: "Approve human-authored strategy" })
     .click();
-  await expect(page.getByText("Approved by Kevin")).toBeVisible();
+  await expect(page.locator(".approved-banner")).toContainText(
+    "Human-authored in Insight Discovery",
+  );
   await expect(page.locator(".approved-banner blockquote")).toContainText(
     "Show how dependable connection gives busy households room for life.",
   );
-  await page.getByRole("button", { name: "Return to discovery" }).click();
-  await expect(
-    page.getByRole("textbox", { name: "Working hypothesis" }),
-  ).toHaveValue(
-    "The barrier may be attention, not demand; this remains a hypothesis.",
+  const handedOff = await readSession(page);
+  expect(handedOff.approved?.sourcePerspectives).toEqual([]);
+  expect(handedOff.discovery?.runs.every((run) => run.versions.length >= 1)).toBe(
+    true,
   );
-  await expect(page.locator(".connection-note")).toHaveCount(1);
 });
