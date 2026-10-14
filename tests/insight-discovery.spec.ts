@@ -80,8 +80,12 @@ test("flagged Discovery uses the current pack, preserves versions, and hands off
   await entry.getByRole("button", { name: "Start Insight Discovery" }).click();
   const dialog = page.getByRole("dialog", { name: "Insight Discovery" });
   await expect(dialog).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Consumer complete/ })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Category complete/ })).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: /Consumer complete/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: /Category complete/ }),
+  ).toBeVisible();
   expect(calls.map((request) => request.context.lens).sort()).toEqual([
     "analogous",
     "brand",
@@ -107,11 +111,16 @@ test("flagged Discovery uses the current pack, preserves versions, and hands off
     "Category source temporarily unavailable",
   );
   await dialog.getByRole("button", { name: "Retry this lens" }).click();
-  await expect(page.getByRole("tab", { name: /Category complete/ })).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: /Category complete/ }),
+  ).toBeVisible();
   await expect(dialog.locator(".version-picker option")).toHaveCount(2);
   const updatedCategory = calls.at(-1)!;
   expect(updatedCategory.context.lens).toBe("category");
-  expect(updatedCategory.context.action).toBe("refresh");
+  expect(updatedCategory.context.action).toBe("explore_deeper");
+  expect(updatedCategory.context.selectedFinding).toEqual(
+    calls.at(-2)?.context.selectedFinding,
+  );
 
   await page.getByRole("tab", { name: /Consumer complete/ }).click();
   const consumerCard = dialog.locator(".discovery-card").first();
@@ -145,17 +154,23 @@ test("flagged Discovery uses the current pack, preserves versions, and hands off
     .fill("The supplied brief names work, entertainment, and everyday life.");
   await dialog
     .getByRole("textbox", { name: "Working hypothesis" })
-    .fill("The barrier may be attention, not demand; this remains a hypothesis.");
+    .fill(
+      "The barrier may be attention, not demand; this remains a hypothesis.",
+    );
   await dialog
     .getByRole("textbox", { name: "Strategic direction · human authored" })
     .fill("Make dependable connection feel useful in the moments that matter.");
   await dialog
     .getByRole("textbox", { name: "Brief line · written by Kevin" })
-    .fill("Show how dependable connection gives busy households room for life.");
+    .fill(
+      "Show how dependable connection gives busy households room for life.",
+    );
   await expect(dialog.locator(".discovery-demo-notice")).toContainText(
     "not live research",
   );
-  const originalPackVersion = await dialog.locator(".pack-version").textContent();
+  const originalPackVersion = await dialog
+    .locator(".pack-version")
+    .textContent();
 
   await page.evaluate(() => {
     const key = "xc-strategy-session-v1";
@@ -179,7 +194,9 @@ test("flagged Discovery uses the current pack, preserves versions, and hands off
   );
   await expect(
     reopened.getByRole("textbox", { name: "Working hypothesis" }),
-  ).toHaveValue("The barrier may be attention, not demand; this remains a hypothesis.");
+  ).toHaveValue(
+    "The barrier may be attention, not demand; this remains a hypothesis.",
+  );
   await expect(reopened.locator(".connection-note")).toHaveCount(1);
   await reopened.getByRole("button", { name: "Refresh all lenses" }).click();
   await expect(reopened.locator(".discovery-run-status")).toHaveCount(0);
@@ -195,7 +212,7 @@ test("flagged Discovery uses the current pack, preserves versions, and hands off
   );
   const handedOff = await readSession(page);
   expect(handedOff.approved?.sourcePerspectives).toEqual([]);
-  expect(handedOff.discovery?.runs.every((run) => run.versions.length >= 1)).toBe(
-    true,
-  );
+  expect(
+    handedOff.discovery?.runs.every((run) => run.versions.length >= 1),
+  ).toBe(true);
 });
