@@ -89,7 +89,7 @@ export default function DynamicInputPack({
         ? `${currentCount} / 3 current outputs`
         : !selected.length
           ? "Choose your Sparks"
-          : "Ready for discovery";
+          : "Ready for perspectives";
   function saveDirection(slot: "A" | "B") {
     if (!ready) return;
     onChange((s) => ({
@@ -108,7 +108,7 @@ export default function DynamicInputPack({
     });
     setView(null);
     setMessage(
-      `Direction ${slot} loaded into the working pack. Review it before starting discovery.`,
+      `Direction ${slot} loaded into the working pack. Review it before generating perspectives.`,
     );
   }
   function review() {
@@ -273,8 +273,8 @@ export default function DynamicInputPack({
                 <label className="field pack-emphasis">
                   <span>Research emphasis / additional direction</span>
                   <small>
-                    What should all five discovery lenses pay particular
-                    attention to?
+                    What should all five perspectives pay particular attention
+                    to?
                   </small>
                   <textarea
                     rows={3}
@@ -292,11 +292,11 @@ export default function DynamicInputPack({
               </section>
               <aside
                 className="pack-column pack-decision"
-                aria-label="Ready for Insight Discovery"
+                aria-label="Ready for the round table"
               >
                 <div className="pack-column-heading">
                   <span>03</span>
-                  <h3>Ready for Insight Discovery</h3>
+                  <h3>Ready for the round table</h3>
                 </div>
                 <ul className="pack-checks">
                   {checks.map((c) => (
@@ -414,8 +414,8 @@ export default function DynamicInputPack({
             )}
             {hasSession && (
               <p className="notice">
-                Your existing discovery history keeps its original context.
-                Starting again adds refreshed lens versions for this pack.
+                Your existing round table keeps its original context. Generating
+                perspectives again starts a fresh round table with this pack.
               </p>
             )}
             <div
@@ -463,15 +463,15 @@ export default function DynamicInputPack({
                   className="button primary"
                   disabled={!ready}
                   onClick={onGenerate}
-                  aria-label="Start Insight Discovery"
+                  aria-label="Generate Strategic Perspectives"
                 >
                   {generating ? (
-                    "Researching all five lenses…"
+                    "Generating all five perspectives…"
                   ) : (
                     <>
-                      Start{" "}
-                      <span className="pack-generate-label">Insight </span>
-                      Discovery <ArrowRight size={15} />
+                      Generate{" "}
+                      <span className="pack-generate-label">Strategic </span>
+                      Perspectives <ArrowRight size={15} />
                     </>
                   )}
                 </button>

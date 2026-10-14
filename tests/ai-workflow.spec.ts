@@ -86,7 +86,7 @@ test("the pasted IMC brief reports honest failures and each preparation agent re
   await expect(sparks.locator(".card-top")).toContainText("Failed");
   await expect(page.locator(".dynamic-pack .spark-option")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Start Insight Discovery" }),
+    page.getByRole("button", { name: "Generate Strategic Perspectives" }),
   ).toBeDisabled();
   expect((await state()).preparation.outputs).toEqual(
     expect.arrayContaining([
@@ -120,11 +120,11 @@ test("the pasted IMC brief reports honest failures and each preparation agent re
   }
   await sparks.getByRole("checkbox").first().check();
   await expect(
-    page.getByRole("button", { name: "Start Insight Discovery" }),
+    page.getByRole("button", { name: "Generate Strategic Perspectives" }),
   ).toBeEnabled();
 });
 
-test("partial preparation and discovery-lens errors recover independently; structured responses keep human approval explicit", async ({
+test("partial preparation and perspective errors recover independently; structured responses keep approval explicit", async ({
   page,
 }) => {
   const calls: AgentRequest[] = [];
@@ -136,17 +136,11 @@ test("partial preparation and discovery-lens errors recover independently; struc
     if (route.request().method() !== "POST") return route.continue();
     const input: AgentRequest = route.request().postDataJSON();
     calls.push(input);
-    const requestKey = (request: AgentRequest) =>
-      request.agentType === "discovery"
-        ? `discovery:${request.context.lens}`
-        : request.agentType;
     const attempts = calls.filter(
-      (request) => requestKey(request) === requestKey(input),
+      (r) => r.agentType === input.agentType,
     ).length;
     if (
-      (input.agentType === "research" ||
-        (input.agentType === "discovery" &&
-          input.context.lens === "culture")) &&
+      (input.agentType === "research" || input.agentType === "culture") &&
       attempts === 1
     )
       return route.fulfill({
@@ -184,7 +178,7 @@ test("partial preparation and discovery-lens errors recover independently; struc
     "temporarily unavailable",
   );
   await expect(
-    page.getByRole("button", { name: "Start Insight Discovery" }),
+    page.getByRole("button", { name: "Generate Strategic Perspectives" }),
   ).toBeDisabled();
   const rtbId = (await state()).preparation.outputs.find(
     (o) => o.agentId === "reasonToBelieve",
@@ -226,40 +220,44 @@ test("partial preparation and discovery-lens errors recover independently; struc
   const callCount = calls.length;
   await page.waitForTimeout(150);
   expect(calls).toHaveLength(callCount);
-  await page.getByRole("button", { name: "Start Insight Discovery" }).click();
-  await expect(
-    page.locator(".lens-tabs button small", { hasText: "complete" }),
-  ).toHaveCount(4);
-  await page.getByRole("tab", { name: /Culture failed/ }).click();
-  await expect(page.locator(".lens-error").getByRole("alert")).toContainText(
+  await page
+    .getByRole("button", { name: "Generate Strategic Perspectives" })
+    .click();
+  const humor = page.getByRole("article", {
+    name: "Humorous / Witty",
+    exact: true,
+  });
+  const culture = page.getByRole("article", {
+    name: "Cultural / Social",
+    exact: true,
+  });
+  await expect(humor.locator(".current-output")).toBeVisible();
+  await expect(culture.getByRole("alert")).toContainText(
     "temporarily unavailable",
   );
-  await page.getByRole("button", { name: "Retry this lens" }).click();
-  await expect(page.locator(".discovery-card").first()).toBeVisible();
-  const discoveries = calls.filter(
-    (request): request is Extract<AgentRequest, { agentType: "discovery" }> =>
-      request.agentType === "discovery",
+  await culture.getByRole("button", { name: "Retry this perspective" }).click();
+  await expect(culture.locator(".current-output")).toBeVisible();
+  const perspectives = calls.filter((r) =>
+    ["humor", "culture", "audience", "market", "brand"].includes(r.agentType),
   );
-  for (const request of discoveries) {
-    expect(request.context.foundation).toEqual(
-      discoveries[0].context.foundation,
-    );
-    expect(request.context.foundation).toHaveProperty(
-      "selectedSparks.length",
-      1,
-    );
-    expect(request.context.foundation).not.toHaveProperty("parsedIMC");
+  for (const request of perspectives) {
+    expect(request.context).toEqual(perspectives[0].context);
+    expect(request.context).toHaveProperty("selectedSparks.length", 1);
+    expect(request.context).not.toHaveProperty("parsedIMC");
   }
+  await humor.getByRole("button", { name: "Select this version" }).click();
+  await culture.getByRole("button", { name: "Select this version" }).click();
+  await page.getByRole("button", { name: "Combine selected" }).click();
   await page
-    .getByRole("textbox", { name: "Brief line · written by Kevin" })
-    .fill("Show how dependable connection supports the household ritual.");
-  expect((await state()).approved).toBeNull();
-  await page
-    .getByRole("button", { name: "Approve human-authored strategy" })
+    .getByRole("button", { name: "Generate Combined Brief Line" })
     .click();
-  expect((await state()).approved?.source).toBe(
-    "Human-authored in Insight Discovery",
-  );
+  await page
+    .locator(".combined")
+    .getByRole("button", { name: "Use as final line" })
+    .click();
+  expect((await state()).approved).toBeNull();
+  expect((await state()).synthesisResults![0].provider).toBe("openai");
+  await page.getByRole("button", { name: "Approve & Continue" }).click();
   await page
     .getByRole("button", { name: "Load sample execution details" })
     .click();

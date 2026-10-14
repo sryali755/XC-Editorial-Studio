@@ -290,13 +290,13 @@ export function SharedInputPreview({
 }) {
   return (
     <PackDialog
-      title="What the five discovery lenses receive"
+      title="What the five agents receive"
       eyebrow="SHARED INPUT PREVIEW"
       onClose={onClose}
     >
       <p className="context-note">
-        Every discovery lens receives this same working foundation, plus its own
-        investigative discipline. Only selected Sparks travel forward. This
+        Every perspective receives this same working foundation, plus its own
+        role and creative controls. Only selected Sparks travel forward. This
         preview updates with the current pack.
       </p>
       <SharedPackContents pack={pack} />
@@ -339,7 +339,7 @@ export function CompareInputPacks({
       <p className="context-note">
         Each direction saves its Spark choices, preparation versions, emphasis
         and review notes in this tab. Choosing one restores those inputs for
-        review. Starting discovery creates versioned findings from this pack.
+        review. Generating perspectives starts a fresh round table.
       </p>
       {a && b && (
         <details className="pack-fold" open>

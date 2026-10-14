@@ -21,7 +21,7 @@ export default function UpstreamContextPanel({
             not automatically approved.
           </p>
         </div>
-        <span className="tag">Travels with every discovery lens</span>
+        <span className="tag">Travels with every perspective</span>
       </div>
       {editable && (
         <p className="context-note">

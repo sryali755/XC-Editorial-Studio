@@ -18,7 +18,7 @@ async function prepare(page: Page) {
   await expect(card(page).locator(".card-top")).toContainText("V1 · Current");
 }
 
-test("Sparks grounding is independently expandable and reaches every discovery lens only when selected", async ({
+test("Sparks grounding is independently expandable and reaches every perspective only when selected", async ({
   page,
 }) => {
   const requests: AgentRequest[] = [];
@@ -49,20 +49,18 @@ test("Sparks grounding is independently expandable and reaches every discovery l
     (await state(page)).preparation,
     "sparks",
   )!.sparks[0];
-  await page.getByRole("button", { name: "Start Insight Discovery" }).click();
-  await expect(
-    page.locator(".lens-tabs button small", { hasText: "complete" }),
-  ).toHaveCount(5);
-  const discoveries = requests.filter((r) => r.agentType === "discovery");
-  expect(discoveries).toHaveLength(5);
-  for (const request of discoveries) {
-    if (request.agentType !== "discovery")
-      throw new Error("Expected discovery");
-    expect(request.context.foundation.selectedSparks).toHaveLength(1);
-    expect(request.context.foundation.selectedSparks[0]).toMatchObject(
-      selected,
-    );
-    expect(request.context.foundation.selectedSparks[0].rationale).toBeTruthy();
+  await page
+    .getByRole("button", { name: "Generate Strategic Perspectives" })
+    .click();
+  await expect(page.locator(".agent-card")).toHaveCount(5);
+  const perspectives = requests.filter((r) => "campaignContext" in r.context);
+  expect(perspectives).toHaveLength(5);
+  for (const request of perspectives) {
+    if (!("selectedSparks" in request.context))
+      throw new Error("Expected foundation");
+    expect(request.context.selectedSparks).toHaveLength(1);
+    expect(request.context.selectedSparks[0]).toMatchObject(selected);
+    expect(request.context.selectedSparks[0].rationale).toBeTruthy();
   }
   expect((await state(page)).approved).toBeNull();
 });

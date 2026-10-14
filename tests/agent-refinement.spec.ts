@@ -2,7 +2,6 @@ import { test, expect, type Page } from "@playwright/test";
 import { demoPack, personas } from "../lib/demo";
 import { emptyExecution } from "../lib/execution";
 import { emptyPreparation } from "../lib/preparation";
-import { emptyDiscoveryState } from "../lib/discovery";
 import { mockStrategyService } from "../lib/ai/mock-strategy";
 import { requestSchema, type AgentRequest } from "../lib/ai/schemas";
 import type { StrategySession } from "../lib/types";
@@ -11,11 +10,6 @@ import {
   creativeControls,
   isPerspective,
 } from "../lib/creative-controls";
-
-test.skip(
-  true,
-  "The brief-line Round Table and personality controls were intentionally replaced by Insight Discovery.",
-);
 
 const storageKey = "xc-strategy-session-v1";
 const state = (page: Page): Promise<StrategySession> =>
@@ -38,7 +32,6 @@ async function openRoundTable(page: Page, failFirst = false) {
     approved: null,
     execution: emptyExecution,
     brief: null,
-    discovery: emptyDiscoveryState(),
   };
   await page.addInitScript(
     ({ key, session }) => {

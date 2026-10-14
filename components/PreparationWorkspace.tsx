@@ -195,7 +195,7 @@ function PreparationCard({
               <p className="context-note">
                 Keep protects an idea during regeneration; Improve or Replace
                 changes only that idea. Selecting a Spark carries its
-                explanation into Insight Discovery; it does not approve a claim.
+                explanation into the Round Table; it does not approve a claim.
               </p>
             )}
           </>
@@ -733,7 +733,7 @@ export default function PreparationWorkspace({
         <ArrowRight size={15} />
         <span>Select sparks</span>
         <ArrowRight size={15} />
-        <span>5 discovery lenses</span>
+        <span>5 strategic perspectives</span>
       </div>
       {error && (
         <div className="error" role="alert">

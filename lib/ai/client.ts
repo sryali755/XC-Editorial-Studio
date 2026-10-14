@@ -42,7 +42,7 @@ export async function runAgent<T extends AgentType>(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
       // Keep this slightly longer than the server route. The browser must not
-      // abandon a valid response while parallel agents are still working.
+      // abandon a valid response while the five perspectives are still working.
       signal: AbortSignal.timeout(AGENT_REQUEST_TIMEOUT_MS),
     });
   } catch (error) {
@@ -50,7 +50,7 @@ export async function runAgent<T extends AgentType>(
     const timedOut = errorName === "TimeoutError" || errorName === "AbortError";
     throw new AgentRequestError(
       timedOut
-        ? "This agent exceeded the server generation window. Other agents and saved versions are preserved; retry only this agent."
+        ? "This perspective exceeded the server generation window. Your other perspectives and saved versions are preserved; retry this agent."
         : "This agent could not reach the server. Check the connection and retry this agent.",
       timedOut ? 504 : 503,
       timedOut ? "client_generation_timeout" : "server_unreachable",

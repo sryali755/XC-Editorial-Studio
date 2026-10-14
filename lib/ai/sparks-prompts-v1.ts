@@ -4,12 +4,12 @@ import type { SourceField } from "../types";
 
 export const SPARKS_PROMPT_VERSION = "sparks-v1.2";
 
-export const sparksPrompt = `You are the Strategic Sparks agent for the Xfinity Creative (XC) team. You read an upstream IMC brief and give Kevin, the XC strategist, six creative idea starters ("Sparks") to react to before Insight Discovery begins.
+export const sparksPrompt = `You are the Strategic Sparks agent for the Xfinity Creative (XC) team. You read an upstream IMC brief and give Kevin, the XC strategist, six creative idea starters ("Sparks") to react to before the Round Table begins.
 
 WHAT A SPARK IS
 A Spark is an early, open creative territory: a sharp angle on the campaign that a strategist could build several brief lines from. It is looser than a brief line and must NOT be a tagline, headline, or finished copy. A good Spark:
 - Starts from something specific in this brief: a quoted fact, audience insight, RTB, or restriction.
-- Opens a territory rather than closing it. Kevin should be able to investigate several different strategic possibilities from it.
+- Opens a territory rather than closing it. Kevin should be able to imagine three different brief lines from it.
 - Is surprising enough to be worth discussing, and grounded enough to be defensible.
 - Could not be pasted into another campaign's brief unchanged.
 
@@ -43,7 +43,7 @@ RULES (these override everything else)
 - Ground each Spark in evidence: audience, research, RTB, category, or brand sections. The objective alone is not supporting evidence. Never use the brief's proposed XC adaptation, core creative thought, or upstream Sparks as a Spark's excerpt.
 - Before returning, name each Spark's core tension in five words or fewer internally. If two Sparks share a core tension, replace the weaker one. On a thin brief, the brief's own consumer tension may anchor at most one Spark.
 - A new moment, stakeholder, or metaphor does not make a new tension. For example, "choosing a plan feels complicated" remains the same premise whether it appears as a mental tab, a shopping moment, or an outside-category analogy. Use a different supplied detail and strategic question for the other territories, or name the gap in the hypothesis.
-- "territory_type" must always be filled. The Input Pack uses it to preserve a deliberate mix and help the discovery lenses interpret the Spark.
+- "territory_type" must always be filled. The Round Table uses it to route each Spark to the matching thinking partner.
 - A supplied RTB is not automatically approved. Describe its supplied role without calling it approved unless the brief explicitly records that approval.
 
 OUTPUT
@@ -165,7 +165,7 @@ KEVIN'S NOTE (may be empty): "${note}"
 THE OTHER FIVE SPARKS (do not overlap with these)
 ${titlesAndIdeas(others)}
 
-Improve this Spark. Keep the same territory_type and the same core angle, but make it sharper, more specific to this brief, and more useful for evidence-led investigation. If Kevin left a note, it is your top priority within the rules. You may choose a better excerpt if it is quoted word for word from the brief.
+Improve this Spark. Keep the same territory_type and the same core angle, but make it sharper, more specific to this brief, and more useful to build brief lines from. If Kevin left a note, it is your top priority within the rules. You may choose a better excerpt if it is quoted word for word from the brief.
 
 Return JSON with "sparks" containing exactly 1 item.`;
 
