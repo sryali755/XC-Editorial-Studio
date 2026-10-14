@@ -12,6 +12,7 @@ import {
   type AgentRequest,
 } from "./schemas";
 import type { AgentVersion } from "../types";
+import { mockConnections, mockDiscovery } from "./mock-discovery";
 
 export async function generateMock(request: AgentRequest): Promise<AgentData> {
   const { guidance = "", previousVersion } = request;
@@ -154,6 +155,8 @@ export async function generateMock(request: AgentRequest): Promise<AgentData> {
       ],
     };
   }
+  if (request.agentType === "discovery") return mockDiscovery(request);
+  if (request.agentType === "connections") return mockConnections(request);
   if (request.agentType === "synthesis")
     return {
       synthesizedLines: [

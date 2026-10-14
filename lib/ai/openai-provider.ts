@@ -207,7 +207,9 @@ export async function generateOpenAI(
     const settings = validatedModelSettings(
       "openai",
       model,
-      isPerspective(request.agentType)
+      isPerspective(request.agentType) ||
+        request.agentType === "discovery" ||
+        request.agentType === "connections"
         ? {
             reasoningEffort: perspectiveReasoningEffort(request.versionNumber),
             ...requestedSettings,
@@ -246,10 +248,7 @@ export async function generateOpenAI(
           : {}),
         text: {
           ...(settings.verbosity ? { verbosity: settings.verbosity } : {}),
-          format: zodTextFormat(
-            responseSchema,
-            `xc_${request.agentType}`,
-          ),
+          format: zodTextFormat(responseSchema, `xc_${request.agentType}`),
         },
         max_output_tokens: budget,
       }),

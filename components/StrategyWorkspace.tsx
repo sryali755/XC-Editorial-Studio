@@ -1,7 +1,6 @@
 "use client";
 import type { AIStatus } from "@/lib/ai/schemas";
 import Link from "next/link";
-import { personas } from "@/lib/demo";
 import { campaignDisplayName } from "@/lib/campaign-display";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -14,10 +13,11 @@ import {
   Sparkles,
 } from "lucide-react";
 import { emptyExecution, prefillExecution } from "@/lib/execution";
-import { generateXCBrief, strategyService } from "@/lib/services";
+import { generateXCBrief } from "@/lib/services";
 import type {
-  AgentPersona,
-  SelectedBriefLine,
+  DiscoveryAction,
+  DiscoveryFinding,
+  DiscoveryLensId,
   StrategySession,
 } from "@/lib/types";
 import {
@@ -25,19 +25,22 @@ import {
   GeneratedBriefPreview,
   StrategyInputSummary,
 } from "./StrategyPanels";
-import {
-  AgentRoundTable,
-  ApprovalGate,
-  PerspectiveWeighting,
-  SelectedLinesTray,
-} from "./AgentRoundTable";
 import PreparationWorkspace from "./PreparationWorkspace";
 import SavedProjects from "./SavedProjects";
+import InsightDiscoveryWorkspace from "./InsightDiscoveryWorkspace";
 import {
   compileInputPack,
   emptyPreparation,
   preparationReady,
 } from "@/lib/preparation";
+import {
+  connectDiscoveryFindings,
+  discoveryLenses,
+  emptyDiscoveryState,
+  generateDiscoveryVersion,
+  inputPackVersion,
+  knownDiscoveryFindings,
+} from "@/lib/discovery";
 const initial: StrategySession = {
   step: 0,
   pack: compileInputPack(emptyPreparation),
@@ -54,8 +57,14 @@ const initial: StrategySession = {
   approved: null,
   execution: emptyExecution,
   brief: null,
+  discovery: emptyDiscoveryState(),
 };
 const storageKey = "xc-strategy-session-v1";
+function actionLabelsForThread(action: DiscoveryAction) {
+  return action
+    .replaceAll("_", " ")
+    .replace(/^./, (character) => character.toUpperCase());
+}
 export default function StrategyWorkspace({
   aiStatus,
 }: {
@@ -68,7 +77,6 @@ export default function StrategyWorkspace({
   const [agentBusy, setAgentBusy] = useState<string[]>([]);
   const locks = useRef(new Set<string>());
   const [error, setError] = useState("");
-  const [blending, setBlending] = useState(false);
   const [saved, setSaved] = useState(false);
   useEffect(() => {
     try {
@@ -82,10 +90,26 @@ export default function StrategyWorkspace({
           Array.isArray(parsed.selected) &&
           Array.isArray(parsed.synthesis)
         ) {
+          const restoredDiscovery = {
+            ...initial.discovery,
+            ...(parsed.discovery ?? {}),
+            question:
+              parsed.discovery?.question?.trim() ||
+              (parsed.sharedPack?.objective
+                ? `What might explain the campaign problem behind this objective: ${parsed.sharedPack.objective}`
+                : ""),
+            contextVersion:
+              parsed.discovery?.contextVersion ||
+              (parsed.sharedPack ? inputPackVersion(parsed.sharedPack) : ""),
+            runs: Array.isArray(parsed.discovery?.runs)
+              ? parsed.discovery.runs
+              : initial.discovery.runs,
+          };
           // Hydrate the browser-only demonstration session after the server render.
           setSession({
             ...initial,
             ...parsed,
+            discovery: restoredDiscovery,
             step: parsed.step > 1 && !parsed.approved ? 1 : parsed.step,
           });
         }
@@ -144,127 +168,331 @@ export default function StrategyWorkspace({
   async function generate() {
     if (preparing || !preparationReady(session.preparation, aiStatus.mode))
       return;
-    await run("perspectives", async () => {
+    await run("discovery", async () => {
       const sharedPack = structuredClone(compileInputPack(session.preparation));
-      for (const persona of personas) locks.current.add(persona.id);
-      setAgentBusy(personas.map((p) => p.id));
+      const version = inputPackVersion(sharedPack);
+      const question =
+        session.discovery.question.trim() ||
+        `What might explain the campaign problem behind this objective: ${sharedPack.objective}`;
+      const hasDiscoveryHistory = session.discovery.runs.some(
+        (lensRun) => lensRun.versions.length,
+      );
+      const nextDiscovery = {
+        ...session.discovery,
+        question,
+        contextVersion: version,
+        runs: session.discovery.runs.map((lensRun) => ({
+          ...lensRun,
+          status: "researching" as const,
+          error: undefined,
+        })),
+      };
+      setSession((s) => ({
+        ...s,
+        sharedPack,
+        outputs: [],
+        selected: [],
+        synthesis: [],
+        synthesisResults: [],
+        synthesisSources: [],
+        finalSourceLines: [],
+        approved: null,
+        brief: null,
+        discovery: nextDiscovery,
+        step: 1,
+      }));
+      window.scrollTo({ top: 0 });
+      for (const lens of discoveryLenses)
+        locks.current.add(`discovery-${lens.id}`);
+      setAgentBusy(discoveryLenses.map((lens) => lens.id));
       try {
-        const outputs = await strategyService.generatePerspectives(sharedPack);
-        setSession((s) => ({
-          ...s,
-          sharedPack,
-          outputs,
-          selected: [],
-          synthesis: [],
-          synthesisResults: [],
-          synthesisSources: [],
-          finalSourceLines: [],
-          finalLine: "",
-          finalSource: "",
-          approved: null,
-          brief: null,
-          step: 1,
-        }));
-        setBlending(false);
-        window.scrollTo({ top: 0 });
+        await Promise.all(
+          discoveryLenses.map(async (lens) => {
+            const previous =
+              session.discovery.runs.find(
+                (lensRun) => lensRun.lensId === lens.id,
+              )?.versions ?? [];
+            try {
+              const generated = await generateDiscoveryVersion({
+                lensId: lens.id,
+                pack: sharedPack,
+                question,
+                investigationType: nextDiscovery.investigationType,
+                action: hasDiscoveryHistory ? "refresh" : "initial",
+                guidance: "",
+                previous,
+              });
+              setSession((s) => ({
+                ...s,
+                discovery: {
+                  ...s.discovery,
+                  runs: s.discovery.runs.map((lensRun) =>
+                    lensRun.lensId === lens.id
+                      ? {
+                          ...lensRun,
+                          status: "complete",
+                          versions: [generated, ...lensRun.versions],
+                          currentVersionId: generated.id,
+                          error: undefined,
+                        }
+                      : lensRun,
+                  ),
+                },
+              }));
+            } catch (failure) {
+              setSession((s) => ({
+                ...s,
+                discovery: {
+                  ...s.discovery,
+                  runs: s.discovery.runs.map((lensRun) =>
+                    lensRun.lensId === lens.id
+                      ? {
+                          ...lensRun,
+                          status: "failed",
+                          error:
+                            failure instanceof Error
+                              ? failure.message
+                              : "This lens could not complete its research pass.",
+                        }
+                      : lensRun,
+                  ),
+                },
+              }));
+            } finally {
+              locks.current.delete(`discovery-${lens.id}`);
+              setAgentBusy((items) => items.filter((item) => item !== lens.id));
+            }
+          }),
+        );
       } finally {
-        for (const persona of personas) locks.current.delete(persona.id);
-        setAgentBusy([]);
+        for (const lens of discoveryLenses)
+          locks.current.delete(`discovery-${lens.id}`);
       }
     });
   }
-  async function refine(persona: AgentPersona, guidance: string) {
-    if (locks.current.has(persona.id) || !session.sharedPack) return;
+  async function runDiscoveryLens({
+    lensId,
+    action,
+    guidance,
+    selectedFinding,
+    routedFromLens,
+  }: {
+    lensId: DiscoveryLensId;
+    action: DiscoveryAction;
+    guidance: string;
+    selectedFinding?: DiscoveryFinding;
+    routedFromLens?: DiscoveryLensId;
+  }) {
+    const lock = `discovery-${lensId}`;
+    if (locks.current.has(lock) || !session.sharedPack) return;
     const latestPack = currentDownstreamPack();
     if (!latestPack) {
       setError(
-        "The IMC brief or selected inputs changed. Prepare the current input pack before regenerating this perspective.",
+        "Prepare the current IMC brief and selected inputs before researching this lens.",
       );
       return;
     }
-    const packChanged =
-      JSON.stringify(latestPack) !== JSON.stringify(session.sharedPack);
-    locks.current.add(persona.id);
-    setAgentBusy((b) => [...b, persona.id]);
+    const run = session.discovery.runs.find((item) => item.lensId === lensId)!;
+    locks.current.add(lock);
+    setAgentBusy((items) => [...items, lensId]);
     setError("");
+    const userMessage = guidance.trim() || actionLabelsForThread(action);
+    setSession((s) => ({
+      ...s,
+      discovery: {
+        ...s.discovery,
+        runs: s.discovery.runs.map((item) =>
+          item.lensId === lensId
+            ? {
+                ...item,
+                status: "researching",
+                error: undefined,
+                thread: [
+                  ...item.thread,
+                  {
+                    id: crypto.randomUUID(),
+                    author: "Kevin",
+                    text: userMessage,
+                    createdAt: new Date().toISOString(),
+                    action,
+                  },
+                ],
+              }
+            : item,
+        ),
+        ...(selectedFinding
+          ? {
+              findingThreads: {
+                ...s.discovery.findingThreads,
+                [selectedFinding.id]: [
+                  ...(s.discovery.findingThreads[selectedFinding.id] ?? []),
+                  {
+                    id: crypto.randomUUID(),
+                    author: "Kevin" as const,
+                    text: userMessage,
+                    createdAt: new Date().toISOString(),
+                    action,
+                  },
+                ],
+              },
+            }
+          : {}),
+      },
+    }));
     try {
-      const output = session.outputs.find((o) => o.agentId === persona.id)!;
-      const version = await strategyService.refine(
-        persona,
-        latestPack,
-        output.versions,
+      const version = await generateDiscoveryVersion({
+        lensId,
+        pack: latestPack,
+        question: session.discovery.question,
+        investigationType: session.discovery.investigationType,
+        action,
         guidance,
-        output.versions.find((v) => v.id === output.currentVersionId),
-        output.personality,
-        output.refinementMode,
-      );
+        previous: run.versions,
+        selectedFinding,
+        routedFromLens,
+      });
       setSession((s) => ({
         ...s,
         sharedPack: latestPack,
-        ...(packChanged
-          ? {
-              selected: [],
-              synthesis: [],
-              synthesisResults: [],
-              synthesisSources: [],
-              finalSourceLines: [],
-              finalLine: "",
-              finalSource: "",
-              approved: null,
-              brief: null,
-            }
-          : {}),
-        outputs: s.outputs.map((o) =>
-          o.agentId === persona.id
+        discovery: {
+          ...s.discovery,
+          contextVersion: inputPackVersion(latestPack),
+          selectedLensId: lensId,
+          runs: s.discovery.runs.map((item) =>
+            item.lensId === lensId
+              ? {
+                  ...item,
+                  status: "complete",
+                  versions: [version, ...item.versions],
+                  currentVersionId: version.id,
+                  error: undefined,
+                  thread: [
+                    ...item.thread,
+                    {
+                      id: crypto.randomUUID(),
+                      author: "Agent",
+                      text: `${version.findings.length} finding${version.findings.length === 1 ? "" : "s"} returned. ${version.provider === "mock" ? "Demonstration output;" : ""} supplied evidence only; no external connector was searched.`,
+                      createdAt: new Date().toISOString(),
+                      action,
+                      usedNewRetrieval: false,
+                    },
+                  ],
+                }
+              : item,
+          ),
+          ...(selectedFinding
             ? {
-                ...o,
-                versions: [version, ...o.versions],
-                error: undefined,
-                currentVersionId: version.id,
+                findingThreads: {
+                  ...s.discovery.findingThreads,
+                  [selectedFinding.id]: [
+                    ...(s.discovery.findingThreads[selectedFinding.id] ?? []),
+                    {
+                      id: crypto.randomUUID(),
+                      author: "Agent" as const,
+                      text: `The finding was updated in V${version.number}. The response re-analyzed existing supplied evidence; no new source was retrieved.`,
+                      createdAt: new Date().toISOString(),
+                      action,
+                      usedNewRetrieval: false,
+                    },
+                  ],
+                },
               }
-            : o,
-        ),
+            : {}),
+        },
       }));
-    } catch (error) {
+    } catch (failure) {
       setSession((s) => ({
         ...s,
-        outputs: s.outputs.map((o) =>
-          o.agentId === persona.id
-            ? {
-                ...o,
-                error:
-                  error instanceof Error
-                    ? error.message
-                    : "This perspective failed. Please retry.",
-              }
-            : o,
-        ),
+        discovery: {
+          ...s.discovery,
+          runs: s.discovery.runs.map((item) =>
+            item.lensId === lensId
+              ? {
+                  ...item,
+                  status: "failed",
+                  error:
+                    failure instanceof Error
+                      ? failure.message
+                      : "This lens failed. Previous findings are preserved.",
+                }
+              : item,
+          ),
+        },
       }));
     } finally {
-      locks.current.delete(persona.id);
-      setAgentBusy((b) => b.filter((id) => id !== persona.id));
+      locks.current.delete(lock);
+      setAgentBusy((items) => items.filter((item) => item !== lensId));
     }
   }
-  function select(line: SelectedBriefLine) {
-    setSession((s) => ({
-      ...s,
-      selected: s.selected.some((l) => l.id === line.id)
-        ? s.selected.filter((l) => l.id !== line.id)
-        : [...s.selected, line],
-    }));
+  async function refreshDiscovery() {
+    if (!session.sharedPack || !session.discovery.question.trim()) return;
+    await Promise.all(
+      discoveryLenses.map((lens) =>
+        runDiscoveryLens({
+          lensId: lens.id,
+          action: "refresh",
+          guidance: "Refresh this lens against the current Input Pack.",
+        }),
+      ),
+    );
   }
-  function chooseFinal(
-    text: string,
-    source: string,
-    sourceLines: SelectedBriefLine[] = [],
-  ) {
+  async function connectFindings(guidance: string) {
+    if (!session.sharedPack || locks.current.has("connections")) return;
+    const allFindings = knownDiscoveryFindings(session.discovery);
+    const selected = session.discovery.selectedFindingIds
+      .map((id) => allFindings.get(id))
+      .filter((finding): finding is DiscoveryFinding => Boolean(finding));
+    if (selected.length < 2) return;
+    locks.current.add("connections");
+    setAgentBusy((items) => [...items, "connections"]);
+    try {
+      const note = await connectDiscoveryFindings({
+        pack: session.sharedPack,
+        findings: selected,
+        guidance,
+      });
+      setSession((s) => ({
+        ...s,
+        discovery: {
+          ...s.discovery,
+          connectionNotes: [note, ...s.discovery.connectionNotes],
+        },
+      }));
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "The selected findings could not be connected.",
+      );
+    } finally {
+      locks.current.delete("connections");
+      setAgentBusy((items) => items.filter((item) => item !== "connections"));
+    }
+  }
+  function approveHumanStrategy() {
+    if (!session.sharedPack || !session.finalLine.trim()) return;
     update({
-      finalLine: text,
-      finalSource: source,
-      finalSourceLines: structuredClone(sourceLines),
-      approved: null,
+      execution: prefillExecution(
+        session.execution,
+        session.sharedPack,
+        session.executionSourcePack ?? session.approved?.strategyInputPack,
+      ),
+      executionSourcePack: structuredClone(session.sharedPack),
+      approved: {
+        approvalState: "Approved",
+        sourcePerspectives: [],
+        briefLine: session.finalLine.trim(),
+        strategyInputPack: structuredClone(session.sharedPack),
+        approvedAt: new Date().toISOString(),
+        approvedBy: "Kevin",
+        source: "Human-authored in Insight Discovery",
+      },
+      finalSource: "Human-authored in Insight Discovery",
+      finalSourceLines: [],
+      step: 2,
       brief: null,
     });
+    window.scrollTo({ top: 0 });
   }
   async function brief() {
     if (!session.approved) return;
@@ -280,13 +508,13 @@ export default function StrategyWorkspace({
   }
   const titles = [
     "Prepare the Inputs",
-    "Five perspectives. One shared ambition.",
+    "Insight Discovery",
     "From direction to deliverables.",
     "A clearer handoff to Creative.",
   ];
   const descriptions = [
     "Start with the IMC output brief. The same upstream context will be used by the preparation agents to create the working foundation for XC strategy.",
-    "Explore different angles, guide each perspective and choose the brief line that moves the strategy forward.",
+    "Investigate the problem through five evidence disciplines, then develop and approve the strategy yourself.",
     "Your strategy is approved. Add the practical details that turn a strong line into an actionable creative brief.",
     "Your approved strategy and execution direction, brought together in one review-ready document.",
   ];
@@ -305,11 +533,17 @@ export default function StrategyWorkspace({
               setSession({
                 ...initial,
                 ...snapshot,
+                discovery: {
+                  ...initial.discovery,
+                  ...(snapshot.discovery ?? {}),
+                  runs: Array.isArray(snapshot.discovery?.runs)
+                    ? snapshot.discovery.runs
+                    : initial.discovery.runs,
+                },
                 step:
                   snapshot.step > 1 && !snapshot.approved ? 1 : snapshot.step,
               });
               setError("");
-              setBlending(false);
               window.scrollTo({ top: 0 });
             }}
           />
@@ -327,9 +561,9 @@ export default function StrategyWorkspace({
           <div>
             <span className="eyebrow">THE WORKSPACE</span>
             <h2>
-              Strategy
+              Insight
               <br />
-              Round Table<span className="accent">.</span>
+              Discovery<span className="accent">.</span>
             </h2>
             <p>
               Better inputs.
@@ -340,7 +574,7 @@ export default function StrategyWorkspace({
             <nav aria-label="Workflow">
               {[
                 "Strategy input pack",
-                "Agent round table",
+                "Insight discovery",
                 "Execution direction",
                 "Creative brief",
               ].map((label, i) => (
@@ -352,7 +586,7 @@ export default function StrategyWorkspace({
                     !!busy ||
                     preparing ||
                     agentBusy.length > 0 ||
-                    (i === 1 && !session.outputs.length) ||
+                    (i === 1 && !session.sharedPack) ||
                     (i === 2 && !session.approved) ||
                     (i === 3 && !session.brief)
                   }
@@ -374,10 +608,10 @@ export default function StrategyWorkspace({
           <div className="sidebar-bottom">
             <div className="principles">
               <span>
-                01 <b>AI prepares.</b>
+                01 <b>AI gathers evidence.</b>
               </span>
               <span>
-                02 <b>Kevin decides.</b>
+                02 <b>Kevin develops strategy.</b>
               </span>
               <span>
                 03 <b>AI packages.</b>
@@ -416,7 +650,7 @@ export default function StrategyWorkspace({
                 {
                   [
                     "01 / PREPARE THE INPUTS",
-                    "02 / EXPLORE & APPROVE",
+                    "02 / INSIGHT DISCOVERY",
                     "03 / DEFINE THE HANDOFF",
                     "04 / REVIEW THE BRIEF",
                   ][session.step]
@@ -470,174 +704,43 @@ export default function StrategyWorkspace({
               onGenerate={generate}
               onBusyChange={setPreparing}
               generating={!!busy}
-              hasSession={session.outputs.length > 0}
+              hasSession={Boolean(
+                session.sharedPack ||
+                session.discovery.runs.some((run) => run.versions.length),
+              )}
               aiMode={aiStatus.mode}
             />
           )}
           {session.step === 1 && session.sharedPack && (
-            <>
-              <StrategyInputSummary pack={session.sharedPack} />
-              <div className="context-flow">
-                <span />
-                <Layers3 size={14} />
-                <b>Same context.</b> Five distinct lenses.
-                <span />
-              </div>
-              <div className="section-title roundtable-title">
-                <div>
-                  <h2>
-                    Your thinking partners <span className="count">5</span>
-                  </h2>
-                  <p>
-                    Brief lines, not conversations. Refine one perspective at a
-                    time.
-                  </p>
-                </div>
-                <span className="tag" role="status">
-                  {busy === "perspectives"
-                    ? `${session.outputs.filter((o) => o.versions.length || o.error).length} of 5 ready`
-                    : "Independent version histories"}
-                </span>
-              </div>
-              <AgentRoundTable
-                outputs={session.outputs}
-                selected={session.selected}
-                onSelect={select}
-                onRefine={refine}
-                busy={agentBusy}
-                onConfigure={(agentId, patch) =>
-                  setSession((s) => ({
-                    ...s,
-                    outputs: s.outputs.map((o) =>
-                      o.agentId === agentId ? { ...o, ...patch } : o,
-                    ),
-                  }))
-                }
-                onRestore={(agentId, id) =>
-                  setSession((s) => ({
-                    ...s,
-                    outputs: s.outputs.map((o) =>
-                      o.agentId === agentId
-                        ? { ...o, currentVersionId: id }
-                        : o,
-                    ),
-                  }))
-                }
-              />
-              <SelectedLinesTray
-                selected={session.selected}
-                onRemove={(id) =>
-                  update({
-                    selected: session.selected.filter((s) => s.id !== id),
-                  })
-                }
-                onClear={() => update({ selected: [] })}
-                onCombine={() => setBlending(true)}
-                onUse={(s) =>
-                  chooseFinal(s.text, `${s.personaName} · V${s.version}`, [s])
-                }
-              />
-              {blending && (
-                <PerspectiveWeighting
-                  selected={session.selected}
-                  busy={busy === "synthesis"}
-                  onGenerate={(weights) =>
-                    run("synthesis", async () => {
-                      const latestPack = currentDownstreamPack();
-                      if (!latestPack)
-                        throw new Error(
-                          "Prepare the current IMC brief and selected inputs before generating a synthesis.",
-                        );
-                      const result = await strategyService.synthesize({
-                        strategyInputPack: latestPack,
-                        lines: session.selected,
-                        weights,
-                      });
-                      setSession((s) => ({
-                        ...s,
-                        sharedPack: latestPack,
-                        synthesis: [
-                          result.data.synthesizedLines[0].line,
-                          ...s.synthesis,
-                        ],
-                        synthesisResults: [
-                          result,
-                          ...(s.synthesisResults ?? []),
-                        ],
-                        synthesisSources: [
-                          structuredClone(session.selected),
-                          ...(s.synthesisSources ?? []),
-                        ],
-                      }));
-                    })
-                  }
-                />
-              )}{" "}
-              {!!session.synthesis.length && (
-                <section className="panel synthesis">
-                  <span className="eyebrow">COMBINED CANDIDATES</span>
-                  {session.synthesis.map((text, i) => (
-                    <div className="combined" key={i}>
-                      <div>
-                        <span className="version-label">
-                          Synthesis {session.synthesis.length - i}
-                        </span>
-                        <p>“{text}”</p>
-                      </div>
-                      <button
-                        className="button"
-                        onClick={() =>
-                          chooseFinal(
-                            text,
-                            `Synthesis ${session.synthesis.length - i}`,
-                            session.synthesisSources?.[i] ?? [],
-                          )
-                        }
-                      >
-                        Use as final line
-                      </button>
-                    </div>
-                  ))}
-                </section>
-              )}
-              <ApprovalGate
-                value={session.finalLine}
-                source={session.finalSource}
-                onChange={(v) =>
-                  chooseFinal(
-                    v,
-                    "Manually edited by Kevin",
-                    session.finalSourceLines,
-                  )
-                }
-                onApprove={() => {
-                  if (!session.finalLine.trim()) return;
-                  update({
-                    execution: prefillExecution(
-                      session.execution,
-                      session.sharedPack!,
-                      session.executionSourcePack ??
-                        session.approved?.strategyInputPack,
-                    ),
-                    executionSourcePack: structuredClone(session.sharedPack!),
-                    approved: {
-                      approvalState: "Approved",
-                      sourcePerspectives: structuredClone(
-                        session.finalSourceLines ?? [],
-                      ),
-                      briefLine: session.finalLine.trim(),
-                      strategyInputPack: structuredClone(session.sharedPack!),
-                      approvedAt: new Date().toISOString(),
-                      approvedBy: "Kevin",
-                      source: session.finalSource || "Manual",
-                    },
-                    step: 2,
-                    brief: null,
-                  });
-                  window.scrollTo({ top: 0 });
-                }}
-              />
-            </>
+            <InsightDiscoveryWorkspace
+              state={session.discovery}
+              pack={session.sharedPack}
+              briefLine={session.finalLine}
+              busy={agentBusy}
+              onChange={(discovery) => update({ discovery })}
+              onQuestionChange={(question, investigationType) =>
+                setSession((current) => ({
+                  ...current,
+                  discovery: {
+                    ...current.discovery,
+                    question,
+                    investigationType,
+                  },
+                }))
+              }
+              onRunLens={runDiscoveryLens}
+              onRefreshAll={refreshDiscovery}
+              onConnect={connectFindings}
+              onBriefLineChange={(finalLine) =>
+                update({
+                  finalLine,
+                  finalSource: "Human-authored in Insight Discovery",
+                  approved: null,
+                  brief: null,
+                })
+              }
+              onApprove={approveHumanStrategy}
+            />
           )}
           {session.step === 2 && session.approved && (
             <>
@@ -658,7 +761,7 @@ export default function StrategyWorkspace({
                   approval.
                 </p>
                 <button className="text-button" onClick={() => navigate(1)}>
-                  Review strategy <ArrowRight size={14} />
+                  Return to discovery <ArrowRight size={14} />
                 </button>
               </section>
               <StrategyInputSummary pack={session.approved.strategyInputPack} />
@@ -696,7 +799,7 @@ export default function StrategyWorkspace({
             {busy
               ? "Generating response"
               : agentBusy.length
-                ? "Refining perspective"
+                ? "Researching discovery lens"
                 : "Ready"}
           </div>
         </main>

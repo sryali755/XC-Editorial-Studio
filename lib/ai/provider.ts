@@ -72,6 +72,46 @@ function sourceGroundedOnly(
   return suppliedOnly.length ? suppliedOnly : [fallback];
 }
 
+function collectStrings(value: unknown, into: string[] = []): string[] {
+  if (typeof value === "string") into.push(value);
+  else if (Array.isArray(value))
+    for (const item of value) collectStrings(item, into);
+  else if (value && typeof value === "object")
+    for (const item of Object.values(value)) collectStrings(item, into);
+  return into;
+}
+
+function normalizedEvidence(value: string) {
+  return value.toLocaleLowerCase().replace(/\s+/g, " ").trim();
+}
+
+export function discoveryEvidenceIssue(
+  request: Extract<AgentRequest, { agentType: "discovery" }>,
+  data: AgentData,
+) {
+  if (!("findings" in data)) return "The response did not contain findings.";
+  const corpus = collectStrings(request.context.foundation).map(
+    normalizedEvidence,
+  );
+  for (const [index, finding] of data.findings.entries()) {
+    if (
+      finding.evidenceState === "evidence_supported" &&
+      !finding.evidence.length
+    )
+      return `Finding ${index + 1} is labeled evidence-supported but has no evidence.`;
+    if (finding.evidenceState === "research_gap" && finding.evidence.length)
+      return `Finding ${index + 1} is a research gap but presents evidence as a finding.`;
+    for (const evidence of finding.evidence) {
+      if (evidence.accessScope !== "supplied")
+        return `Finding ${index + 1} claims access to a source that is not connected.`;
+      const excerpt = normalizedEvidence(evidence.excerpt);
+      if (!excerpt || !corpus.some((source) => source.includes(excerpt)))
+        return `Finding ${index + 1} includes an excerpt that cannot be verified in the current Input Pack.`;
+    }
+  }
+  return "";
+}
+
 // Source decisions are enforced in application code, not entrusted to model adherence.
 export function preserveSource(
   request: AgentRequest,
@@ -294,7 +334,8 @@ export async function generateAgentResponse(
   } catch (error) {
     if (
       config.mode !== "live" ||
-      (!isPerspective(request.agentType) && request.agentType !== "sparks") ||
+      (!isPerspective(request.agentType) &&
+        !["sparks", "discovery", "connections"].includes(request.agentType)) ||
       !(error instanceof AgentError) ||
       !["model_output_invalid_json", "model_output_schema_invalid"].includes(
         error.code,
@@ -347,10 +388,12 @@ export async function generateAgentResponse(
           const repairRequest: AgentRequest = {
             ...request,
             previousVersion: {
-              number: request.versionNumber ?? request.previousVersion?.number ?? 1,
+              number:
+                request.versionNumber ?? request.previousVersion?.number ?? 1,
               text: generated.sparks
-                .map((spark, sparkIndex) =>
-                  `${sparkIndex + 1}. ${spark.idea || spark.text}`,
+                .map(
+                  (spark, sparkIndex) =>
+                    `${sparkIndex + 1}. ${spark.idea || spark.text}`,
                 )
                 .join("\n\n"),
               data: generated,
@@ -368,7 +411,7 @@ export async function generateAgentResponse(
             undefined,
             1,
             requestId,
-            'Repair only the excerpt. Copy fewer than 30 words exactly from the IMC BRIEF, preserving the words and punctuation; do not add a field label or paraphrase.',
+            "Repair only the excerpt. Copy fewer than 30 words exactly from the IMC BRIEF, preserving the words and punctuation; do not add a field label or paraphrase.",
           );
           if (!("sparks" in repaired))
             throw sparksValidationError(
@@ -384,12 +427,32 @@ export async function generateAgentResponse(
             `[sparks-quality] request=${requestId} spark=${invalidSpark.id} check=excerpt_verbatim retried=true passed=${generated.sparks[index].excerpt_verified === true}`,
           );
         }
-      const repairedIssue = sparkStructuralIssue(
-        generated,
-        request.previousVersion,
-      ) || sparkRevisionIssue(generated, request);
+      const repairedIssue =
+        sparkStructuralIssue(generated, request.previousVersion) ||
+        sparkRevisionIssue(generated, request);
       if (repairedIssue) throw sparksValidationError(repairedIssue);
     }
+  }
+  if (request.agentType === "discovery") {
+    let issue = discoveryEvidenceIssue(request, generated);
+    if (issue && config.mode === "live" && generationAttempt === 0) {
+      generationAttempt = 1;
+      generated = await generateOpenAI(
+        request,
+        undefined,
+        1,
+        requestId,
+        `Correct this discovery-card validation failure: ${issue} Use only exact excerpts copied from the supplied Input Pack. If evidence is absent, return a research_gap with an empty evidence array.`,
+      );
+      issue = discoveryEvidenceIssue(request, generated);
+    }
+    if (issue)
+      throw new AgentError(
+        `${issue} Previous findings are preserved; refine the question or retry this lens.`,
+        422,
+        "discovery_evidence_validation_failed",
+        true,
+      );
   }
   const oldLines =
     "priorCandidates" in request ? (request.priorCandidates ?? []) : [];

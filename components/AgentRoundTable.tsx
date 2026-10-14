@@ -228,7 +228,7 @@ export function AgentCard({
               {detail ? (
                 <>
                   <p>
-                    <strong>Tension:</strong> {detail.tension}
+                    <strong>Insight / Opportunity:</strong> {detail.tension}
                   </p>
                   <p>
                     <strong>Creative territory:</strong> {detail.territory}

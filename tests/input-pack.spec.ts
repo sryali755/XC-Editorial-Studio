@@ -33,7 +33,7 @@ async function prepare(page: Page) {
   );
 }
 
-test("trace, selection tray and preview preserve source and send the exact preview to all five agents", async ({
+test("trace, selection tray and preview preserve source and send the exact preview to all five discovery lenses", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -42,7 +42,8 @@ test("trace, selection tray and preview preserve source and send the exact previ
   page.on("request", (r) => {
     if (r.url().endsWith("/api/ai/agent") && r.method() === "POST") {
       const body = r.postDataJSON();
-      if (body.context?.campaignContext) requests.push(body.context);
+      if (body.agentType === "discovery")
+        requests.push(body.context.foundation);
     }
   });
   await prepare(page);
@@ -72,7 +73,7 @@ test("trace, selection tray and preview preserve source and send the exact previ
     .click();
   await expect(pack(page).getByRole("checkbox").first()).not.toBeChecked();
   await expect(
-    page.getByRole("button", { name: "Generate Strategic Perspectives" }),
+    page.getByRole("button", { name: "Start Insight Discovery" }),
   ).toBeDisabled();
   await pack(page).getByRole("checkbox").nth(1).check();
   await pack(page).getByRole("checkbox").nth(3).check();
@@ -83,7 +84,7 @@ test("trace, selection tray and preview preserve source and send the exact previ
     .getByRole("button", { name: "Preview shared input" })
     .click();
   const preview = page.getByRole("dialog", {
-    name: "What the five agents receive",
+    name: "What the five discovery lenses receive",
   });
   await preview.getByText("Exact shared input · JSON", { exact: true }).click();
   const sent = JSON.parse(
@@ -105,10 +106,10 @@ test("trace, selection tray and preview preserve source and send the exact previ
   await preview.getByRole("button", { name: "Mark pack reviewed" }).click();
   await expect(pack(page)).toContainText("Matches your reviewed pack");
   expect((await session(page)).approved).toBeNull();
-  await page
-    .getByRole("button", { name: "Generate Strategic Perspectives" })
-    .click();
-  await expect(page.locator(".agent-card")).toHaveCount(5);
+  await page.getByRole("button", { name: "Start Insight Discovery" }).click();
+  await expect(
+    page.locator(".lens-tabs button small", { hasText: "complete" }),
+  ).toHaveCount(5);
   expect(requests).toHaveLength(5);
   for (const request of requests) expect(request).toEqual(sent);
   expect(errors).toEqual([]);
@@ -181,7 +182,7 @@ test("Spark replacement explains cleared selections, and saved directions cannot
   await expect(pack(page)).toContainText("Previous selections were cleared.");
   await expect(pack(page)).toContainText("Sparks: V1 → V2.");
   await expect(
-    page.getByRole("button", { name: "Generate Strategic Perspectives" }),
+    page.getByRole("button", { name: "Start Insight Discovery" }),
   ).toBeDisabled();
   await pack(page).getByRole("button", { name: "Compare directions" }).click();
   await page.getByRole("button", { name: "Use Direction A" }).click();
@@ -192,7 +193,7 @@ test("Spark replacement explains cleared selections, and saved directions cannot
       "Campaign: A different campaign\nAudience: Students\nReason to believe: Intentionally excluded.",
     );
   await expect(
-    page.getByRole("button", { name: "Generate Strategic Perspectives" }),
+    page.getByRole("button", { name: "Start Insight Discovery" }),
   ).toBeDisabled();
   await page
     .getByRole("button", { name: "Prepare XC Input Pack", exact: true })
@@ -262,7 +263,7 @@ test("mobile layout keeps tray actions reachable and legacy Sparks show honest m
   await page.getByRole("button", { name: "Close dialog" }).click();
   await expect(tray(page)).toContainText("1 selected");
   await expect(
-    tray(page).getByRole("button", { name: "Generate Strategic Perspectives" }),
+    tray(page).getByRole("button", { name: "Start Insight Discovery" }),
   ).toBeEnabled();
 });
 

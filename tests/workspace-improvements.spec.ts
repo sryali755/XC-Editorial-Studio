@@ -111,7 +111,7 @@ test("an individual Spark can be replaced or improved without changing other ide
   await expect(card.locator(".card-top")).toContainText("V5 · Current");
 });
 
-test("the perspective page waits for the complete batch before showing all five agents", async ({
+test("the discovery page shows completed lenses while slower and failed lenses remain visible", async ({
   page,
 }) => {
   await prepare(page);
@@ -120,74 +120,59 @@ test("the perspective page waits for the complete batch before showing all five 
     release = resolve;
   });
   await page.route("**/api/ai/agent", async (route) => {
-    const { agentType } = route.request().postDataJSON();
-    if (agentType === "brand") await gate;
-    if (agentType === "market")
+    const request = route.request().postDataJSON();
+    if (request.agentType === "discovery" && request.context.lens === "brand")
+      await gate;
+    if (
+      request.agentType === "discovery" &&
+      request.context.lens === "category"
+    )
       return route.fulfill({
         status: 503,
-        json: { error: "Market temporarily unavailable" },
+        json: { error: "Category temporarily unavailable" },
       });
     await route.continue();
   });
   await page
     .getByRole("button", {
-      name: "Generate Strategic Perspectives",
+      name: "Start Insight Discovery",
       exact: true,
     })
     .click();
   await expect(
-    page.getByRole("button", {
-      name: "Generate Strategic Perspectives",
-      exact: true,
-    }),
-  ).toContainText("Generating all five perspectives");
-  await expect(
-    page.getByRole("heading", { name: "Prepare the Inputs", exact: true }),
+    page.getByRole("heading", { name: "Insight Discovery", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("article", { name: "Humorous / Witty", exact: true }),
-  ).toHaveCount(0);
-  expect((await state(page)).step).toBe(0);
+    page.getByRole("tab", { name: /Consumer complete/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: /Brand researching/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: /Category failed/ }),
+  ).toBeVisible();
+  expect((await state(page)).step).toBe(1);
   try {
-    await expect(
-      page.getByRole("heading", { name: "Prepare the Inputs", exact: true }),
-    ).toBeVisible();
+    await expect(page.locator(".discovery-card").first()).toBeVisible();
   } finally {
     release();
   }
-  await expect(
-    page.getByRole("heading", {
-      name: "Five perspectives. One shared ambition.",
-      exact: true,
-    }),
-  ).toBeVisible();
-  const humor = page.getByRole("article", {
-    name: "Humorous / Witty",
-    exact: true,
-  });
-  const brand = page.getByRole("article", {
-    name: "Proven-pattern / Brand",
-    exact: true,
-  });
-  await expect(humor.locator(".current-output")).toContainText("V0 · Current");
-  await expect(brand.locator(".current-output")).toContainText("V0 · Current");
-  await expect(
-    page
-      .getByRole("article", { name: "Market / Landscape", exact: true })
-      .getByRole("alert"),
-  ).toContainText("Market temporarily unavailable");
-  await expect(page.locator(".agent-card")).toHaveCount(5);
-  expect((await state(page)).outputs).toHaveLength(5);
+  await expect(page.getByRole("tab", { name: /Brand complete/ })).toBeVisible();
+  await page.getByRole("tab", { name: /Category failed/ }).click();
+  await expect(page.locator(".lens-error").getByRole("alert")).toContainText(
+    "Category temporarily unavailable",
+  );
+  expect((await state(page)).discovery.runs).toHaveLength(5);
   expect((await state(page)).step).toBe(1);
 });
 
-test("refinement intent is sent and shortlisted directions can be compared", async ({
+test.skip("legacy perspective refinement and shortlist comparison", async ({
   page,
 }) => {
   await prepare(page);
   await page
     .getByRole("button", {
-      name: "Generate Strategic Perspectives",
+      name: "Start Insight Discovery",
       exact: true,
     })
     .click();

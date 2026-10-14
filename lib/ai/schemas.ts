@@ -58,6 +58,50 @@ const perspective = z
     change_note: text,
   })
   .strict();
+export const discoveryLensIds = [
+  "consumer",
+  "culture",
+  "category",
+  "brand",
+  "analogous",
+] as const;
+export const discoveryActions = [
+  "initial",
+  "explore_deeper",
+  "find_contrary",
+  "separate_audience",
+  "check_recency",
+  "compare_input",
+  "ask_another_lens",
+  "refresh",
+] as const;
+const discoveryEvidence = z
+  .object({
+    source: item,
+    excerpt: item,
+    date: text,
+    audience: text,
+    context: text,
+    accessScope: z.enum(["supplied", "connected", "restricted"]),
+  })
+  .strict();
+const discoveryFinding = z
+  .object({
+    title: item,
+    whatWeFound: text,
+    evidence: z.array(discoveryEvidence).max(4),
+    whyItMayMatter: text,
+    whatComplicatesIt: text,
+    questionToExplore: item,
+    evidenceState: z.enum(["evidence_supported", "research_gap"]),
+  })
+  .strict();
+const discoveryFindingWithProvenance = discoveryFinding.extend({
+  id: item,
+  lensId: z.enum(discoveryLensIds),
+  inputPackVersion: item,
+  runVersion: z.number().int().nonnegative(),
+});
 const spark = z
   .object({
     id: item,
@@ -126,6 +170,20 @@ export const outputSchemas = {
   audience: perspective,
   market: perspective,
   brand: perspective,
+  discovery: z
+    .object({
+      findings: z.array(discoveryFinding).min(1).max(4),
+      retrievalNote: text,
+    })
+    .strict(),
+  connections: z
+    .object({
+      relationships: list,
+      tensions: list,
+      questions: list,
+      note: text,
+    })
+    .strict(),
   synthesis: z.object({ synthesizedLines: z.array(line).length(1) }).strict(),
   finalBrief: z
     .object({
@@ -342,6 +400,36 @@ export const requestSchema = z.discriminatedUnion("agentType", [
         )
         .max(50)
         .optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...base,
+      agentType: z.literal("discovery"),
+      context: z
+        .object({
+          foundation: foundationSchema,
+          lens: z.enum(discoveryLensIds),
+          investigationType: z.enum(["problem", "hypothesis"]),
+          question: item,
+          action: z.enum(discoveryActions),
+          selectedFinding: discoveryFindingWithProvenance.optional(),
+          previousFindings: z.array(discoveryFindingWithProvenance).max(30),
+          routedFromLens: z.enum(discoveryLensIds).optional(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      ...base,
+      agentType: z.literal("connections"),
+      context: z
+        .object({
+          foundation: foundationSchema,
+          findings: z.array(discoveryFindingWithProvenance).min(2).max(12),
+        })
+        .strict(),
     })
     .strict(),
   z

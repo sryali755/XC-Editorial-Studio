@@ -15,7 +15,7 @@ const readSession = (page: Page): Promise<StrategySession> =>
     JSON.parse(sessionStorage.getItem("xc-strategy-session-v1")!),
   );
 
-test("research-only V2, restored versions, selected foundation and approved execution remain connected", async ({
+test("research-only V2, restored versions, selected foundation and human-approved execution remain connected", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -92,40 +92,39 @@ test("research-only V2, restored versions, selected foundation and approved exec
   await expect(
     research.getByLabel("Guide Data & Research Agent", { exact: false }),
   ).toHaveValue("Focus on social rituals; validate the household insight.");
-  await page
-    .getByRole("button", { name: "Generate Strategic Perspectives" })
-    .click();
+  await page.getByRole("button", { name: "Start Insight Discovery" }).click();
   await expect(
-    page.getByRole("article", { name: "Humorous / Witty" }),
-  ).toBeVisible();
-  const roundTable = await readSession(page);
-  expect(roundTable.outputs).toHaveLength(5);
-  const sparkOutput = roundTable.preparation.outputs.find(
+    page.locator(".lens-tabs button small", { hasText: "complete" }),
+  ).toHaveCount(5);
+  const discovery = await readSession(page);
+  expect(discovery.discovery.runs).toHaveLength(5);
+  expect(
+    discovery.discovery.runs.every((run) => run.versions.length === 1),
+  ).toBe(true);
+  const sparkOutput = discovery.preparation.outputs.find(
     (o) => o.agentId === "sparks",
   )!;
   const currentSparks = sparkOutput.versions.find(
     (v) => v.id === sparkOutput.currentVersionId,
   )!;
-  expect(roundTable.sharedPack!.sparks).toBe(
+  expect(discovery.sharedPack!.sparks).toBe(
     [currentSparks.sparks[0].text, currentSparks.sparks[2].text].join("\n"),
   );
-  expect(roundTable.sharedPack!.selectedSparks).toHaveLength(2);
-  expect(roundTable.sharedPack!.research).toContain("REFINEMENT V2");
-  expect(roundTable.sharedPack!.researchFocus).toBe(
+  expect(discovery.sharedPack!.selectedSparks).toHaveLength(2);
+  expect(discovery.sharedPack!.research).toContain("REFINEMENT V2");
+  expect(discovery.sharedPack!.researchFocus).toBe(
     "Explore a shared social ritual.",
   );
-  expect(roundTable.approved).toBeNull();
+  expect(discovery.approved).toBeNull();
   await expect(
     page.getByRole("button", { name: /Execution direction/ }),
   ).toBeDisabled();
   await page
-    .getByRole("article", { name: "Humorous / Witty" })
-    .getByRole("button", { name: "Select this version" })
-    .click();
+    .getByRole("textbox", { name: "Brief line · written by Kevin" })
+    .fill("Make dependable connection feel useful in the household ritual.");
   await page
-    .getByRole("button", { name: "Use as final line", exact: true })
+    .getByRole("button", { name: "Approve human-authored strategy" })
     .click();
-  await page.getByRole("button", { name: "Approve & Continue" }).click();
   await expect(
     page.getByText("APPROVED STRATEGY RECORD", { exact: true }),
   ).toBeVisible();
@@ -143,8 +142,9 @@ test("research-only V2, restored versions, selected foundation and approved exec
   ).toBeEmpty();
   const approved = (await readSession(page)).approved!;
   expect(approved.approvalState).toBe("Approved");
-  expect(approved.sourcePerspectives).toHaveLength(1);
-  expect(approved.strategyInputPack).toEqual(roundTable.sharedPack);
+  expect(approved.sourcePerspectives).toHaveLength(0);
+  expect(approved.source).toBe("Human-authored in Insight Discovery");
+  expect(approved.strategyInputPack).toEqual(discovery.sharedPack);
   await page
     .getByLabel("Required assets", { exact: false })
     .fill("Two campaign email headers");
@@ -346,7 +346,7 @@ test("CSV import preserves source fields and does not block sparse briefs", asyn
   ).toContainText("Not supplied in upstream brief");
   await pack.getByRole("checkbox").first().check();
   await expect(
-    page.getByRole("button", { name: "Generate Strategic Perspectives" }),
+    page.getByRole("button", { name: "Start Insight Discovery" }),
   ).toBeEnabled();
 });
 

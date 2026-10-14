@@ -17,6 +17,12 @@ import {
   type SparksRequest,
 } from "./sparks-prompt";
 import { workflowPrompts } from "./workflow-prompts";
+import {
+  CONNECTIONS_PROMPT_VERSION,
+  DISCOVERY_PROMPT_VERSION,
+  connectionsPrompt,
+  discoveryPrompt,
+} from "./discovery-prompts";
 
 export const commonInstructions = `You assist XC strategy. Produce useful creative work within the supplied strategic and evidential boundaries.
 SOURCE CONTRACT: Preparation receives a parsed IMC before any agent runs. Check all parsed fields before deciding anything is missing. Preserve original text for every explicitly supplied field; preserve "Intentionally excluded." for explicit exclusions and "Not supplied." for genuine absences. Upstream facts and their review/approval states remain separate from AI proposals. Never silently replace GTM values, remove qualifications or resolve conflicting source requirements by guessing.
@@ -28,6 +34,8 @@ export const agentPrompts: Record<AgentType, string> = {
   ...workflowPrompts,
   sparks: sparksPrompt,
   ...personaPrompts,
+  discovery: "",
+  connections: "",
 };
 
 export function agentPromptVersion(agent: AgentType) {
@@ -35,9 +43,13 @@ export function agentPromptVersion(agent: AgentType) {
     ? promptTemplateVersion(agent)
     : agent === "sparks"
       ? SPARKS_PROMPT_VERSION
-      : agent === "rtb" || agent === "research"
-        ? `xc-${agent}-3.1`
-        : `xc-${agent}-3.0`;
+      : agent === "discovery"
+        ? DISCOVERY_PROMPT_VERSION
+        : agent === "connections"
+          ? CONNECTIONS_PROMPT_VERSION
+          : agent === "rtb" || agent === "research"
+            ? `xc-${agent}-3.1`
+            : `xc-${agent}-3.0`;
 }
 
 export function buildAgentPrompt(
@@ -79,6 +91,8 @@ export function buildAgentPrompt(
         retryInstruction,
       ),
     };
+  if (request.agentType === "discovery") return discoveryPrompt(request);
+  if (request.agentType === "connections") return connectionsPrompt(request);
   return {
     instructions: [commonInstructions, agentPrompts[request.agentType]].join(
       "\n\n",

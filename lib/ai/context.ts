@@ -29,7 +29,7 @@ export function extractJobToBeDone(source = "") {
   return "";
 }
 
-// Only current outputs and selected sparks cross into perspective/synthesis requests.
+// Only current outputs and selected Sparks cross into downstream agent requests.
 export function selectedFoundation(pack: StrategyInputPack): Foundation {
   const { campaignName, objective, audience, product, channel, constraints } =
     pack;

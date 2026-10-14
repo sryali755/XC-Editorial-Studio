@@ -121,6 +121,105 @@ export interface BriefPayload {
   approvedBriefLine: ApprovedStrategy;
   executionDirection: ExecutionDirection;
 }
+
+export type DiscoveryLensId =
+  "consumer" | "culture" | "category" | "brand" | "analogous";
+export type DiscoverySourceStatus =
+  | "connected_searched"
+  | "available_not_searched"
+  | "not_connected"
+  | "search_failed"
+  | "insufficient_evidence";
+export type DiscoveryAction =
+  | "initial"
+  | "explore_deeper"
+  | "find_contrary"
+  | "separate_audience"
+  | "check_recency"
+  | "compare_input"
+  | "ask_another_lens"
+  | "refresh";
+export interface DiscoverySourceCoverage {
+  source: string;
+  status: DiscoverySourceStatus;
+  detail: string;
+}
+export interface DiscoveryEvidenceReference {
+  source: string;
+  excerpt: string;
+  date: string;
+  audience: string;
+  context: string;
+  accessScope: "supplied" | "connected" | "restricted";
+}
+export interface DiscoveryFinding {
+  id: string;
+  title: string;
+  whatWeFound: string;
+  evidence: DiscoveryEvidenceReference[];
+  whyItMayMatter: string;
+  whatComplicatesIt: string;
+  questionToExplore: string;
+  evidenceState: "evidence_supported" | "research_gap";
+  lensId: DiscoveryLensId;
+  inputPackVersion: string;
+  runVersion: number;
+}
+export interface DiscoveryThreadMessage {
+  id: string;
+  author: "Kevin" | "Agent";
+  text: string;
+  createdAt: string;
+  action?: DiscoveryAction;
+  usedNewRetrieval?: boolean;
+}
+export interface DiscoveryRunVersion {
+  id: string;
+  number: number;
+  question: string;
+  investigationType: "problem" | "hypothesis";
+  action: DiscoveryAction;
+  guidance: string;
+  createdAt: string;
+  inputPackVersion: string;
+  findings: DiscoveryFinding[];
+  sourceCoverage: DiscoverySourceCoverage[];
+  provider?: "mock" | "openai";
+  model?: string;
+}
+export interface DiscoveryLensRun {
+  lensId: DiscoveryLensId;
+  status: "idle" | "researching" | "complete" | "failed";
+  versions: DiscoveryRunVersion[];
+  currentVersionId: string;
+  thread: DiscoveryThreadMessage[];
+  error?: string;
+}
+export interface DiscoveryConnectionNote {
+  id: string;
+  findingIds: string[];
+  findingVersions: { findingId: string; runVersion: number }[];
+  relationships: string[];
+  tensions: string[];
+  questions: string[];
+  note: string;
+  createdAt: string;
+  editedByKevin: boolean;
+}
+export interface DiscoveryState {
+  investigationType: "problem" | "hypothesis";
+  question: string;
+  contextVersion: string;
+  selectedLensId: DiscoveryLensId;
+  runs: DiscoveryLensRun[];
+  savedFindingIds: string[];
+  selectedFindingIds: string[];
+  findingThreads: Record<string, DiscoveryThreadMessage[]>;
+  connectionNotes: DiscoveryConnectionNote[];
+  notes: string;
+  hypothesis: string;
+  openQuestions: string;
+}
 export interface StrategySession {
   synthesisResults?: AgentResponse<AgentDataMap["synthesis"]>[];
   executionSourcePack?: StrategyInputPack;
@@ -138,6 +237,7 @@ export interface StrategySession {
   approved: ApprovedStrategy | null;
   execution: ExecutionDirection;
   brief: GeneratedBrief | null;
+  discovery: DiscoveryState;
 }
 
 export type PreparationAgentId = "reasonToBelieve" | "research" | "sparks";
