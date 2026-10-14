@@ -146,6 +146,7 @@ export interface DiscoverySourceCoverage {
 }
 export interface DiscoveryEvidenceReference {
   source: string;
+  locator?: string;
   excerpt: string;
   date: string;
   audience: string;
@@ -154,6 +155,10 @@ export interface DiscoveryEvidenceReference {
 }
 export interface DiscoveryFinding {
   id: string;
+  researchRunId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  version?: number;
   title: string;
   whatWeFound: string;
   evidence: DiscoveryEvidenceReference[];
@@ -208,6 +213,8 @@ export interface DiscoveryConnectionNote {
 }
 export interface DiscoveryState {
   investigationType: "problem" | "hypothesis";
+  problemStatement?: string;
+  evidenceInsights?: string;
   question: string;
   contextVersion: string;
   selectedLensId: DiscoveryLensId;
@@ -218,6 +225,8 @@ export interface DiscoveryState {
   connectionNotes: DiscoveryConnectionNote[];
   notes: string;
   hypothesis: string;
+  strategicDirection?: string;
+  humanBriefLine?: string;
   openQuestions: string;
 }
 export interface StrategySession {
@@ -237,7 +246,7 @@ export interface StrategySession {
   approved: ApprovedStrategy | null;
   execution: ExecutionDirection;
   brief: GeneratedBrief | null;
-  discovery: DiscoveryState;
+  discovery?: DiscoveryState;
 }
 
 export type PreparationAgentId = "reasonToBelieve" | "research" | "sparks";

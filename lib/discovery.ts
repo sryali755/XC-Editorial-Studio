@@ -112,8 +112,11 @@ export function emptyDiscoveryState(): DiscoveryState {
     selectedFindingIds: [],
     findingThreads: {},
     connectionNotes: [],
+    problemStatement: "",
+    evidenceInsights: "",
     notes: "",
     hypothesis: "",
+    strategicDirection: "",
     openQuestions: "",
   };
 }
@@ -237,6 +240,7 @@ export async function generateDiscoveryVersion({
   });
   const versionId = crypto.randomUUID();
   const packVersion = inputPackVersion(pack);
+  const createdAt = response.generatedAt;
   const generated = response.data.findings.map((finding, index) => ({
     ...finding,
     id:
@@ -246,6 +250,10 @@ export async function generateDiscoveryVersion({
     lensId,
     inputPackVersion: packVersion,
     runVersion: number,
+    version: number,
+    researchRunId: versionId,
+    createdAt,
+    updatedAt: createdAt,
   }));
   const findings =
     selectedFinding && current
@@ -260,7 +268,7 @@ export async function generateDiscoveryVersion({
     investigationType,
     action,
     guidance,
-    createdAt: response.generatedAt,
+    createdAt,
     inputPackVersion: packVersion,
     findings,
     sourceCoverage: discoverySourceCoverage(pack),

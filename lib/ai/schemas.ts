@@ -78,6 +78,7 @@ export const discoveryActions = [
 const discoveryEvidence = z
   .object({
     source: item,
+    locator: text.optional(),
     excerpt: item,
     date: text,
     audience: text,
@@ -98,6 +99,10 @@ const discoveryFinding = z
   .strict();
 const discoveryFindingWithProvenance = discoveryFinding.extend({
   id: item,
+  researchRunId: text.optional(),
+  createdAt: text.optional(),
+  updatedAt: text.optional(),
+  version: z.number().int().nonnegative().optional(),
   lensId: z.enum(discoveryLensIds),
   inputPackVersion: item,
   runVersion: z.number().int().nonnegative(),

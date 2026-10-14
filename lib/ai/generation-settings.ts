@@ -17,7 +17,7 @@ export function perspectiveReasoningEffort(versionNumber = 0) {
   return "low" as const;
 }
 export function outputTokenBudget(agentType: string) {
-  // Legacy perspective endpoints still need room for three developed options.
+  // Three developed Round Table options need room for both reasoning and JSON.
   if (["humor", "culture", "audience", "market", "brand"].includes(agentType))
     return 5000;
   if (agentType === "discovery") return 4500;

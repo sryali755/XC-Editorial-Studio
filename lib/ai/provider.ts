@@ -388,12 +388,10 @@ export async function generateAgentResponse(
           const repairRequest: AgentRequest = {
             ...request,
             previousVersion: {
-              number:
-                request.versionNumber ?? request.previousVersion?.number ?? 1,
+              number: request.versionNumber ?? request.previousVersion?.number ?? 1,
               text: generated.sparks
-                .map(
-                  (spark, sparkIndex) =>
-                    `${sparkIndex + 1}. ${spark.idea || spark.text}`,
+                .map((spark, sparkIndex) =>
+                  `${sparkIndex + 1}. ${spark.idea || spark.text}`,
                 )
                 .join("\n\n"),
               data: generated,
@@ -411,7 +409,7 @@ export async function generateAgentResponse(
             undefined,
             1,
             requestId,
-            "Repair only the excerpt. Copy fewer than 30 words exactly from the IMC BRIEF, preserving the words and punctuation; do not add a field label or paraphrase.",
+            'Repair only the excerpt. Copy fewer than 30 words exactly from the IMC BRIEF, preserving the words and punctuation; do not add a field label or paraphrase.',
           );
           if (!("sparks" in repaired))
             throw sparksValidationError(
@@ -427,9 +425,10 @@ export async function generateAgentResponse(
             `[sparks-quality] request=${requestId} spark=${invalidSpark.id} check=excerpt_verbatim retried=true passed=${generated.sparks[index].excerpt_verified === true}`,
           );
         }
-      const repairedIssue =
-        sparkStructuralIssue(generated, request.previousVersion) ||
-        sparkRevisionIssue(generated, request);
+      const repairedIssue = sparkStructuralIssue(
+        generated,
+        request.previousVersion,
+      ) || sparkRevisionIssue(generated, request);
       if (repairedIssue) throw sparksValidationError(repairedIssue);
     }
   }

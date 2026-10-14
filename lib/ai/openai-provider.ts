@@ -248,7 +248,10 @@ export async function generateOpenAI(
           : {}),
         text: {
           ...(settings.verbosity ? { verbosity: settings.verbosity } : {}),
-          format: zodTextFormat(responseSchema, `xc_${request.agentType}`),
+          format: zodTextFormat(
+            responseSchema,
+            `xc_${request.agentType}`,
+          ),
         },
         max_output_tokens: budget,
       }),

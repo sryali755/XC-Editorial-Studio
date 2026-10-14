@@ -90,6 +90,7 @@ export function discoveryPrompt(
             evidence: [
               {
                 source: "supplied source name",
+                locator: "stable source locator or empty string",
                 excerpt: "exact contiguous excerpt",
                 date: "supplied date or Not supplied",
                 audience: "supplied audience or Not supplied",

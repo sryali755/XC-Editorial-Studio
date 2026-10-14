@@ -21,6 +21,7 @@ import {
   inputPackVersion,
   knownDiscoveryFindings,
 } from "@/lib/discovery";
+import { extractJobToBeDone } from "@/lib/ai/context";
 import type {
   DiscoveryAction,
   DiscoveryFinding,
@@ -110,6 +111,11 @@ function FindingCard({
             ? "Research gap"
             : "Supplied evidence"}
         </span>
+        {currentDiscoveryVersion(
+          state.runs.find((run) => run.lensId === finding.lensId),
+        )?.provider === "mock" && (
+          <span className="evidence-state gap">DEMO DATA</span>
+        )}
         <span>Run V{finding.runVersion}</span>
         {stale && <span className="stale-flag">Needs refresh</span>}
       </div>
@@ -526,6 +532,28 @@ export default function InsightDiscoveryWorkspace({
             </div>
           </div>
           <label className="field">
+            <span>Problem statement · human authored</span>
+            <textarea
+              rows={3}
+              value={state.problemStatement ?? ""}
+              placeholder="What is the issue to overcome? Keep this separate from the upstream RTB and research question."
+              onChange={(event) =>
+                onChange({ ...state, problemStatement: event.target.value })
+              }
+            />
+          </label>
+          <label className="field">
+            <span>Evidence / insights · human synthesis</span>
+            <textarea
+              rows={4}
+              value={state.evidenceInsights ?? ""}
+              placeholder="Record what the supplied evidence supports, with references to saved discoveries."
+              onChange={(event) =>
+                onChange({ ...state, evidenceInsights: event.target.value })
+              }
+            />
+          </label>
+          <label className="field">
             <span>Working hypothesis</span>
             <textarea
               rows={4}
@@ -537,13 +565,13 @@ export default function InsightDiscoveryWorkspace({
             />
           </label>
           <label className="field">
-            <span>Strategy notes</span>
+            <span>Strategic direction · human authored</span>
             <textarea
               rows={5}
-              value={state.notes}
-              placeholder="Capture your interpretation and emerging direction…"
+              value={state.strategicDirection ?? state.notes}
+              placeholder="What should the work do to answer the problem?"
               onChange={(event) =>
-                onChange({ ...state, notes: event.target.value })
+                onChange({ ...state, strategicDirection: event.target.value })
               }
             />
           </label>
@@ -643,6 +671,17 @@ export default function InsightDiscoveryWorkspace({
               <dd>{pack.audience || "Not supplied"}</dd>
               <dt>Proof / RTB</dt>
               <dd>{pack.reasonToBelieve || "Not supplied"}</dd>
+              <dt>Original JTBD</dt>
+              <dd>
+                {extractJobToBeDone(pack.parsedIMC?.sourceText) ||
+                  "Not supplied"}
+              </dd>
+              <dt>Product</dt>
+              <dd>{pack.product || "Not supplied"}</dd>
+              <dt>Channel</dt>
+              <dd>{pack.channel || "Not supplied"}</dd>
+              <dt>Mandatories</dt>
+              <dd>{pack.constraints || "Not supplied"}</dd>
             </dl>
             <label className="field human-brief-line">
               <span>Brief line · written by Kevin</span>
