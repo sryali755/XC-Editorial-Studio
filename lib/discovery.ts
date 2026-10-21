@@ -1,7 +1,13 @@
 import { runDiscoveryAgent } from "./ai/discovery-client";
-import { selectedFoundation } from "./ai/context";
+import {
+  discoveryFoundation as selectedFoundation,
+  discoveryFoundationVersion,
+} from "./discovery-context";
 import { discoveryCoverage } from "./discovery-sources";
 import { discoveryCardContract } from "./discovery-contract";
+import { LENS_CONTRACT_VERSION } from "./discovery-lens-quality";
+import { buildDiscoveryConversationMemory } from "./discovery-conversation-memory";
+import { validateConnectionFindingEvidence } from "./discovery-connection-evidence";
 import type {
   DiscoveryAction,
   DiscoveryConnectionNote,
@@ -11,6 +17,7 @@ import type {
   DiscoveryRunVersion,
   DiscoverySourceCoverage,
   DiscoveryState,
+  DiscoveryThreadMessage,
   StrategyInputPack,
 } from "./types";
 
@@ -70,24 +77,8 @@ export const discoveryLenses: {
   },
 ];
 
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object")
-    return `{${Object.entries(value)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
-      .join(",")}}`;
-  return JSON.stringify(value);
-}
-
 export function inputPackVersion(pack: StrategyInputPack) {
-  const text = canonical(selectedFoundation(pack));
-  let hash = 2166136261;
-  for (let index = 0; index < text.length; index++) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `pack-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+  return discoveryFoundationVersion(selectedFoundation(pack));
 }
 
 export function emptyDiscoveryState(): DiscoveryState {
@@ -163,6 +154,13 @@ export async function generateDiscoveryVersion({
   selectedFinding,
   routedFromLens,
   signal,
+  preparationRole,
+  peerFindings,
+  nextVersionNumber,
+  threadMessages,
+  turnId,
+  threadId,
+  generationContextId,
 }: {
   lensId: DiscoveryLensId;
   pack: StrategyInputPack;
@@ -174,13 +172,29 @@ export async function generateDiscoveryVersion({
   selectedFinding?: DiscoveryFinding;
   routedFromLens?: DiscoveryLensId;
   signal?: AbortSignal;
+  preparationRole?: "data_synthesis" | "evidence_sparks";
+  peerFindings?: DiscoveryFinding[];
+  nextVersionNumber?: number;
+  threadMessages?: DiscoveryThreadMessage[];
+  turnId?: string;
+  threadId?: string;
+  generationContextId?: string;
 }): Promise<DiscoveryRunVersion> {
-  const number = previous.length
-    ? Math.max(...previous.map((version) => version.number)) + 1
-    : 1;
+  const number =
+    nextVersionNumber ??
+    (previous.length
+      ? Math.max(...previous.map((version) => version.number)) + 1
+      : 1);
+  const packVersion = inputPackVersion(pack);
+  const currentContextVersions = previous.filter(
+    (version) =>
+      version.inputPackVersion === packVersion &&
+      version.question === question &&
+      version.investigationType === investigationType,
+  );
   const preserveFindingId = selectedFinding?.lensId === lensId;
   const current = preserveFindingId
-    ? previous.find((version) =>
+    ? currentContextVersions.find((version) =>
         selectedFinding.researchRunId
           ? version.id === selectedFinding.researchRunId
           : version.findings.some(
@@ -189,21 +203,59 @@ export async function generateDiscoveryVersion({
                 finding.runVersion === selectedFinding.runVersion,
             ),
       )
-    : undefined;
-  const previousFindings = previous
+    : currentContextVersions.find(
+        (version) => version.id === generationContextId,
+      );
+  const previousFindings = currentContextVersions
+    .slice()
+    .reverse()
     .flatMap((version) => version.findings)
     .slice(0, 30);
+  const selectedRef = selectedFinding
+    ? discoveryFindingRef(selectedFinding)
+    : undefined;
+  const currentMessageText = guidance.trim() || action.replaceAll("_", " ");
+  const conversation =
+    turnId && threadId && (action !== "initial" || guidance.trim())
+      ? buildDiscoveryConversationMemory({
+          scope: {
+            kind: selectedRef ? "finding" : "agent",
+            threadId,
+            inputPackVersion: packVersion,
+            question,
+            investigationType,
+            ...(selectedRef ? { findingRef: selectedRef } : {}),
+          },
+          previousMessages: threadMessages ?? [],
+          currentMessage: {
+            id: turnId,
+            author: "Kevin",
+            text: currentMessageText,
+            createdAt: new Date().toISOString(),
+            action,
+            inputPackVersion: packVersion,
+            question,
+            investigationType,
+            ...(selectedRef ? { findingRef: selectedRef } : {}),
+          },
+        })
+      : undefined;
   const response = await runDiscoveryAgent(
     {
       agentType: "discovery",
       context: {
+        ...(preparationRole ? { preparationRole } : {}),
         foundation: selectedFoundation(pack),
         lens: lensId,
         investigationType,
         question,
         action,
         previousFindings,
+        ...(peerFindings?.length
+          ? { peerFindings: peerFindings.slice(0, 20) }
+          : {}),
         ...(selectedFinding ? { selectedFinding } : {}),
+        ...(conversation ? { conversation } : {}),
         ...(routedFromLens ? { routedFromLens } : {}),
       },
       guidance,
@@ -221,7 +273,6 @@ export async function generateDiscoveryVersion({
     signal,
   );
   const versionId = crypto.randomUUID();
-  const packVersion = inputPackVersion(pack);
   const createdAt = response.generatedAt;
   const generated = response.data.findings.map((finding, index) => ({
     ...finding,
@@ -244,8 +295,31 @@ export async function generateDiscoveryVersion({
           finding.id === selectedFinding.id ? generated[0] : finding,
         )
       : generated;
+  const allGaps = response.data.findings.every(
+    (finding) => finding.evidenceState === "research_gap",
+  );
+  const retrievalStatus = allGaps
+    ? ["find_contrary", "check_recency"].includes(action)
+      ? ("unavailable" as const)
+      : ("insufficient" as const)
+    : ("supplied_only" as const);
+  const retrievalNote = allGaps
+    ? "Only supplied sources were checked. No external or enterprise source is connected; the available material did not establish this answer."
+    : "Only supplied sources were analyzed; no new evidence was retrieved. Claims remain qualified by their original source.";
+  const revisesFindingRef =
+    current && selectedFinding
+      ? discoveryFindingRef(selectedFinding)
+      : undefined;
+  const revisionSummary =
+    current && selectedFinding
+      ? generated[0]?.whatWeFound === selectedFinding.whatWeFound
+        ? "The selected finding was revisited; its core conclusion did not change. The earlier version remains available."
+        : `The selected finding was revised from V${selectedFinding.runVersion - 1}. The earlier wording and evidence remain available.`
+      : undefined;
   return {
     id: versionId,
+    ...(!preparationRole ? { lensContractVersion: LENS_CONTRACT_VERSION } : {}),
+    ...(preparationRole ? { preparationRole } : {}),
     number,
     question,
     investigationType,
@@ -253,6 +327,10 @@ export async function generateDiscoveryVersion({
     guidance,
     createdAt,
     inputPackVersion: packVersion,
+    retrievalStatus,
+    retrievalNote,
+    ...(revisesFindingRef ? { revisesFindingRef } : {}),
+    ...(revisionSummary ? { revisionSummary } : {}),
     inputPackSnapshot: structuredClone(pack),
     cards: findings.map(discoveryCardContract),
     findings,
@@ -281,24 +359,76 @@ function responseData(version: DiscoveryRunVersion) {
 export async function connectDiscoveryFindings({
   pack,
   findings,
+  sourcePacks,
+  sourceContextConsent = false,
   guidance,
   signal,
 }: {
   pack: StrategyInputPack;
   findings: DiscoveryFinding[];
+  sourcePacks?: StrategyInputPack[];
+  sourceContextConsent?: boolean;
   guidance: string;
   signal?: AbortSignal;
 }): Promise<DiscoveryConnectionNote> {
+  if (findings.length < 2 || findings.length > 12)
+    throw new Error(
+      "Select between 2 and 12 exact finding versions to compare.",
+    );
+  if (new Set(findings.map((finding) => finding.lensId)).size < 2)
+    throw new Error("Select findings from at least two different agents.");
+  if (sourcePacks && sourcePacks.length !== findings.length)
+    throw new Error(
+      "Each selected finding needs its exact source Input Pack snapshot.",
+    );
+  const originals = sourcePacks ?? findings.map(() => pack);
+  const campaignIdentity = (value: StrategyInputPack) =>
+    value.parsedIMC?.sourceText ||
+    JSON.stringify([
+      value.campaignName,
+      value.objective,
+      value.audience,
+      value.product,
+    ]);
+  findings.forEach((finding, index) => {
+    const sourcePack = originals[index];
+    if (campaignIdentity(sourcePack) !== campaignIdentity(pack))
+      throw new Error("Findings from different campaigns cannot be compared.");
+    if (inputPackVersion(sourcePack) !== finding.inputPackVersion)
+      throw new Error(
+        `The source Input Pack version for ${finding.title} does not match the selected finding.`,
+      );
+    if (
+      inputPackVersion(sourcePack) !== inputPackVersion(pack) &&
+      !sourceContextConsent
+    )
+      throw new Error(
+        "Earlier-context findings require explicit consent for this exact selection.",
+      );
+    const evidenceIssue = validateConnectionFindingEvidence(sourcePack, [
+      finding,
+    ]);
+    if (evidenceIssue) throw new Error(evidenceIssue);
+  });
   const response = await runDiscoveryAgent(
     {
       agentType: "connections",
-      context: { foundation: selectedFoundation(pack), findings },
+      context: {
+        foundation: selectedFoundation(pack),
+        findings,
+        ...(sourceContextConsent
+          ? { sourceFoundations: originals.map(selectedFoundation) }
+          : {}),
+      },
       guidance,
     },
     signal,
   );
   return {
     id: crypto.randomUUID(),
+    provider: response.provider,
+    retrievalStatus: "supplied_only",
+    sourceContextConsent,
     demo:
       response.provider === "mock" ||
       findings.some((finding) => finding.provider === "mock"),
@@ -313,6 +443,16 @@ export async function connectDiscoveryFindings({
     tensions: response.data.tensions,
     questions: response.data.questions,
     note: response.data.note,
+    generatedNote: response.data.note,
+    editVersions: [],
+    selectedFindingSnapshots: findings.map((finding) => ({
+      findingRef: discoveryFindingRef(finding),
+      lensId: finding.lensId,
+      inputPackVersion: finding.inputPackVersion,
+      title: finding.title,
+      evidence: structuredClone(finding.evidence),
+      whatComplicatesIt: finding.whatComplicatesIt,
+    })),
     createdAt: response.generatedAt,
     editedByKevin: false,
   };

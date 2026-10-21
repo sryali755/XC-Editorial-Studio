@@ -112,6 +112,7 @@ const sets = [
 export function mockSparks(
   upstream: UpstreamContext,
   previousText = "",
+  sourceBrief = "",
 ): AgentDataMap["sparks"]["sparks"] {
   const campaign = fieldText(upstream.fields.campaignName);
   const objective = fieldText(upstream.fields.objective);
@@ -130,9 +131,13 @@ export function mockSparks(
   return candidates.map(
     ({ spark: [title, text, field, validation], territory }, i) => {
       const excerpt =
-        upstream.fields[field].sourceValue ||
-        upstream.fields.campaignName.sourceValue ||
-        fieldText(upstream.fields[field]);
+        [
+          upstream.fields[field].sourceValue,
+          upstream.fields.campaignName.sourceValue,
+          ...sourceBrief.split(/\r?\n/),
+        ].find(
+          (value) => value?.trim().length >= 8 && sourceBrief.includes(value),
+        ) ?? "";
       const idea = `${text} For ${campaign}, connect the opportunity to ${audience} and the supplied objective: ${objective}`;
       return {
         id: `spark-${i + 1}`,
@@ -146,7 +151,7 @@ export function mockSparks(
         idea,
         excerpt,
         hypothesis: validation,
-        excerpt_verified: true,
+        excerpt_verified: excerpt.length >= 8,
       };
     },
   );

@@ -22,7 +22,12 @@ import { aiConfig } from "./config";
 import { AgentError } from "./errors";
 import { generateMock } from "./mock-provider";
 import { generateOpenAI } from "./openai-provider";
-import { validateDiscoveryEvidence } from "./discovery-evidence";
+import { isOfflineModelClient } from "./offline-model-client";
+import type OpenAI from "openai";
+import {
+  normalizeDiscoveryEvidenceMetadata,
+  validateDiscoveryEvidence,
+} from "./discovery-evidence";
 import {
   perspectiveQualityReview,
   perspectiveRetryInstruction,
@@ -39,6 +44,9 @@ import { parseIMCBrief } from "../imc-parser";
 import { fieldText, reconcileUpstream, resolveRtb } from "../upstream";
 import type { SourceField } from "../types";
 import { ROUND_TABLE_PROMPT_VERSIONS } from "../roundtable-prompts";
+import { strategySuggestionIssue } from "./strategy-suggestions";
+import { sourceCampaignNames } from "../imc-source-context";
+import { SPARK_EXCERPT_REPAIR_MARKER } from "./sparks-prompts-v1";
 
 const disconnectedResearchSource =
   /\b(?:Tableau|iSpot|ACE|Datorama|Brand Hub|Product\s*\/\s*Audience Research)\b/i;
@@ -140,7 +148,13 @@ export function preserveSource(
           .map((value) => value.trim())
           .filter((value) => value.length >= 4),
       );
-      const campaign = exactSourceField(fields.campaignName);
+      const campaign = fields.campaignName.note.startsWith(
+        "Human-confirmed campaign name;",
+      )
+        ? fields.campaignName.value
+        : sourceCampaignNames(parsed).length === 1
+          ? sourceCampaignNames(parsed)[0]
+          : exactSourceField(fields.campaignName);
       return {
         ...data,
         campaignName: campaign,
@@ -228,9 +242,25 @@ export function preserveSource(
 }
 export async function generateAgentResponse(
   request: AgentRequest,
+  offlineClient?: OpenAI,
 ): Promise<AgentResponse> {
   const config = aiConfig();
+  const simulatedModel =
+    !!offlineClient &&
+    process.env.XC_OFFLINE_TEST === "1" &&
+    config.mode === "mock" &&
+    isOfflineModelClient(offlineClient);
+  if (offlineClient && !simulatedModel)
+    throw new AgentError(
+      "Only the deterministic offline client may be injected during a mock test run.",
+      503,
+      "offline_test_client_rejected",
+      false,
+    );
   if (config.error) throw new AgentError(config.error, 503);
+  // Exercise the real parsing, validation and retry path without selecting or
+  // constructing a network-connected model client.
+  const mode = simulatedModel ? "live" : config.mode;
   sparkRevisionPlan(request);
   // Re-parse at the trust boundary, never trusting missing/changed parsed values from a client.
   if (
@@ -256,13 +286,13 @@ export async function generateAgentResponse(
   ) {
     const settings =
       "modelSettings" in request ? (request.modelSettings ?? {}) : {};
-    if (config.mode === "mock" && Object.keys(settings).length)
+    if (mode === "mock" && Object.keys(settings).length)
       throw new AgentError(
         "Mock mode does not use model sampling settings. Remove those settings or use live mode.",
         400,
       );
     const effective =
-      config.mode === "live"
+      mode === "live"
         ? validatedModelSettings("openai", config.model, {
             reasoningEffort: perspectiveReasoningEffort(request.versionNumber),
             ...settings,
@@ -282,7 +312,7 @@ export async function generateAgentResponse(
         ? { refinementMode: request.refinementMode }
         : {}),
       modelSettings:
-        config.mode === "live"
+        mode === "live"
           ? {
               ...effective,
               maxOutputTokens: outputTokenBudget(request.agentType),
@@ -296,12 +326,12 @@ export async function generateAgentResponse(
   let generationAttempt = 0;
   let generated: AgentData;
   try {
-    generated = await (config.mode === "live"
-      ? generateOpenAI(request, undefined, 0, requestId)
+    generated = await (mode === "live"
+      ? generateOpenAI(request, offlineClient, 0, requestId)
       : generateMock(request));
   } catch (error) {
     if (
-      config.mode !== "live" ||
+      mode !== "live" ||
       (!isPerspective(request.agentType) &&
         !["sparks", "discovery", "connections"].includes(request.agentType)) ||
       !(error instanceof AgentError) ||
@@ -311,7 +341,7 @@ export async function generateAgentResponse(
     )
       throw error;
     generationAttempt = 1;
-    generated = await generateOpenAI(request, undefined, 1, requestId);
+    generated = await generateOpenAI(request, offlineClient, 1, requestId);
   }
   if (request.agentType === "sparks") {
     const merge = () => {
@@ -324,11 +354,11 @@ export async function generateAgentResponse(
         ? sparkStructuralIssue(generated, request.previousVersion) ||
           sparkRevisionIssue(generated, request)
         : "Invalid Sparks response.";
-    if (issue() && config.mode === "live" && generationAttempt === 0) {
+    if (issue() && mode === "live" && generationAttempt === 0) {
       generationAttempt = 1;
       generated = await generateOpenAI(
         request,
-        undefined,
+        offlineClient,
         1,
         requestId,
         `Correct this validation failure: ${issue()} Return the requested item count and do not repeat another Spark or a previous idea.`,
@@ -350,7 +380,7 @@ export async function generateAgentResponse(
         sourceBrief,
         targetId,
       );
-      if (config.mode === "live")
+      if (mode === "live")
         for (const index of invalidIndexes) {
           const invalidSpark = generated.sparks[index];
           const repairRequest: AgentRequest = {
@@ -376,10 +406,10 @@ export async function generateAgentResponse(
           };
           const repaired = await generateOpenAI(
             repairRequest,
-            undefined,
+            offlineClient,
             1,
             requestId,
-            "Repair only the excerpt. Copy fewer than 30 words exactly from the IMC BRIEF, preserving the words and punctuation; do not add a field label or paraphrase.",
+            `${SPARK_EXCERPT_REPAIR_MARKER} The agent must reselect relevant source support itself. The failed excerpt was ${JSON.stringify(invalidSpark.excerpt || invalidSpark.campaignGrounding)}. Copy a contiguous passage exactly from the raw IMC brief. Never invent evidence or return a quotation from another campaign.`,
           );
           if (!("sparks" in repaired))
             throw sparksValidationError(
@@ -399,19 +429,29 @@ export async function generateAgentResponse(
         sparkStructuralIssue(generated, request.previousVersion) ||
         sparkRevisionIssue(generated, request);
       if (repairedIssue) throw sparksValidationError(repairedIssue);
+      const remainingInvalid = invalidSparkExcerptIndexes(
+        generated,
+        sourceBrief,
+      );
+      if (remainingInvalid.length)
+        throw sparksValidationError(
+          `Each Spark must ground itself in an exact excerpt from the current IMC brief. Unverified Spark slots: ${remainingInvalid.map((index) => index + 1).join(", ")}.`,
+        );
     }
   }
   if (request.agentType === "discovery") {
+    generated = normalizeDiscoveryEvidenceMetadata(request, generated);
     let issue = discoveryEvidenceIssue(request, generated);
-    if (issue && config.mode === "live" && generationAttempt === 0) {
+    if (issue && mode === "live" && generationAttempt === 0) {
       generationAttempt = 1;
       generated = await generateOpenAI(
         request,
-        undefined,
+        offlineClient,
         1,
         requestId,
         `Correct this discovery-card validation failure: ${issue} Use only exact excerpts copied from the supplied Input Pack. If evidence is absent, return a research_gap with an empty evidence array.`,
       );
+      generated = normalizeDiscoveryEvidenceMetadata(request, generated);
       issue = discoveryEvidenceIssue(request, generated);
     }
     if (issue)
@@ -419,6 +459,24 @@ export async function generateAgentResponse(
         `${issue} Previous findings are preserved; refine the question or retry this lens.`,
         422,
         "discovery_evidence_validation_failed",
+        true,
+      );
+  }
+  if (request.agentType === "strategySuggestions") {
+    const parsed = outputSchemas.strategySuggestions.safeParse(generated);
+    if (!parsed.success)
+      throw new AgentError(
+        "The brief-line suggestions were malformed. Your current draft is unchanged; retry suggestions.",
+        422,
+        "strategy_suggestions_invalid",
+        true,
+      );
+    const issue = strategySuggestionIssue(request.context, parsed.data);
+    if (issue)
+      throw new AgentError(
+        `${issue} Your current draft is unchanged; retry suggestions.`,
+        422,
+        "strategy_suggestions_unsupported",
         true,
       );
   }
@@ -441,11 +499,11 @@ export async function generateAgentResponse(
     let review = initialReview;
     const needsRetry =
       Boolean(review.blockingIssue) || review.retryChecks.length > 0;
-    if (needsRetry && config.mode === "live" && generationAttempt === 0) {
+    if (needsRetry && mode === "live" && generationAttempt === 0) {
       generationAttempt = 1;
       generated = await generateOpenAI(
         request,
-        undefined,
+        offlineClient,
         1,
         requestId,
         perspectiveRetryInstruction(review),
@@ -496,12 +554,18 @@ export async function generateAgentResponse(
       "This agent returned an invalid structured response. Please retry.",
     );
   return {
-    provider: config.mode === "live" ? "openai" : "mock",
-    ...(config.mode === "live"
-      ? { model: config.model }
-      : generation
-        ? { model: "deterministic-mock" }
-        : {}),
+    provider: simulatedModel
+      ? "mock"
+      : config.mode === "live"
+        ? "openai"
+        : "mock",
+    ...(simulatedModel
+      ? { model: "deterministic-offline-model" }
+      : config.mode === "live"
+        ? { model: config.model }
+        : generation
+          ? { model: "deterministic-mock" }
+          : {}),
     data: result.data,
     generatedAt: new Date().toISOString(),
     ...(generation ? { generation } : {}),

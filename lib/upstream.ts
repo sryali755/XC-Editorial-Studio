@@ -216,7 +216,7 @@ export function extractUpstream(
 }
 export function getParsedIMC(state: PreparationState): ParsedIMCBrief {
   return state.parsedIMC?.schemaVersion === 1 &&
-    state.parsedIMC.parserVersion === 3 &&
+    state.parsedIMC.parserVersion === 5 &&
     state.parsedIMC.sourceText === state.sourceSnapshot
     ? state.parsedIMC
     : parseIMCBrief(state.sourceSnapshot);

@@ -1,6 +1,16 @@
-import type { AgentData, AgentResponse, AgentDataMap } from "./ai/schemas";
+import type {
+  AgentData,
+  AgentResponse,
+  AgentDataMap,
+  AgentRequest,
+} from "./ai/schemas";
 import type { GenerationRecord } from "./ai/schemas";
 import type { PersonalitySettings } from "./creative-controls";
+import type { StudioIMCRecord } from "./studio-imc-records";
+import type {
+  SourceJobContext,
+  SourceParentPlatform,
+} from "./imc-source-context";
 export interface GenerationMetadata {
   promptTemplateVersion?: string;
   promptVersion?: string;
@@ -17,7 +27,63 @@ export type SparkTerritoryType =
   | "product_truth"
   | "moment"
   | "wildcard";
+export interface CampaignIdentity {
+  origin: "source" | "human_confirmed";
+  sourceReference: string;
+  confirmedAt?: string;
+  // Optional extension keeps previously saved snapshots readable unchanged.
+  id?: string;
+  displayName?: string;
+  sourceName?: string;
+  sourceDocumentTitle?: string;
+  sourceDocumentFileName?: string;
+  sourceCandidate?: {
+    name: string;
+    kind: "explicit" | "cover_title";
+    excerpt: string;
+    locator: string;
+  };
+  humanConfirmedName?: string;
+  confirmationStatus?: "source_confirmed" | "human_confirmed" | "unresolved";
+}
 export interface StrategyInputPack {
+  workspaceBuildId?: string;
+  jtbdContext?: SourceJobContext;
+  parentPlatform?: SourceParentPlatform;
+  campaignIdentity?: CampaignIdentity;
+  imcRecords?: StudioIMCRecord[];
+  originalJTBD?: string;
+  selectedPreparationVersions?: {
+    reasonToBelieve?: string;
+    research?: string;
+    sparks?: string;
+  };
+  selectedPreparationProviders?: Partial<
+    Record<PreparationAgentId, NonNullable<GenerationMetadata["provider"]>>
+  >;
+  preparationGuidance?: {
+    reasonToBelieve?: string;
+    research?: string;
+    sparks?: string;
+  };
+  sourceAvailability?: {
+    source: string;
+    status:
+      "supplied_analyzed" | "supplied_not_analyzed" | DiscoverySourceStatus;
+    detail: string;
+  }[];
+  selectedResearchSources?: string[];
+  selectedResearch?: {
+    id: string;
+    versionId: string;
+    version: number;
+    category: string;
+    text: string;
+    source: string;
+    status: "ai_synthesis" | "supplied";
+  }[];
+  suppliedEvidence?: SuppliedDiscoveryEvidence[];
+  evidenceSparks?: DiscoveryFinding[];
   selectedSparks?: {
     id: string;
     text: string;
@@ -111,6 +177,7 @@ export interface ExecutionDirection {
   constraints: string;
 }
 export interface GeneratedBrief extends GenerationMetadata {
+  campaignIdentity?: CampaignIdentity;
   id: string;
   createdAt: string;
   campaign: string;
@@ -139,6 +206,7 @@ export type DiscoveryAction =
   | "check_recency"
   | "compare_input"
   | "ask_another_lens"
+  | "another_answer"
   | "refresh";
 export interface DiscoverySourceCoverage {
   source: string;
@@ -173,6 +241,21 @@ export interface DiscoveryFinding {
   runVersion: number;
 }
 export interface DiscoveryThreadMessage {
+  regeneratesTurnId?: string;
+  responseVersionId?: string;
+  // Optional for sessions saved before scoped, retryable turns were added.
+  turnId?: string;
+  threadId?: string;
+  campaignKey?: string;
+  scope?: "agent" | "finding";
+  status?: "pending" | "complete" | "failed" | "interrupted" | "cancelled";
+  error?: string;
+  retrievalStatus?:
+    | "supplied_only"
+    | "simulated_fixture"
+    | "unavailable"
+    | "failed"
+    | "insufficient";
   inputPackVersion?: string;
   question?: string;
   investigationType?: "problem" | "hypothesis";
@@ -187,6 +270,12 @@ export interface DiscoveryThreadMessage {
   usedNewRetrieval?: boolean;
 }
 export interface DiscoveryRunVersion {
+  retrievalNote?: string;
+  retrievalStatus?: DiscoveryThreadMessage["retrievalStatus"];
+  revisesFindingRef?: string;
+  revisionSummary?: string;
+  lensContractVersion?: string;
+  preparationRole?: "data_synthesis" | "evidence_sparks";
   cards?: import("./discovery-contract").DiscoveryCardContract[];
   inputPackSnapshot?: StrategyInputPack;
   id: string;
@@ -212,6 +301,21 @@ export interface DiscoveryLensRun {
   error?: string;
 }
 export interface DiscoveryConnectionNote {
+  provider?: "mock" | "openai";
+  retrievalStatus?: "supplied_only";
+  generatedNote?: string;
+  editVersions?: { id: string; text: string; createdAt: string }[];
+  selectedFindingSnapshots?: {
+    findingRef: string;
+    lensId: DiscoveryLensId;
+    inputPackVersion: string;
+    title: string;
+    evidence: DiscoveryEvidenceReference[];
+    whatComplicatesIt: string;
+  }[];
+  sourceContextConsent?: boolean;
+  saved?: boolean;
+  rejected?: boolean;
   demo?: boolean;
   id: string;
   findingIds: string[];
@@ -228,14 +332,63 @@ export interface DiscoveryConnectionNote {
   createdAt: string;
   editedByKevin: boolean;
 }
+export interface WorkspaceStarterField {
+  value: string;
+  kind: "supplied" | "selected" | "interpretation" | "missing";
+  label: string;
+}
 export interface DiscoveryState {
+  workspaceSuggestionsSeeded?: boolean;
+  workspaceSuggestionContext?: {
+    packVersion: string;
+    campaign: string;
+    opened: boolean;
+    framing: string;
+    research: string[];
+    sparks: string[];
+    fields: Record<string, WorkspaceStarterField>;
+    originalFields?: Record<string, WorkspaceStarterField>;
+    reviewPackVersion?: string;
+  };
+  strategySuggestionRuns?: {
+    id: string;
+    createdAt: string;
+    fingerprint: string;
+    inputPackVersion: string;
+    provider: "mock" | "openai";
+    model?: string;
+    context: Extract<
+      AgentRequest,
+      { agentType: "strategySuggestions" }
+    >["context"];
+    options: AgentDataMap["strategySuggestions"]["suggestions"];
+  }[];
+  fieldVersions?: Record<
+    string,
+    { id: string; number: number; value: string; savedAt: string }[]
+  >;
+  activeFieldVersionIds?: Record<string, string>;
+  humanTension?: string;
+  workingAudience?: string;
+  workingJTBD?: string;
+  workingRTB?: string;
+  executionConsiderations?: string;
+  focusByMode?: Partial<Record<"problem" | "hypothesis", string>>;
+  focusedLensId?: DiscoveryLensId;
+  activeFindingRefs?: Partial<Record<DiscoveryLensId, string>>;
+  enabledLensIds?: DiscoveryLensId[];
+  findingsView?: "selected" | "all" | "tensions";
+  wholeBrief?: DiscoveryWholeBrief;
   drafts?: {
+    generations?: Partial<Record<DiscoveryLensId, string>>;
     agents: Partial<Record<DiscoveryLensId, string>>;
     findings: Record<string, string>;
     routes: Record<string, DiscoveryLensId>;
     connections: string;
+    connectionConsentKey?: string;
   };
   asideFindingIds?: string[];
+  archivedSavedFindingIds?: string[];
   workspaceView?: "discovery" | "canvas";
   investigationType: "problem" | "hypothesis";
   problemStatement?: string;
@@ -255,6 +408,15 @@ export interface DiscoveryState {
   openQuestions: string;
 }
 export interface DiscoveryRetryRequest {
+  regeneratesTurnId?: string;
+  operation?: "generation" | "conversation";
+  generationContextId?: string;
+  turnId?: string;
+  threadId?: string;
+  question?: string;
+  investigationType?: "problem" | "hypothesis";
+  inputPackVersion?: string;
+  campaignKey?: string;
   lensId: DiscoveryLensId;
   action: DiscoveryAction;
   guidance: string;
@@ -262,8 +424,14 @@ export interface DiscoveryRetryRequest {
   routedFromLens?: DiscoveryLensId;
 }
 export interface DiscoveryApprovedCanvas {
+  wholeBrief?: DiscoveryWholeBrief;
+  workingAudience?: string;
+  workingRTB?: string;
+  humanTension?: string;
   problem: string;
   evidenceInsights: string;
+  workingJTBD?: string;
+  executionConsiderations?: string;
   hypothesis: string;
   strategicDirection: string;
   briefLine: string;
@@ -271,6 +439,24 @@ export interface DiscoveryApprovedCanvas {
   notes: string;
   inputPackVersion: string;
   findingReferences: string[];
+}
+export interface SuppliedDiscoveryEvidence {
+  id: string;
+  source: string;
+  locator: string;
+  text: string;
+  date: string;
+  audience: string;
+  accessScope: "supplied";
+}
+export interface DiscoveryWholeBrief {
+  context?: string;
+  objective?: string;
+  audience?: string;
+  thoughtStarters?: string;
+  deliverables?: string;
+  mandatories?: string;
+  timelines?: string;
 }
 export interface StrategySession {
   synthesisResults?: AgentResponse<AgentDataMap["synthesis"]>[];
@@ -320,6 +506,8 @@ export interface PreparationVersion extends AgentVersion {
     sourceBrief: string;
     selectedContent: PreparationSelectedContent;
     steeringText: string;
+    selectedResearchSources?: string[];
+    suppliedEvidence?: SuppliedDiscoveryEvidence[];
   };
   sourceBrief: string;
   sparks: {

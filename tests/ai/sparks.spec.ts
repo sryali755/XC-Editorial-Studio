@@ -14,7 +14,7 @@ import {
   generateAgentResponse,
   sparksValidationError,
 } from "../../lib/ai/provider";
-import { resetOpenAIClientForTests } from "../../lib/ai/openai-provider";
+import { createOfflineModelClient } from "../../lib/ai/offline-model-client";
 import { selectedFoundation } from "../../lib/ai/context";
 import {
   foundationSchema,
@@ -201,7 +201,7 @@ test("accepts a verbatim excerpt of a source field and rejects unsupported groun
       "FICTIONAL   supplied campaign.",
       "Campaign: Fictional\n supplied campaign.",
     ),
-  ).toBe("FICTIONAL   supplied campaign.");
+  ).toBeUndefined();
   expect(sparkSetIssue(valid, undefined, parsed)).toBeUndefined();
 
   valid.sparks[3].campaignGrounding =
@@ -236,27 +236,12 @@ function modelSparks(invalidIndex = -1) {
   };
 }
 
-function responseFor(outputText: string) {
-  return new Response(
-    JSON.stringify({
-      id: "resp_sparks_test",
-      object: "response",
-      status: "completed",
-      output: [
-        {
-          type: "message",
-          role: "assistant",
-          content: [{ type: "output_text", text: outputText, annotations: [] }],
-        },
-      ],
-    }),
-    { headers: { "content-type": "application/json" } },
-  );
-}
-
-async function withLiveSparkStub(
+async function withOfflineSparkClient(
   outputs: string[],
-  run: (calls: () => number) => Promise<void>,
+  run: (
+    client: ReturnType<typeof createOfflineModelClient>["sdk"],
+    calls: () => number,
+  ) => Promise<void>,
 ) {
   const saved = {
     AI_MODE: process.env.AI_MODE,
@@ -264,20 +249,14 @@ async function withLiveSparkStub(
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     OPENAI_MODEL: process.env.OPENAI_MODEL,
   };
-  const originalFetch = globalThis.fetch;
-  let call = 0;
-  process.env.AI_MODE = "live";
+  process.env.AI_MODE = "mock";
   process.env.AI_PROVIDER = "openai";
-  process.env.OPENAI_API_KEY = "sk-test-private-sentinel";
+  process.env.OPENAI_API_KEY = "";
   process.env.OPENAI_MODEL = "gpt-5.5";
-  globalThis.fetch = async () =>
-    responseFor(outputs[call++] ?? outputs.at(-1)!);
-  resetOpenAIClientForTests();
+  const fake = createOfflineModelClient(outputs);
   try {
-    await run(() => call);
+    await run(fake.sdk, fake.calls);
   } finally {
-    globalThis.fetch = originalFetch;
-    resetOpenAIClientForTests();
     for (const [key, value] of Object.entries(saved)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -288,16 +267,20 @@ async function withLiveSparkStub(
 test("an invalid excerpt retries only that Spark and marks the repaired excerpt verified", async () => {
   const initial = modelSparks(2);
   const repair = { sparks: [{ ...modelSparks().sparks[2] }] };
-  await withLiveSparkStub(
+  await withOfflineSparkClient(
     [JSON.stringify(initial), JSON.stringify(repair)],
-    async (calls) => {
-      const result = await generateAgentResponse({
-        agentType: "sparks",
-        context: {
-          parsedIMC: parseIMCBrief(demoIMCBrief),
-          upstream: extractUpstream(demoIMCBrief),
+    async (client, calls) => {
+      const result = await generateAgentResponse(
+        {
+          agentType: "sparks",
+          context: {
+            parsedIMC: parseIMCBrief(demoIMCBrief),
+            upstream: extractUpstream(demoIMCBrief),
+          },
         },
-      });
+        client,
+      );
+      expect(result.provider).toBe("mock");
       if (!("sparks" in result.data)) throw new Error("Expected Sparks");
       expect(result.data.sparks).toHaveLength(6);
       expect(result.data.sparks.every((spark) => spark.excerpt_verified)).toBe(
@@ -310,40 +293,46 @@ test("an invalid excerpt retries only that Spark and marks the repaired excerpt 
   );
 });
 
-test("a still-invalid repaired excerpt is returned with a visible verification flag", async () => {
+test("a still-invalid repaired excerpt fails instead of completing generation", async () => {
   const initial = modelSparks(3);
   const repair = { sparks: [{ ...modelSparks(3).sparks[3] }] };
-  await withLiveSparkStub(
+  await withOfflineSparkClient(
     [JSON.stringify(initial), JSON.stringify(repair)],
-    async (calls) => {
-      const result = await generateAgentResponse({
-        agentType: "sparks",
-        context: {
-          parsedIMC: parseIMCBrief(demoIMCBrief),
-          upstream: extractUpstream(demoIMCBrief),
-        },
+    async (client, calls) => {
+      await expect(
+        generateAgentResponse(
+          {
+            agentType: "sparks",
+            context: {
+              parsedIMC: parseIMCBrief(demoIMCBrief),
+              upstream: extractUpstream(demoIMCBrief),
+            },
+          },
+          client,
+        ),
+      ).rejects.toMatchObject({
+        status: 422,
+        code: "sparks_source_validation_failed",
       });
-      if (!("sparks" in result.data)) throw new Error("Expected Sparks");
-      expect(result.data.sparks[3].excerpt_verified).toBe(false);
-      expect(
-        result.data.sparks.filter((spark) => !spark.excerpt_verified),
-      ).toHaveLength(1);
       expect(calls()).toBe(2);
     },
   );
 });
 
 test("malformed initial Sparks JSON retries once and then returns the valid set", async () => {
-  await withLiveSparkStub(
+  await withOfflineSparkClient(
     ["{bad", JSON.stringify(modelSparks())],
-    async (calls) => {
-      const result = await generateAgentResponse({
-        agentType: "sparks",
-        context: {
-          parsedIMC: parseIMCBrief(demoIMCBrief),
-          upstream: extractUpstream(demoIMCBrief),
+    async (client, calls) => {
+      const result = await generateAgentResponse(
+        {
+          agentType: "sparks",
+          context: {
+            parsedIMC: parseIMCBrief(demoIMCBrief),
+            upstream: extractUpstream(demoIMCBrief),
+          },
         },
-      });
+        client,
+      );
       if (!("sparks" in result.data)) throw new Error("Expected Sparks");
       expect(result.data.sparks).toHaveLength(6);
       expect(result.data.sparks.every((spark) => spark.excerpt_verified)).toBe(
@@ -386,7 +375,7 @@ test("Sparks prompt preserves source statuses, distinguishes premises and handle
     "wildcard Spark must genuinely surprise",
   ])
     expect(prompt.instructions).toContain(guard);
-  expect(SPARKS_PROMPT_VERSION).toBe("sparks-v1.2");
+  expect(SPARKS_PROMPT_VERSION).toBe("sparks-v1.3");
 });
 
 test("only selected current Sparks and their rationales reach the shared foundation; legacy text still works", () => {

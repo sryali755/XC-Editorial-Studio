@@ -11,6 +11,7 @@ import {
 } from "./generation-settings";
 import {
   outputSchemas,
+  discoveryGenerationSchema,
   sparkGenerationSchema,
   sparkRevisionGenerationSchema,
   type AgentRequest,
@@ -200,6 +201,14 @@ export async function generateOpenAI(
   requestId = "",
   retryInstruction = "",
 ): Promise<AgentData> {
+  // Offline test runs may inject an SDK stub, but must never create a real client.
+  if (process.env.XC_OFFLINE_TEST === "1" && !sdk)
+    throw new AgentError(
+      "External AI requests are disabled for this offline test run.",
+      503,
+      "offline_test_external_ai_blocked",
+      false,
+    );
   try {
     const model = aiConfig().model;
     const requestedSettings =
@@ -209,7 +218,8 @@ export async function generateOpenAI(
       model,
       isPerspective(request.agentType) ||
         request.agentType === "discovery" ||
-        request.agentType === "connections"
+        request.agentType === "connections" ||
+        request.agentType === "strategySuggestions"
         ? {
             reasoningEffort: perspectiveReasoningEffort(request.versionNumber),
             ...requestedSettings,
@@ -227,13 +237,27 @@ export async function generateOpenAI(
         ? request.sparkRevision?.targetId
           ? sparkRevisionGenerationSchema
           : sparkGenerationSchema
-        : outputSchemas[request.agentType];
+        : request.agentType === "discovery"
+          ? discoveryGenerationSchema
+          : outputSchemas[request.agentType];
     const budget = outputTokenBudget(request.agentType);
     if (budget > modelCapabilities("openai", model)!.maxOutputTokens)
       throw new AgentError(
         "The output budget exceeds the registered model capability.",
         503,
       );
+    const responseFormat = (() => {
+      try {
+        return zodTextFormat(responseSchema, `xc_${request.agentType}`);
+      } catch {
+        throw new AgentError(
+          "This agent could not prepare a valid response format. The application needs a schema fix before retrying.",
+          500,
+          "response_schema_error",
+          false,
+        );
+      }
+    })();
     const response = await withProviderRetry(() =>
       (sdk ?? getClient()).responses.create({
         model,
@@ -248,10 +272,7 @@ export async function generateOpenAI(
           : {}),
         text: {
           ...(settings.verbosity ? { verbosity: settings.verbosity } : {}),
-          format: zodTextFormat(
-            responseSchema,
-            `xc_${request.agentType}`,
-          ),
+          format: responseFormat,
         },
         max_output_tokens: budget,
       }),

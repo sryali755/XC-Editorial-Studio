@@ -70,7 +70,7 @@ export const mockPreparationService: PreparationService = {
         `SOURCE NOTES\nUpstream references: ${fieldText(source.fields.sourceReferences)}\n${researchSources.map((s) => `${s.name}: ${s.purpose} — Not connected`).join("\n")}`,
       ].join("\n\n");
     if (agentId === "sparks") {
-      sparks = mockSparks(source, previous[0]?.text);
+      sparks = mockSparks(source, previous[0]?.text, parsedIMC.sourceText);
       text = sparks.map((spark, i) => `${i + 1}. ${spark.text}`).join("\n\n");
     }
     if (agentId !== "sparks" && previous.length > 0)

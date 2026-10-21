@@ -8,12 +8,14 @@ import {
   emptyDiscoveryState,
   generateDiscoveryVersion,
   inputPackVersion,
-  knownDiscoveryFindings,
   currentDiscoveryVersion,
+  discoveryFindingRef,
 } from "@/lib/discovery";
 import {
+  archiveOutdatedDiscoveryResponse,
   beginDiscoveryRequest,
   completeDiscoveryRequest,
+  dismissOutdatedDiscoveryRequest,
   discoveryDrafts,
   failDiscoveryRequest,
   recoverDiscoveryState,
@@ -24,7 +26,28 @@ import type {
   StrategyInputPack,
 } from "@/lib/types";
 import InsightDiscoveryWorkspace from "./InsightDiscoveryWorkspace";
+import DiscoveryRoundTableV2 from "./DiscoveryRoundTableV2";
 import { useDiscoveryDialog } from "./useDiscoveryDialog";
+import {
+  crossLensIssue,
+  currentPeerFindings,
+} from "@/lib/discovery-lens-quality";
+import { discoveryStorageKey } from "@/lib/discovery-persistence";
+import { resolveConnectionSelection } from "@/lib/discovery-connections";
+import {
+  conversationRegenerationRequest,
+  conversationContextBefore,
+} from "@/lib/roundtable-history";
+
+function threadIdentity(parts: readonly string[]) {
+  const text = JSON.stringify(parts);
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index++) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `thread-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
 
 function seededState(pack: StrategyInputPack): DiscoveryState {
   const state = emptyDiscoveryState();
@@ -72,6 +95,14 @@ export default function InsightDiscoveryFeature({
   onApprove,
   onClose,
   approvalError,
+  presentation = "dialog",
+  autoStart = true,
+  view,
+  onViewChange,
+  packLabel,
+  getCurrentState,
+  getCurrentPack,
+  restoredVersionIds = [],
 }: {
   open: boolean;
   pack: StrategyInputPack;
@@ -81,13 +112,36 @@ export default function InsightDiscoveryFeature({
   onApprove: (briefLine: string) => void;
   onClose: () => void;
   approvalError?: string;
+  presentation?: "dialog" | "page";
+  autoStart?: boolean;
+  view?: "discovery" | "canvas";
+  onViewChange?: (view: "discovery" | "canvas") => void;
+  packLabel?: string;
+  getCurrentState?: () => DiscoveryState | undefined;
+  getCurrentPack?: () => StrategyInputPack;
+  restoredVersionIds?: string[];
 }) {
-  const packVersion = inputPackVersion(pack);
   const seeded = useMemo(() => seededState(pack), [pack]);
-  const [draft, setDraft] = useState(() =>
-    recoverDiscoveryState(state ?? seeded),
-  );
+  const [draft, setDraft] = useState(() => {
+    const recovered = recoverDiscoveryState(state ?? seeded);
+    if (presentation !== "page" || recovered.investigationType !== "hypothesis")
+      return recovered;
+    // The primary dropdown now offers problem exploration only. Archive the
+    // prior hypothesis focus without reinterpreting it or deleting any history.
+    return {
+      ...recovered,
+      investigationType: "problem" as const,
+      question: recovered.focusByMode?.problem ?? "",
+      focusByMode: {
+        ...recovered.focusByMode,
+        hypothesis: recovered.focusByMode?.hypothesis ?? recovered.question,
+      },
+    };
+  });
   const draftRef = useRef(draft);
+  const lastPublished = useRef(state);
+  const currentPack = useRef(pack);
+  currentPack.current = pack;
   const [busy, setBusy] = useState<string[]>([]);
   const [error, setError] = useState("");
   const attempted = useRef(false);
@@ -96,12 +150,25 @@ export default function InsightDiscoveryFeature({
 
   function commit(next: DiscoveryState) {
     draftRef.current = next;
+    lastPublished.current = next;
     setDraft(next);
     onStateChange(next);
   }
   function update(change: (current: DiscoveryState) => DiscoveryState) {
-    commit(change(draftRef.current));
+    // A parent tab may have edited the human-owned canvas before this mounted
+    // research component receives its next render. Start from that latest state.
+    commit(change(getCurrentState?.() ?? draftRef.current));
   }
+
+  // The primary page stays mounted behind the other tabs. Strategy edits made
+  // there arrive as a new parent state; local research commits already have
+  // the same identity and must not be replayed over those edits.
+  useEffect(() => {
+    if (!state || state === lastPublished.current) return;
+    draftRef.current = state;
+    lastPublished.current = state;
+    setDraft(state);
+  }, [state]);
 
   function cancelLens(lensId: string) {
     controllers.current.get(lensId)?.abort();
@@ -129,41 +196,263 @@ export default function InsightDiscoveryFeature({
     };
   }, []);
 
-  async function runLens(request: DiscoveryRetryRequest): Promise<boolean> {
+  async function runLens(
+    request: DiscoveryRetryRequest,
+    batch?: {
+      snapshot: DiscoveryState;
+      pack: StrategyInputPack;
+      packVersion: string;
+      question: string;
+    },
+  ): Promise<boolean> {
     if (controllers.current.has(request.lensId)) return false;
+    const snapshot = batch?.snapshot ?? draftRef.current;
+    const question =
+      batch?.question ??
+      (presentation === "page"
+        ? (snapshot.focusByMode?.[snapshot.investigationType]?.trim() ?? "")
+        : snapshot.question.trim() || seeded.question);
+    const requestPack =
+      batch?.pack ?? structuredClone(getCurrentPack?.() ?? currentPack.current);
+    const requestPackVersion =
+      batch?.packVersion ?? inputPackVersion(requestPack);
+    if (!question) {
+      setError(
+        "Write what you want the agents to investigate before running research.",
+      );
+      return false;
+    }
+    const campaignKey = discoveryStorageKey(requestPack);
+    if (request.regeneratesTurnId) {
+      const original = conversationRegenerationRequest(
+        snapshot,
+        requestPack,
+        request.lensId,
+        request.regeneratesTurnId,
+      );
+      if (
+        !original ||
+        request.operation !== "conversation" ||
+        request.guidance !== original.guidance ||
+        request.action !== original.action ||
+        request.generationContextId !== original.generationContextId ||
+        (request.selectedFinding
+          ? discoveryFindingRef(request.selectedFinding)
+          : undefined) !==
+          (original.selectedFinding
+            ? discoveryFindingRef(original.selectedFinding)
+            : undefined)
+      ) {
+        setError(
+          "This response cannot be regenerated in the current context. Its earlier conversation is preserved.",
+        );
+        return false;
+      }
+    }
+    if (
+      (request.inputPackVersion &&
+        request.inputPackVersion !== requestPackVersion) ||
+      (request.question && request.question !== question) ||
+      (request.investigationType &&
+        request.investigationType !== snapshot.investigationType) ||
+      (request.campaignKey && request.campaignKey !== campaignKey)
+    ) {
+      setError(
+        "This turn belongs to an earlier investigation or Input Pack. Its history is preserved; return to that context or start a new scoped question.",
+      );
+      return false;
+    }
+    const selectedRef = request.selectedFinding
+      ? discoveryFindingRef(request.selectedFinding)
+      : undefined;
+    if (request.selectedFinding) {
+      const sourceVersion = snapshot.runs
+        .flatMap((run) => run.versions)
+        .find((version) =>
+          version.findings.some(
+            (finding) => discoveryFindingRef(finding) === selectedRef,
+          ),
+        );
+      if (
+        !sourceVersion ||
+        sourceVersion.inputPackVersion !== requestPackVersion ||
+        sourceVersion.question !== question ||
+        sourceVersion.investigationType !== snapshot.investigationType
+      ) {
+        setError(
+          "This finding belongs to an earlier version or investigation. Its discussion is preserved; select a current finding or return to its original context.",
+        );
+        return false;
+      }
+    }
+    if (
+      request.generationContextId &&
+      !snapshot.runs
+        .find((run) => run.lensId === request.lensId)
+        ?.versions.some(
+          (version) =>
+            version.id === request.generationContextId &&
+            version.inputPackVersion === requestPackVersion &&
+            version.question === question &&
+            version.investigationType === snapshot.investigationType,
+        )
+    ) {
+      setError(
+        "This generation belongs to an earlier context. Its history is preserved; select a current generation to continue.",
+      );
+      return false;
+    }
+    const boundRequest: DiscoveryRetryRequest = {
+      ...request,
+      ...(request.operation === "conversation"
+        ? {
+            generationContextId:
+              request.selectedFinding?.researchRunId ??
+              request.generationContextId ??
+              snapshot.runs.find((run) => run.lensId === request.lensId)
+                ?.currentVersionId,
+          }
+        : {}),
+      turnId: request.turnId ?? crypto.randomUUID(),
+      threadId:
+        request.threadId ??
+        threadIdentity([
+          campaignKey,
+          requestPackVersion,
+          question,
+          snapshot.investigationType,
+          request.lensId,
+          selectedRef ?? "agent",
+        ]),
+      question,
+      investigationType: snapshot.investigationType,
+      inputPackVersion: requestPackVersion,
+      campaignKey,
+    };
+    const scopeThread = selectedRef
+      ? (snapshot.findingThreads[selectedRef] ?? [])
+      : (snapshot.runs.find((run) => run.lensId === request.lensId)?.thread ??
+        []);
+    const threadMessages = conversationContextBefore(
+      scopeThread,
+      request.regeneratesTurnId,
+    ).filter(
+      (item) =>
+        item.inputPackVersion === requestPackVersion &&
+        item.question === question &&
+        item.investigationType === snapshot.investigationType &&
+        (selectedRef ? item.findingRef === selectedRef : !item.findingRef),
+    );
     const controller = new AbortController();
     controllers.current.set(request.lensId, controller);
     setBusy((items) => [...new Set([...items, request.lensId])]);
     setError("");
-    const snapshot = draftRef.current;
-    const question = snapshot.question.trim() || seeded.question;
     update((current) =>
-      beginDiscoveryRequest({ ...current, question }, request, packVersion),
+      beginDiscoveryRequest(
+        { ...current, question },
+        boundRequest,
+        requestPackVersion,
+      ),
     );
+    const contextChanged = () => {
+      const now = draftRef.current;
+      const currentQuestion =
+        presentation === "page"
+          ? (now.focusByMode?.[now.investigationType]?.trim() ?? "")
+          : now.question.trim() || seeded.question;
+      return (
+        inputPackVersion(getCurrentPack?.() ?? currentPack.current) !==
+          requestPackVersion ||
+        currentQuestion !== question ||
+        now.investigationType !== snapshot.investigationType ||
+        (selectedRef &&
+          !!now.activeFindingRefs?.[request.lensId] &&
+          now.activeFindingRefs[request.lensId] !== selectedRef) ||
+        now.runs.find((run) => run.lensId === request.lensId)?.retryRequest
+          ?.turnId !== boundRequest.turnId
+      );
+    };
     try {
       const result = await generateDiscoveryVersion({
-        ...request,
-        pack,
+        ...boundRequest,
+        threadMessages,
+        turnId: boundRequest.turnId,
+        threadId: boundRequest.threadId,
+        pack: requestPack,
         question,
         investigationType: snapshot.investigationType,
+        peerFindings: currentPeerFindings(
+          snapshot,
+          request.lensId,
+          requestPackVersion,
+          question,
+        ),
+        nextVersionNumber:
+          Math.max(
+            0,
+            ...(snapshot.runs
+              .find((run) => run.lensId === request.lensId)
+              ?.versions.map((version) => version.number) ?? []),
+          ) + 1,
         previous:
-          snapshot.runs.find((run) => run.lensId === request.lensId)
-            ?.versions ?? [],
+          snapshot.runs
+            .find((run) => run.lensId === request.lensId)
+            ?.versions.filter(
+              (version) =>
+                version.question === question &&
+                version.inputPackVersion === requestPackVersion &&
+                version.investigationType === snapshot.investigationType,
+            ) ?? [],
         signal: controller.signal,
       });
       if (controller.signal.aborted) return false;
-      update((current) => completeDiscoveryRequest(current, request, result));
+      if (contextChanged()) {
+        if (
+          discoveryStorageKey(getCurrentPack?.() ?? currentPack.current) !==
+          campaignKey
+        )
+          return false;
+        update((current) =>
+          archiveOutdatedDiscoveryResponse(current, boundRequest, result),
+        );
+        return false;
+      }
+      // Re-check after the response: parallel agents may have completed since dispatch.
+      const overlap =
+        request.operation === "conversation"
+          ? undefined
+          : crossLensIssue(
+              request.lensId,
+              result.findings,
+              currentPeerFindings(
+                draftRef.current,
+                request.lensId,
+                requestPackVersion,
+                question,
+              ),
+            );
+      if (overlap) throw new Error(overlap);
+      update((current) =>
+        completeDiscoveryRequest(current, boundRequest, result),
+      );
       return true;
     } catch (failure) {
+      if (
+        discoveryStorageKey(getCurrentPack?.() ?? currentPack.current) !==
+        campaignKey
+      )
+        return false;
       if (!controller.signal.aborted)
         update((current) =>
-          failDiscoveryRequest(
-            current,
-            request,
-            failure instanceof Error
-              ? failure.message
-              : "This lens failed. Previous findings and drafts are preserved.",
-          ),
+          contextChanged()
+            ? dismissOutdatedDiscoveryRequest(current, boundRequest)
+            : failDiscoveryRequest(
+                current,
+                boundRequest,
+                failure instanceof Error
+                  ? failure.message
+                  : "This lens failed. Previous findings and drafts are preserved.",
+              ),
         );
       return false;
     } finally {
@@ -173,40 +462,116 @@ export default function InsightDiscoveryFeature({
   }
 
   async function refreshAll() {
+    const snapshot = draftRef.current;
+    const batchPack = structuredClone(
+      getCurrentPack?.() ?? currentPack.current,
+    );
+    const batchVersion = inputPackVersion(batchPack);
+    const question =
+      presentation === "page"
+        ? (snapshot.focusByMode?.[snapshot.investigationType]?.trim() ?? "")
+        : snapshot.question.trim() || seeded.question;
+    const batch = {
+      snapshot,
+      pack: batchPack,
+      packVersion: batchVersion,
+      question,
+    };
+    if (
+      presentation === "page" &&
+      (snapshot.enabledLensIds?.length ?? discoveryLenses.length) !==
+        discoveryLenses.length
+    )
+      update((current) => ({
+        ...current,
+        enabledLensIds: discoveryLenses.map((lens) => lens.id),
+      }));
     await Promise.all(
-      discoveryLenses.map((lens) =>
-        runLens({
-          lensId: lens.id,
-          action: "refresh",
-          guidance: "Refresh this lens against the current Input Pack.",
-        }),
-      ),
+      discoveryLenses
+        .filter(
+          (lens) =>
+            presentation === "page" ||
+            !snapshot.enabledLensIds ||
+            snapshot.enabledLensIds.includes(lens.id),
+        )
+        .map((lens) =>
+          runLens(
+            {
+              lensId: lens.id,
+              action: snapshot.runs
+                .find((run) => run.lensId === lens.id)
+                ?.versions.some(
+                  (version) =>
+                    version.question === question &&
+                    version.inputPackVersion === batchVersion &&
+                    version.investigationType === snapshot.investigationType,
+                )
+                ? "refresh"
+                : "initial",
+              guidance: "",
+              ...(presentation === "page"
+                ? { operation: "generation" as const }
+                : {}),
+            },
+            batch,
+          ),
+        ),
     );
   }
 
   async function connect(guidance: string): Promise<boolean> {
     if (controllers.current.has("connections")) return false;
     const snapshot = draftRef.current;
-    const byId = knownDiscoveryFindings(snapshot);
-    const findings = snapshot.selectedFindingIds.flatMap((id) =>
-      byId.get(id) ? [byId.get(id)!] : [],
+    const comparisonPack = structuredClone(
+      getCurrentPack?.() ?? currentPack.current,
     );
-    if (findings.length < 2 || findings.length > 12) {
-      setError("Select between 2 and 12 exact finding versions to connect.");
+    const selection = resolveConnectionSelection(
+      snapshot,
+      comparisonPack,
+      snapshot.drafts?.connectionConsentKey,
+    );
+    if (selection.issue) {
+      setError(selection.issue);
       return false;
     }
+    const campaignKey = discoveryStorageKey(comparisonPack);
+    const packVersion = inputPackVersion(comparisonPack);
+    const question = snapshot.question;
+    const investigationType = snapshot.investigationType;
     const controller = new AbortController();
     controllers.current.set("connections", controller);
     setBusy((items) => [...new Set([...items, "connections"])]);
     setError("");
     try {
       const note = await connectDiscoveryFindings({
-        pack,
-        findings,
+        pack: comparisonPack,
+        findings: selection.findings,
+        sourcePacks: selection.sourcePacks,
         guidance,
         signal: controller.signal,
+        sourceContextConsent: selection.earlierContext,
       });
       if (controller.signal.aborted) return false;
+      const latest = draftRef.current;
+      const latestPack = getCurrentPack?.() ?? currentPack.current;
+      const latestSelection = resolveConnectionSelection(
+        latest,
+        latestPack,
+        latest.drafts?.connectionConsentKey,
+      );
+      if (
+        discoveryStorageKey(latestPack) !== campaignKey ||
+        inputPackVersion(latestPack) !== packVersion ||
+        latest.question !== question ||
+        latest.investigationType !== investigationType ||
+        latestSelection.issue ||
+        latestSelection.selectionKey !== selection.selectionKey
+      ) {
+        setError(
+          "The comparison finished for an earlier selection or investigation. Nothing was added to the current strategy draft; select the intended findings and compare again.",
+        );
+        return false;
+      }
       update((current) => {
         const drafts = discoveryDrafts(current);
         return {
@@ -237,7 +602,7 @@ export default function InsightDiscoveryFeature({
   const runRef = useRef(runLens);
   runRef.current = runLens;
   useEffect(() => {
-    if (!open) return;
+    if (!open || !autoStart) return;
     // Defer until mount effects settle. React development Strict Mode replays
     // effects; it must not start and cancel a paid batch during that replay.
     const frame = window.requestAnimationFrame(() => {
@@ -258,9 +623,120 @@ export default function InsightDiscoveryFeature({
         });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [open]);
+  }, [open, autoStart]);
 
   if (!open) return null;
+  const Workspace =
+    presentation === "page" ? DiscoveryRoundTableV2 : InsightDiscoveryWorkspace;
+  const content = (
+    <>
+      {error && (
+        <div className="error" role="alert">
+          {error}
+        </div>
+      )}
+      {approvalError && (
+        <div className="error" role="alert">
+          {approvalError}
+        </div>
+      )}
+      {busy.length > 0 && (
+        <div className="discovery-run-status" role="status">
+          <Search size={14} />{" "}
+          {busy.filter((id) => id !== "connections").length} of{" "}
+          {draft.enabledLensIds?.length ?? 5}{" "}
+          {presentation === "page" ? "agents" : "lenses"} working
+          {busy.includes("connections") && " · Connecting selected findings"}
+        </div>
+      )}
+      <Workspace
+        restoredVersionIds={restoredVersionIds}
+        packLabel={packLabel}
+        state={view ? { ...draft, workspaceView: view } : draft}
+        pack={pack}
+        briefLine={draft.humanBriefLine ?? briefLine}
+        busy={busy}
+        onChange={(next) => {
+          if (view && next.workspaceView && next.workspaceView !== view)
+            onViewChange?.(next.workspaceView);
+          commit(next);
+        }}
+        onQuestionChange={(question, investigationType) =>
+          update((current) => ({
+            ...current,
+            question,
+            investigationType,
+            ...(presentation === "page"
+              ? {
+                  focusByMode: {
+                    ...current.focusByMode,
+                    [investigationType]: question,
+                  },
+                }
+              : {}),
+          }))
+        }
+        onRunLens={runLens}
+        onRefreshAll={refreshAll}
+        onConnect={connect}
+        onRetryLens={(lensId) => {
+          const retry = draftRef.current.runs.find(
+            (run) => run.lensId === lensId,
+          )?.retryRequest;
+          return runLens(
+            retry
+              ? {
+                  ...retry,
+                  ...(presentation === "page" && !retry.operation
+                    ? {
+                        operation: [
+                          "initial",
+                          "refresh",
+                          "another_answer",
+                        ].includes(retry.action)
+                          ? ("generation" as const)
+                          : ("conversation" as const),
+                      }
+                    : {}),
+                }
+              : {
+                  lensId,
+                  ...(presentation === "page"
+                    ? { operation: "generation" as const }
+                    : {}),
+                  action: "refresh",
+                  guidance:
+                    "Retry this lens against the current supplied evidence.",
+                },
+          );
+        }}
+        onCancelLens={cancelLens}
+        onBriefLineChange={(humanBriefLine) =>
+          update((current) => ({ ...current, humanBriefLine }))
+        }
+        onApprove={() =>
+          onApprove(draftRef.current.humanBriefLine ?? briefLine)
+        }
+      />
+      {draft.runs.some(
+        (run) => currentDiscoveryVersion(run)?.provider === "mock",
+      ) && (
+        <div className="discovery-demo-notice" role="note">
+          DEMO DATA · Simulated analysis of supplied inputs. This is not live
+          research.
+        </div>
+      )}
+    </>
+  );
+  if (presentation === "page")
+    return (
+      <section
+        className="discovery-page"
+        aria-label="Insight Discovery workspace"
+      >
+        {content}
+      </section>
+    );
   return (
     <div className="discovery-modal-backdrop">
       <section
@@ -283,65 +759,7 @@ export default function InsightDiscoveryFeature({
             <X size={15} /> Close
           </button>
         </header>
-        {error && (
-          <div className="error" role="alert">
-            {error}
-          </div>
-        )}
-        {approvalError && (
-          <div className="error" role="alert">
-            {approvalError}
-          </div>
-        )}
-        {busy.length > 0 && (
-          <div className="discovery-run-status" role="status">
-            <Search size={14} />{" "}
-            {busy.filter((id) => id !== "connections").length} of 5 lenses
-            working
-            {busy.includes("connections") && " · Connecting selected findings"}
-          </div>
-        )}
-        <InsightDiscoveryWorkspace
-          state={draft}
-          pack={pack}
-          briefLine={draft.humanBriefLine ?? briefLine}
-          busy={busy}
-          onChange={commit}
-          onQuestionChange={(question, investigationType) =>
-            update((current) => ({ ...current, question, investigationType }))
-          }
-          onRunLens={runLens}
-          onRefreshAll={refreshAll}
-          onConnect={connect}
-          onRetryLens={(lensId) => {
-            const retry = draftRef.current.runs.find(
-              (run) => run.lensId === lensId,
-            )?.retryRequest;
-            return runLens(
-              retry ?? {
-                lensId,
-                action: "refresh",
-                guidance:
-                  "Retry this lens against the current supplied evidence.",
-              },
-            );
-          }}
-          onCancelLens={cancelLens}
-          onBriefLineChange={(humanBriefLine) =>
-            update((current) => ({ ...current, humanBriefLine }))
-          }
-          onApprove={() =>
-            onApprove(draftRef.current.humanBriefLine ?? briefLine)
-          }
-        />
-        {draft.runs.some(
-          (run) => currentDiscoveryVersion(run)?.provider === "mock",
-        ) && (
-          <div className="discovery-demo-notice" role="note">
-            DEMO DATA · Simulated analysis of supplied inputs. This is not live
-            research.
-          </div>
-        )}
+        {content}
       </section>
     </div>
   );

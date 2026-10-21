@@ -50,7 +50,9 @@ Browser tests use Playwright and require Google Chrome. Keep AI_MODE=mock for th
 
 Mock mode simulates AI responses and needs no API credentials. Live mode uses server-side OpenAI; sample campaign content is still illustrative. Writer, research sources, and Workfront remain unconnected in both modes. Work is stored in browser session storage; there is no database, authentication, or shared session storage.
 
-Imports accept text, Markdown, and CSV files. PDF and PowerPoint extraction is not implemented. Final briefs download as designed PDFs or editable Word documents (.docx). The preview and both exports use one document model, with Xfinity-style typography and the purple palette from the supplied leadership reference. This is a styled XC brief, not a verified official corporate template.
+The primary Insight Discovery input pack imports PDF, PowerPoint (.pptx), Word (.docx), text, Markdown and CSV files, for the brief and supporting evidence. Extraction runs in the browser without an AI call; review the staged text before applying it. Limits are 15 MiB per file and 60,000 extracted characters. Scanned/image-only content is flagged, not OCR-transcribed. Older .ppt/.doc files must be saved as .pptx/.docx or searchable PDF. The preserved creative workspace retains its existing text importer. See [document-upload details](docs/document-upload.md).
+
+Final briefs download as designed PDFs or editable Word documents (.docx). The preview and both exports use one document model, with Xfinity-style typography and the purple palette from the supplied leadership reference. This is a styled XC brief, not a verified official corporate template.
 
 The original upstream RTB is preserved separately from proposed XC adaptations. A supplied field is not automatically approved. Kevin's approval applies to the selected brief line, not upstream claims, Brand messaging, or partner approvals.
 

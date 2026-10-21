@@ -1,5 +1,6 @@
 import { emptyExecution, prefillExecution } from "./execution";
 import { inputPackVersion } from "./discovery";
+import { assertCampaignName } from "./campaign-identity";
 import type {
   DiscoveryState,
   StrategyInputPack,
@@ -16,10 +17,19 @@ export function approveDiscoveryCanvas(
 ): StrategySession {
   if (!briefLine.trim())
     throw new Error("Write the brief line before approving your strategy.");
+  assertCampaignName(pack);
   const strategyPack = structuredClone(pack);
   const canvas: DiscoveryApprovedCanvas = {
+    ...(state.wholeBrief
+      ? { wholeBrief: structuredClone(state.wholeBrief) }
+      : {}),
     problem: state.problemStatement ?? "",
+    workingAudience: state.workingAudience,
+    workingRTB: state.workingRTB,
+    humanTension: state.humanTension,
     evidenceInsights: state.evidenceInsights ?? "",
+    workingJTBD: state.workingJTBD ?? "",
+    executionConsiderations: state.executionConsiderations ?? "",
     hypothesis: state.hypothesis,
     strategicDirection: state.strategicDirection ?? "",
     briefLine: briefLine.trim(),

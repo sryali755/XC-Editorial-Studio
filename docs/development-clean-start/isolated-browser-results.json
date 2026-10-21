@@ -1,0 +1,162 @@
+{
+  "config": {
+    "argv": [
+      "/opt/homebrew/Cellar/node/25.9.0_2/bin/node",
+      "/private/tmp/xc-clean-test.Zl4ZmI/node_modules/.bin/playwright",
+      "test",
+      "-c",
+      "playwright.clean-start.config.ts",
+      "--reporter=json",
+      "--output=/private/tmp/xc-clean-expanded"
+    ],
+    "configFile": "/private/tmp/xc-clean-test.Zl4ZmI/playwright.clean-start.config.ts",
+    "rootDir": "/private/tmp/xc-clean-test.Zl4ZmI/tests/clean-start",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/private/tmp/xc-clean-expanded",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "/private/tmp/xc-clean-test.Zl4ZmI/tests/clean-start",
+        "testIgnore": [],
+        "testMatch": [
+          "*.spec.ts"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "workspace.spec.ts",
+      "file": "workspace.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "clean load, session navigation, refresh and reopen 1440",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 11695,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-20T01:57:29.873Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrQ2FsbHMiOlsicnRiIiwicmVzZWFyY2giLCJzcGFya3MiLCJkaXNjb3ZlcnkiLCJkaXNjb3ZlcnkiLCJkaXNjb3ZlcnkiLCJkaXNjb3ZlcnkiLCJkaXNjb3ZlcnkiLCJydGIiLCJyZXNlYXJjaCIsInNwYXJrcyJdLCJyZWFsQWdlbnRSZXF1ZXN0cyI6MCwiZXJyb3JzIjpbXSwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiLCJHRVQgaHR0cHM6Ly9mb250cy5nb29nbGVhcGlzLmNvbS9jc3MyIiwiR0VUIGh0dHBzOi8vZm9udHMuZ29vZ2xlYXBpcy5jb20vY3NzMiJdfQ=="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "b163ed09f68681248ada-2d8e44bd42758c95ef71",
+          "file": "workspace.spec.ts",
+          "line": 19,
+          "column": 7
+        },
+        {
+          "title": "clean load, session navigation, refresh and reopen 390",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 10382,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-20T01:57:41.852Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrQ2FsbHMiOlsicnRiIiwicmVzZWFyY2giLCJzcGFya3MiLCJkaXNjb3ZlcnkiLCJkaXNjb3ZlcnkiLCJkaXNjb3ZlcnkiLCJkaXNjb3ZlcnkiLCJkaXNjb3ZlcnkiLCJydGIiLCJyZXNlYXJjaCIsInNwYXJrcyJdLCJyZWFsQWdlbnRSZXF1ZXN0cyI6MCwiZXJyb3JzIjpbXSwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiLCJHRVQgaHR0cHM6Ly9mb250cy5nb29nbGVhcGlzLmNvbS9jc3MyIiwiR0VUIGh0dHBzOi8vZm9udHMuZ29vZ2xlYXBpcy5jb20vY3NzMiJdfQ=="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "b163ed09f68681248ada-9aade0de7aa52c6f3862",
+          "file": "workspace.spec.ts",
+          "line": 19,
+          "column": 7
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-20T01:57:29.407Z",
+    "duration": 22928.198,
+    "expected": 2,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

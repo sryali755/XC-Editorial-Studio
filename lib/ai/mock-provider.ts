@@ -157,6 +157,72 @@ export async function generateMock(request: AgentRequest): Promise<AgentData> {
   }
   if (request.agentType === "discovery") return mockDiscovery(request);
   if (request.agentType === "connections") return mockConnections(request);
+  if (request.agentType === "strategySuggestions") {
+    const context = request.context;
+    const clip = (value: string, fallback: string) =>
+      (value.trim() || fallback)
+        .replace(/\s+/g, " ")
+        .replace(/[.;:]$/, "")
+        .slice(0, 110);
+    const campaign = (context.campaignName.trim() || "this campaign").slice(
+      0,
+      110,
+    );
+    const audience = clip(context.audience, "the intended audience");
+    const objective = clip(context.objective, "the supplied objective");
+    const rtb = clip(context.originalRtb, "the brief's supplied proof");
+    const selected = context.sparkInputs[0];
+    const evidenceIds = context.sourceExcerpts
+      .slice(0, 2)
+      .map((source) => source.id);
+    const rtbSource = context.sourceExcerpts.find((source) =>
+      /reason.to.believe|rtb/i.test(source.label),
+    );
+    const findingLinks = (index: number, use: string) => {
+      if (!context.savedFindings.length) return [];
+      const finding =
+        context.savedFindings[index % context.savedFindings.length];
+      return finding
+        ? [
+            {
+              findingId: finding.id,
+              contribution: `The saved finding “${finding.title}” raises ${clip(finding.whatWeFound, "an unresolved audience question")}. This direction ${use}; treat the finding as ${finding.evidenceState === "research_gap" ? "an unverified research gap" : "an interpretation of supplied sources"}.`,
+            },
+          ]
+        : [];
+    };
+    return {
+      suggestions: [
+        {
+          briefLine: `Give ${audience} a reason to see ${campaign} as relevant to ${objective}.`,
+          rationale: `Demo-only strategic framing drawn from the IMC objective and audience; it is not a verified result.`,
+          evidenceIds,
+          sparkIds: [],
+          findingLinks: findingLinks(0, "focuses on that audience question"),
+          validationGap: `Check which part of ${objective} matters most to ${audience}.`,
+        },
+        {
+          briefLine: `Make ${campaign} answer the audience's most important barrier to ${objective}.`,
+          rationale: `Demo-only barrier framing${selected ? ` inspired by the selected Spark “${selected.title}”` : ""}. The source brief does not prove which barrier dominates.`,
+          evidenceIds,
+          sparkIds: selected ? [selected.id] : [],
+          findingLinks: findingLinks(1, "tests it as a possible barrier"),
+          validationGap: `Identify the actual barrier in audience research before treating this as an insight.`,
+        },
+        {
+          briefLine: `Connect ${campaign}'s supplied reason to believe to ${audience}'s decision about ${objective}.`,
+          rationale: `Demo-only proof framing using the supplied RTB: ${rtb}. Approval remains ${context.rtbApprovalStatus}.`,
+          evidenceIds: rtbSource ? [rtbSource.id] : evidenceIds,
+          sparkIds: [],
+          findingLinks: findingLinks(
+            2,
+            "asks whether the supplied proof responds to it",
+          ),
+          validationGap: `Verify that the supplied proof is approved and meaningful to ${audience}.`,
+        },
+      ],
+    };
+  }
   if (request.agentType === "synthesis")
     return {
       synthesizedLines: [

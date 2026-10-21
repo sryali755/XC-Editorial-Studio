@@ -11,7 +11,11 @@ export const imcSchema: {
   upstreamKey: UpstreamKey;
   aliases: string[];
 }[] = [
-  { key: "campaign", upstreamKey: "campaignName", aliases: ["Campaign name"] },
+  {
+    key: "campaign",
+    upstreamKey: "campaignName",
+    aliases: ["Campaign name", "Campaign title"],
+  },
   {
     key: "objective",
     upstreamKey: "objective",
@@ -39,7 +43,11 @@ export const imcSchema: {
   {
     key: "constraints",
     upstreamKey: "constraints",
-    aliases: ["Creative requirements", "Requested deliverables"],
+    aliases: [
+      "Creative requirements",
+      "Requested deliverables",
+      "Creative considerations",
+    ],
   },
   {
     key: "reason_to_believe",
@@ -49,6 +57,7 @@ export const imcSchema: {
       "Reasons to believe",
       "Reason to Believe (RTB)",
       "Reasons to Believe (RTB)",
+      "Reasons to Believe – by tactic length",
       "Original upstream RTB",
     ],
   },
@@ -327,6 +336,30 @@ export function parseIMCBrief(sourceText: string): ParsedIMCBrief {
   const found = new Map<string, string[]>();
   const append = (key: string, text: string) =>
     found.set(key, [...(found.get(key) ?? []), text]);
+  // A composite PDF can have supporting pages titled like a campaign. Only a
+  // page that also carries a business objective and target audience identifies
+  // a distinct campaign brief; tactic guidance alone does not.
+  const campaignBriefHeadings = new Set(
+    sourceText
+      .split(
+        /(?=^(?:## Source page \d+|PDF PAGE \d+|--- Source page \d+ ---))/m,
+      )
+      .filter(
+        (page) =>
+          /(?:^|\n)Business\s+Objective\b/im.test(page) &&
+          /(?:^|\n)Target\s+Audience\b/im.test(page),
+      )
+      .flatMap((page) =>
+        page
+          .split(/\r?\n/)
+          .filter((line) =>
+            /^.+?\s*[-–—]\s*Campaign Extensions(?: Refresh)?(?: Brief)?\s*$/i.test(
+              line.trim(),
+            ),
+          )
+          .map((line) => line.trim().replace(/\s*([-–—])\s*/, " $1 ")),
+      ),
+  );
   const trimmed = sourceText.trim();
   const csv = csvFields(trimmed);
   if (csv) {
@@ -368,6 +401,8 @@ export function parseIMCBrief(sourceText: string): ParsedIMCBrief {
   } else {
     let active: string | undefined;
     let lines: string[] = [];
+    let deferredCommunicationObjective = false;
+    let readingAudienceBeforeObjective = false;
     const flush = () => {
       if (active) {
         while (lines.length && !lines[0].trim()) lines.shift();
@@ -393,9 +428,43 @@ export function parseIMCBrief(sourceText: string): ParsedIMCBrief {
         .replace(/^\s*#{1,6}\s+/, "")
         .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, "")
         .replace(/^\s*(?:\*\*|__)/, "");
+      // Text extracted from a campaign-extension PDF can omit the "Campaign:"
+      // label while repeating this heading on each page. Preserve distinct
+      // campaign names; never merge a second campaign into the first one.
+      const extensionHeading = !clean.includes(":")
+        ? clean.match(
+            /^(.+?)\s*[-–—]\s*Campaign Extensions(?: Refresh)?(?: Brief)?\s*$/i,
+          )
+        : null;
+      if (extensionHeading) {
+        if (active === "campaign" && lines.every((value) => !value.trim())) {
+          lines.push(clean.trim());
+          flush();
+          continue;
+        }
+        flush();
+        const campaign = clean.trim().replace(/\s*([-–—])\s*/, " $1 ");
+        if (
+          campaignBriefHeadings.has(campaign) &&
+          !(found.get("campaign") ?? []).includes(campaign)
+        )
+          append("campaign", campaign);
+        continue;
+      }
       let separator = clean.indexOf(":");
       let label = separator >= 0 ? clean.slice(0, separator) : clean;
       let key = resolveLabel(label);
+      // Some PDF tables extract a left-hand field label and the right-hand
+      // value onto one line without a colon. Limit this to known table labels.
+      const pdfInline = !key
+        ? clean.match(
+            /^(Target Audience|Business Objective|Communication Objective|Channels|Reasons To Believe|Reason To Believe)\s+(.+)$/i,
+          )
+        : null;
+      if (pdfInline) {
+        label = pdfInline[1];
+        key = resolveLabel(label);
+      }
       if (!key) {
         const dash = clean.match(/\s+[—–-]\s+/);
         if (dash?.index !== undefined) {
@@ -410,8 +479,29 @@ export function parseIMCBrief(sourceText: string): ParsedIMCBrief {
       }
       if (
         key &&
-        (separator >= 0 || heading || decorated || resolveLabel(clean) === key)
+        (separator >= 0 ||
+          heading ||
+          decorated ||
+          pdfInline ||
+          resolveLabel(clean) === key)
       ) {
+        if (
+          key === "reason_to_believe" &&
+          /by tactic length/i.test(label) &&
+          (found.get(key) ?? []).some(
+            (value) =>
+              value.trim() && !/^refer to next page/i.test(value.trim()),
+          )
+        ) {
+          flush();
+          continue;
+        }
+        if (
+          key === "reason_to_believe" &&
+          active === "objective" &&
+          !lines.some((value) => value.trim())
+        )
+          deferredCommunicationObjective = true;
         if (active === key && lines.every((value) => !value.trim())) {
           lines = [];
           if (separator >= 0) {
@@ -427,33 +517,80 @@ export function parseIMCBrief(sourceText: string): ParsedIMCBrief {
         }
         flush();
         active = key;
-        if (separator >= 0) {
-          let value = clean.slice(separator + 1);
+        readingAudienceBeforeObjective =
+          key === "audience" && deferredCommunicationObjective;
+        if (separator >= 0 || pdfInline) {
+          let value = pdfInline ? pdfInline[2] : clean.slice(separator + 1);
           value = value
             .replace(/^[ \t]+/, "")
             .replace(/^(?:\*\*|__)\s*/, "")
             .replace(/\s+#+\s*$/, "");
           if (value.length) lines.push(value);
           if (/^not\s+supplied[.]?$/i.test(value.trim())) flush();
+          // These table cells are complete on the same extracted line. The
+          // next line may belong to a different, visually adjacent field.
+          if (pdfInline && /^(?:Target Audience|Channels)$/i.test(label))
+            flush();
+          if (
+            pdfInline &&
+            key === "audience" &&
+            deferredCommunicationObjective
+          ) {
+            active = "objective";
+            deferredCommunicationObjective = false;
+            readingAudienceBeforeObjective = false;
+          }
         }
         continue;
       }
       // Unknown section headings delimit recognized sections; do not absorb the next section.
       const unknownSection =
         heading ||
+        /^(?:Parent (?:brand )?platform|Brand platform|[^:\n]{0,60}\b(?:JTBD|Job to be done)\b[^:\n]*)(?:\s*:|\s*$)/i.test(
+          clean,
+        ) ||
+        /^\s*--- Source page \d+ ---\s*$/.test(line) ||
+        /^\s*PDF PAGE \d+\s*$/.test(line) ||
+        /^\s*=+\s*$/.test(line) ||
+        /^(?:Background|Key Message|Deliverables|Timing|Media Placement & Budget|Production Budget|Creative Considerations)\s*$/i.test(
+          clean,
+        ) ||
+        /^(?:Media Placement & Budget|Production Budget)\s+.+$/i.test(clean) ||
         (!/^\s*(?:[-*+]\s+|\d+[.)]\s+)/.test(line) &&
-          /^(?:Creative ask|Source|FAQs|Next steps):/i.test(clean));
+          /^(?:Creative ask|Source|Source pages|Extraction|Background|Key message|Deliverables|Media Placement & Budget|Production Budget|Timing|FAQs|Next steps):/i.test(
+            clean,
+          ));
       if (unknownSection) {
         flush();
+        if (
+          /^(?:Background|Key Message|Deliverables|Creative Considerations)/i.test(
+            clean,
+          )
+        ) {
+          deferredCommunicationObjective = false;
+          readingAudienceBeforeObjective = false;
+        }
         continue;
       }
-      if (active) lines.push(line);
+      if (active) {
+        lines.push(line);
+        if (
+          active === "audience" &&
+          readingAudienceBeforeObjective &&
+          /[.!?]\s*$/.test(line.trim())
+        ) {
+          flush();
+          active = "objective";
+          readingAudienceBeforeObjective = false;
+          deferredCommunicationObjective = false;
+        }
+      }
     }
     flush();
   }
   return Object.freeze({
     schemaVersion: 1,
-    parserVersion: 3,
+    parserVersion: 5,
     sourceText,
     fields: Object.freeze(
       Object.fromEntries(

@@ -10,15 +10,17 @@
     "typecheck": "tsc --noEmit",
     "test": "playwright test",
     "format": "prettier --write app components lib tests *.ts *.mjs *.json",
-    "test:ai": "NODE_OPTIONS=--conditions=react-server playwright test -c playwright.ai.config.ts",
+    "test:ai": "AI_MODE=mock OPENAI_API_KEY= XC_OFFLINE_TEST=1 NODE_OPTIONS=--conditions=react-server playwright test -c playwright.ai.config.ts",
     "eval:agents": "XC_LIVE_EVAL=1 NODE_OPTIONS=--conditions=react-server playwright test -c playwright.evaluation.config.ts"
   },
   "dependencies": {
     "docx": "^9.9.0",
+    "fflate": "^0.8.3",
     "lucide-react": "1.50.0",
     "next": "16.3.8",
     "openai": "^7.30.0",
     "pdfmake": "^0.3.11",
+    "pdfjs-dist": "^6.4.299",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "server-only": "^0.0.1",
@@ -32,8 +34,6 @@
     "@types/react-dom": "19.3.0",
     "eslint": "9.39.5",
     "eslint-config-next": "16.3.8",
-    "fflate": "^0.8.3",
-    "pdfjs-dist": "^6.4.299",
     "prettier": "3.9.9",
     "typescript": "6.0.3"
   }

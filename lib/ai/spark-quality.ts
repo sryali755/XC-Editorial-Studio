@@ -28,9 +28,8 @@ export function exactGroundingExcerpt(
   campaignGrounding: string,
   sourceBrief: string,
 ) {
-  const source = normalizeExcerpt(sourceBrief);
   return groundingCandidates(campaignGrounding).find((candidate) =>
-    source.includes(normalizeExcerpt(candidate)),
+    sourceBrief.includes(candidate),
   );
 }
 
@@ -125,13 +124,18 @@ export function sparkRevisionIssue(
     !request.sparkRevision?.targetId
   )
     return;
-  const previous = outputSchemas.sparks.safeParse(request.previousVersion?.data);
+  const previous = outputSchemas.sparks.safeParse(
+    request.previousVersion?.data,
+  );
   if (!previous.success) return "A complete prior Spark set is required.";
   const targetId = request.sparkRevision.targetId;
   const before = previous.data.sparks.find((spark) => spark.id === targetId);
   const after = data.sparks.find((spark) => spark.id === targetId);
   if (!before || !after) return "The targeted Spark slot was not preserved.";
-  if (normalize(after.idea || after.text) === normalize(before.idea || before.text))
+  if (
+    normalize(after.idea || after.text) ===
+    normalize(before.idea || before.text)
+  )
     return "The targeted Spark must change rather than repeat its previous idea.";
   if (request.sparkRevision.intent === "improve") return;
   if (

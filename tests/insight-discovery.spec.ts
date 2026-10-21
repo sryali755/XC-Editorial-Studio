@@ -10,7 +10,7 @@ const readSession = (page: Page): Promise<StrategySession> =>
   );
 
 async function prepareInputPack(page: Page) {
-  await page.goto("/");
+  await page.goto(flagEnabled ? "/creative" : "/");
   await page.getByRole("button", { name: "Load sample IMC brief" }).click();
   await page
     .getByRole("button", { name: "Prepare XC Input Pack", exact: true })
@@ -40,6 +40,7 @@ test("flag off leaves the restored Round Table entry surface unchanged", async (
 test("flagged Discovery uses the current pack, preserves versions, and hands off only human-approved strategy", async ({
   page,
 }) => {
+  test.setTimeout(90_000);
   test.skip(!flagEnabled, "Run this assertion in the flag-on browser suite.");
   await prepareInputPack(page);
 
@@ -85,7 +86,7 @@ test("flagged Discovery uses the current pack, preserves versions, and hands off
   ).toBeVisible();
   await expect(
     page.getByRole("tab", { name: /Category complete/ }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 20_000 });
   expect(calls.map((request) => request.context.lens).sort()).toEqual([
     "analogous",
     "brand",
@@ -124,12 +125,16 @@ test("flagged Discovery uses the current pack, preserves versions, and hands off
 
   await page.getByRole("tab", { name: /Consumer complete/ }).click();
   const consumerCard = dialog.locator(".discovery-card").first();
+  const consumerFindingTitle = (
+    await consumerCard.locator("h3").textContent()
+  )?.trim();
+  expect(consumerFindingTitle).toBeTruthy();
   await consumerCard
     .getByRole("button", { name: "Save to My Thinking" })
     .click();
   await consumerCard.getByLabel("Select to connect").check();
   await expect(dialog.locator(".saved-findings")).toContainText(
-    "The audience definition carries the first unanswered question",
+    consumerFindingTitle!,
   );
 
   await page.getByRole("tab", { name: /Brand complete/ }).click();

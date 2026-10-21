@@ -17,6 +17,7 @@ export function SparkChoices({
   keptIds = [],
   onKeep,
   onRevise,
+  compact = false,
 }: {
   version: PreparationVersion;
   selectedIds: string[];
@@ -26,17 +27,23 @@ export function SparkChoices({
   keptIds?: string[];
   onKeep?: (id: string) => void;
   onRevise?: (id: string, intent: "explore" | "improve") => void;
+  compact?: boolean;
 }) {
   return (
     <div
-      className={"spark-selection" + (onInspect ? " pack-spark-selection" : "")}
+      className={
+        "spark-selection" +
+        (onInspect ? " pack-spark-selection" : "") +
+        (compact ? " spark-selection-compact" : "")
+      }
     >
       <p className="selection-count" role="status">
         {
           version.sparks.filter((spark) => selectedIds.includes(spark.id))
             .length
         }{" "}
-        / {version.sparks.length} selected · V{version.number}
+        / {version.sparks.length} selected · V
+        {compact ? version.number - 1 : version.number}
       </p>
       <div className="spark-options">
         {version.sparks.map((spark, i) => (
@@ -73,16 +80,30 @@ export function SparkChoices({
                   className="button small"
                   disabled={disabled}
                   aria-pressed={keptIds.includes(spark.id)}
+                  aria-label={
+                    compact
+                      ? `${keptIds.includes(spark.id) ? "Release" : "Keep"} ${spark.title || `Spark ${i + 1}`}`
+                      : undefined
+                  }
                   onClick={() => onKeep(spark.id)}
                 >
-                  {keptIds.includes(spark.id)
-                    ? "Kept · Release"
-                    : "Keep this Spark"}
+                  {compact
+                    ? keptIds.includes(spark.id)
+                      ? "Kept"
+                      : "Keep"
+                    : keptIds.includes(spark.id)
+                      ? "Kept · Release"
+                      : "Keep this Spark"}
                 </button>
                 <button
                   type="button"
                   className="text-button"
                   disabled={disabled || keptIds.includes(spark.id)}
+                  aria-label={
+                    compact
+                      ? `Improve ${spark.title || `Spark ${i + 1}`}`
+                      : undefined
+                  }
                   onClick={() => onRevise(spark.id, "improve")}
                 >
                   Improve
@@ -91,6 +112,11 @@ export function SparkChoices({
                   type="button"
                   className="text-button"
                   disabled={disabled || keptIds.includes(spark.id)}
+                  aria-label={
+                    compact
+                      ? `Replace ${spark.title || `Spark ${i + 1}`}`
+                      : undefined
+                  }
                   onClick={() => onRevise(spark.id, "explore")}
                 >
                   Replace
@@ -113,6 +139,11 @@ export function SparkChoices({
                 spark.hypothesisToValidate) && (
                 <details className="spark-rationale">
                   <summary>Why this spark · grounding & hypothesis</summary>
+                  {compact && (
+                    <p>
+                      <strong>Full idea:</strong> {spark.idea || spark.text}
+                    </p>
+                  )}
                   {(spark.excerpt || spark.campaignGrounding) && (
                     <p>
                       <strong>Campaign grounding:</strong>{" "}

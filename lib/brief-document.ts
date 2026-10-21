@@ -70,12 +70,19 @@ export function buildBriefDocument(brief: GeneratedBrief) {
         : section.content,
     id: `brief-section-${index}`,
   }));
-  const approved = sections.find((s) => s.title === "Approved Brief Line");
+  const approved = sections.find(
+    (s) =>
+      s.title === "Approved Brief Line" ||
+      (brief.provider === "manual" && s.title === "Brief"),
+  );
   const remaining = sections.filter((s) => s !== approved);
-  const grouped = groups.map((group) => ({
-    title: group.title,
-    sections: remaining.filter((s) => group.sections.includes(s.title)),
-  }));
+  const grouped =
+    brief.provider === "manual"
+      ? [{ title: "XC Creative Brief", sections: remaining }]
+      : groups.map((group) => ({
+          title: group.title,
+          sections: remaining.filter((s) => group.sections.includes(s.title)),
+        }));
   const known = new Set(
     grouped.flatMap((group) => group.sections.map((s) => s.id)),
   );
@@ -94,10 +101,15 @@ export function buildBriefDocument(brief: GeneratedBrief) {
           year: "numeric",
           timeZone: "America/New_York",
         }).format(date),
-    status: brief.mock
-      ? "MOCK BRIEF · FOR REVIEW"
-      : "AI-ASSISTED BRIEF · FOR REVIEW",
-    footer: `${brief.mock ? "Illustrative content" : "AI-assisted draft"} · XC Strategy Studio`,
+    status:
+      brief.provider === "manual"
+        ? brief.mock
+          ? "HUMAN-APPROVED BRIEF · INCLUDES DEMO MATERIAL"
+          : "HUMAN-APPROVED BRIEF"
+        : brief.mock
+          ? "MOCK BRIEF · FOR REVIEW"
+          : "AI-ASSISTED BRIEF · FOR REVIEW",
+    footer: `${brief.provider === "manual" ? "Human-authored strategy" : brief.mock ? "Illustrative content" : "AI-assisted draft"} · XC Strategy Studio`,
     approved,
     groups: grouped.filter((group) => group.sections.length > 0),
   };

@@ -7,11 +7,9 @@ import {
   perspectiveIds,
   creativeControls,
 } from "../../lib/creative-controls";
-import {
-  generateOpenAI,
-  resetOpenAIClientForTests,
-} from "../../lib/ai/openai-provider";
+import { generateOpenAI } from "../../lib/ai/openai-provider";
 import { generateAgentResponse } from "../../lib/ai/provider";
+import { createOfflineModelClient } from "../../lib/ai/offline-model-client";
 import {
   perspectiveOutputIssue,
   perspectiveQualityReview,
@@ -588,59 +586,54 @@ test("malformed and schema-invalid model responses report distinct validation fa
   ).rejects.toMatchObject({ code: "model_output_schema_invalid" });
 });
 
-test("live perspective generation retries malformed structured output exactly once", async () => {
-  process.env.AI_MODE = "live";
+test("offline simulated perspective generation retries malformed structured output exactly once", async () => {
+  process.env.AI_MODE = "mock";
   process.env.AI_PROVIDER = "openai";
-  process.env.OPENAI_API_KEY = "sk-test-private-sentinel";
+  process.env.OPENAI_API_KEY = "";
   process.env.OPENAI_MODEL = "gpt-5.5";
-  const originalFetch = globalThis.fetch;
-  let calls = 0;
-  globalThis.fetch = async () => {
-    calls++;
-    return responseFor(
-      calls === 1 ? "{bad" : JSON.stringify(validPerspectiveData()),
-    );
-  };
-  try {
-    const result = (await generateAgentResponse({
+  const fake = createOfflineModelClient([
+    "{bad",
+    JSON.stringify(validPerspectiveData()),
+  ]);
+  const result = (await generateAgentResponse(
+    {
       agentType: "humor",
       context: evaluationFoundation(),
       personality: { primary: 5 },
-    })) as AgentResponse<AgentDataMap["humor"]>;
-    expect(calls).toBe(2);
-    expect(result.data.options).toHaveLength(3);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+    },
+    fake.sdk,
+  )) as AgentResponse<AgentDataMap["humor"]>;
+  expect(fake.calls()).toBe(2);
+  expect(result.provider).toBe("mock");
+  expect(result.data.options).toHaveLength(3);
 });
 
-test("Step 3b retries once, logs the fired check, and accepts the corrected result", async () => {
-  process.env.AI_MODE = "live";
+test("offline simulated Step 3b retries once, logs the fired check, and accepts the corrected result", async () => {
+  process.env.AI_MODE = "mock";
   process.env.AI_PROVIDER = "openai";
-  process.env.OPENAI_API_KEY = "sk-test-private-sentinel";
+  process.env.OPENAI_API_KEY = "";
   process.env.OPENAI_MODEL = "gpt-5.5";
-  const originalFetch = globalThis.fetch;
   const originalInfo = console.info;
   const logs: string[] = [];
-  let calls = 0;
   const invalid = validPerspectiveData();
   invalid.options[0].brief_line =
     "Make this specific campaign tension impossible to overlook.";
-  globalThis.fetch = async () => {
-    calls++;
-    return responseFor(
-      JSON.stringify(calls === 1 ? invalid : validPerspectiveData()),
-    );
-  };
+  const fake = createOfflineModelClient([
+    JSON.stringify(invalid),
+    JSON.stringify(validPerspectiveData()),
+  ]);
   console.info = (...args: unknown[]) => logs.push(args.join(" "));
-  resetOpenAIClientForTests();
   try {
-    const result = (await generateAgentResponse({
-      agentType: "humor",
-      context: evaluationFoundation(),
-      personality: { primary: 5 },
-    })) as AgentResponse<AgentDataMap["humor"]>;
-    expect(calls).toBe(2);
+    const result = (await generateAgentResponse(
+      {
+        agentType: "humor",
+        context: evaluationFoundation(),
+        personality: { primary: 5 },
+      },
+      fake.sdk,
+    )) as AgentResponse<AgentDataMap["humor"]>;
+    expect(fake.calls()).toBe(2);
+    expect(result.provider).toBe("mock");
     expect(result.data.options[0].brief_line).not.toMatch(
       /^(?:make|give|show|help|let|reveal|position|turn)\b/i,
     );
@@ -648,9 +641,7 @@ test("Step 3b retries once, logs the fired check, and accepts the corrected resu
       "check=banned_openers retried=true passed=true",
     );
   } finally {
-    globalThis.fetch = originalFetch;
     console.info = originalInfo;
-    resetOpenAIClientForTests();
   }
 });
 

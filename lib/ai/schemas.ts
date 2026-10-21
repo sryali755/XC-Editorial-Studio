@@ -73,8 +73,56 @@ export const discoveryActions = [
   "check_recency",
   "compare_input",
   "ask_another_lens",
+  "another_answer",
   "refresh",
 ] as const;
+// Optional so previously saved investigations and existing preparation calls
+// retain their original request shape. Conversation turns are request context,
+// never independent source evidence.
+const discoveryConversationSchema = z
+  .object({
+    scope: z
+      .object({
+        kind: z.enum(["agent", "finding"]),
+        threadId: z.string().min(1).max(300),
+        inputPackVersion: item,
+        question: item,
+        investigationType: z.enum(["problem", "hypothesis"]),
+        findingRef: z.string().min(1).max(300).optional(),
+      })
+      .strict(),
+    currentMessageId: z.string().min(1).max(300),
+    selectionPolicy: z.literal("all-user-and-recent-agent"),
+    messages: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1).max(300),
+            role: z.enum(["user", "assistant"]),
+            text: z.string().min(1).max(12000),
+            createdAt: z.string().max(100),
+            action: z.enum(discoveryActions).optional(),
+            findingRef: z.string().min(1).max(300).optional(),
+            researchRunId: z.string().min(1).max(300).optional(),
+            status: z
+              .enum([
+                "pending",
+                "complete",
+                "failed",
+                "cancelled",
+                "interrupted",
+              ])
+              .optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(100),
+    omittedMessageIds: z.array(z.string().min(1).max(300)).max(1000),
+    budgetCharacters: z.number().int().min(512).max(100000),
+    usedCharacters: z.number().int().min(1).max(100000),
+  })
+  .strict();
 const discoveryEvidence = z
   .object({
     source: item,
@@ -190,6 +238,33 @@ export const outputSchemas = {
       note: text,
     })
     .strict(),
+  strategySuggestions: z
+    .object({
+      suggestions: z
+        .array(
+          z
+            .object({
+              briefLine: z.string().min(12).max(500),
+              rationale: item,
+              evidenceIds: z.array(item).min(1).max(3),
+              sparkIds: z.array(item).max(2),
+              findingLinks: z
+                .array(
+                  z
+                    .object({
+                      findingId: item,
+                      contribution: z.string().min(10).max(1000),
+                    })
+                    .strict(),
+                )
+                .max(2),
+              validationGap: item,
+            })
+            .strict(),
+        )
+        .length(3),
+    })
+    .strict(),
   synthesis: z.object({ synthesizedLines: z.array(line).length(1) }).strict(),
   finalBrief: z
     .object({
@@ -211,6 +286,20 @@ export const outputSchemas = {
     .strict(),
 };
 export type AgentType = keyof typeof outputSchemas;
+// Keep historical/parser schemas compatible with saved findings without a
+// locator. The model-facing strict schema must require every field; use an
+// empty locator when no reference was supplied.
+export const discoveryGenerationSchema = outputSchemas.discovery.extend({
+  findings: z
+    .array(
+      discoveryFinding.extend({
+        evidence: z.array(discoveryEvidence.extend({ locator: text })).max(4),
+      }),
+    )
+    .min(1)
+    .max(4),
+});
+
 export type AgentDataMap = {
   [K in AgentType]: z.infer<(typeof outputSchemas)[K]>;
 };
@@ -244,6 +333,85 @@ const campaignContext = z
   .strict();
 export const foundationSchema = z
   .object({
+    campaignIdentity: z
+      .object({
+        origin: z.enum(["source", "human_confirmed"]),
+        sourceReference: text,
+        confirmedAt: z.iso.datetime().optional(),
+        id: item.optional(),
+        displayName: text.optional(),
+        sourceName: text.optional(),
+        sourceDocumentTitle: text.optional(),
+        sourceDocumentFileName: text.optional(),
+        sourceCandidate: z
+          .object({
+            name: item,
+            kind: z.enum(["explicit", "cover_title"]),
+            excerpt: item,
+            locator: item,
+          })
+          .strict()
+          .optional(),
+        humanConfirmedName: text.optional(),
+        confirmationStatus: z
+          .enum(["source_confirmed", "human_confirmed", "unresolved"])
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    parentPlatform: z
+      .object({
+        name: text,
+        sourceValue: text,
+        excerpt: text,
+        line: z.number().int().positive(),
+      })
+      .strict()
+      .optional(),
+    jtbdContext: z
+      .object({
+        original: z.array(
+          z
+            .object({
+              label: text,
+              text,
+              excerpt: text,
+              line: z.number().int().positive(),
+              approvalStatus: z.literal("unknown"),
+            })
+            .strict(),
+        ),
+        proposed: z.array(
+          z
+            .object({
+              label: text,
+              text,
+              excerpt: text,
+              line: z.number().int().positive(),
+              approvalStatus: z.literal("not_approved"),
+            })
+            .strict(),
+        ),
+      })
+      .strict()
+      .optional(),
+    suppliedEvidence: z
+      .array(
+        z
+          .object({
+            id: item,
+            source: item,
+            locator: text,
+            text: item,
+            date: text,
+            audience: text,
+            accessScope: z.literal("supplied"),
+          })
+          .strict(),
+      )
+      .max(20)
+      .optional(),
+    evidenceSparks: z.array(discoveryFindingWithProvenance).max(30).optional(),
     campaignContext,
     sourceBrief: text.optional(),
     currentRtb: z
@@ -289,6 +457,79 @@ export const foundationSchema = z
   })
   .strict();
 export type Foundation = z.infer<typeof foundationSchema>;
+// Discovery versions were historically keyed from parser metadata as well as
+// displayed field values. Preserve only these source-derived optional keys at
+// the Discovery boundary; creative request schemas remain unchanged.
+const discoverySourceField = sourceField.extend({
+  present: z.boolean().optional(),
+  occurrences: z.array(text).max(200).optional(),
+});
+const discoveryFieldShape = Object.fromEntries(
+  upstreamFields.map(({ key }) => [key, discoverySourceField]),
+) as Record<UpstreamKey, typeof discoverySourceField>;
+const discoveryUpstreamSchema = z.object({
+  fields: z.object(discoveryFieldShape),
+});
+const discoveryFoundationSchema = foundationSchema.extend({
+  requirements: discoveryUpstreamSchema,
+  currentResearch: text,
+  selectedPreparationVersions: z
+    .object({
+      reasonToBelieve: text.optional(),
+      research: text.optional(),
+      sparks: text.optional(),
+    })
+    .strict()
+    .optional(),
+  preparationGuidance: z
+    .object({
+      reasonToBelieve: text.optional(),
+      research: text.optional(),
+      sparks: text.optional(),
+    })
+    .strict()
+    .optional(),
+  sourceAvailability: z
+    .array(
+      z
+        .object({
+          source: item,
+          status: z.enum([
+            "supplied_analyzed",
+            "supplied_not_analyzed",
+            "connected_searched",
+            "available_not_searched",
+            "not_connected",
+            "search_failed",
+            "insufficient_evidence",
+          ]),
+          detail: text,
+        })
+        .strict(),
+    )
+    .max(30)
+    .optional(),
+  selectedResearchSources: z.array(text).max(20).optional(),
+  selectedResearch: z
+    .array(
+      z
+        .object({
+          id: item,
+          versionId: item,
+          version: z.number().int().nonnegative(),
+          category: text,
+          text,
+          source: text,
+          status: z.enum(["ai_synthesis", "supplied"]),
+        })
+        .strict(),
+    )
+    .max(100)
+    .optional(),
+  selectedSparks: z
+    .array(foundationSchema.shape.selectedSparks.element)
+    .max(30),
+});
 const preparation = z
   .object({
     parsedIMC: z.object({
@@ -414,16 +655,64 @@ export const requestSchema = z.discriminatedUnion("agentType", [
       agentType: z.literal("discovery"),
       context: z
         .object({
-          foundation: foundationSchema,
+          foundation: discoveryFoundationSchema,
+          preparationRole: z
+            .enum(["data_synthesis", "evidence_sparks"])
+            .optional(),
           lens: z.enum(discoveryLensIds),
           investigationType: z.enum(["problem", "hypothesis"]),
           question: item,
           action: z.enum(discoveryActions),
           selectedFinding: discoveryFindingWithProvenance.optional(),
+          conversation: discoveryConversationSchema.optional(),
           previousFindings: z.array(discoveryFindingWithProvenance).max(30),
+          peerFindings: z
+            .array(discoveryFindingWithProvenance)
+            .max(20)
+            .optional(),
           routedFromLens: z.enum(discoveryLensIds).optional(),
         })
-        .strict(),
+        .strict()
+        .superRefine((context, issue) => {
+          const memory = context.conversation;
+          if (!memory) return;
+          const invalid = (message: string) =>
+            issue.addIssue({ code: "custom", message });
+          if (
+            memory.scope.question !== context.question ||
+            memory.scope.investigationType !== context.investigationType
+          )
+            invalid(
+              "Conversation scope does not match the current investigation.",
+            );
+          const selectedRef = context.selectedFinding
+            ? `${context.selectedFinding.id}@${context.selectedFinding.runVersion}`
+            : undefined;
+          if (
+            (memory.scope.kind === "finding" &&
+              memory.scope.findingRef !== selectedRef) ||
+            (memory.scope.kind === "agent" && memory.scope.findingRef)
+          )
+            invalid(
+              "Conversation scope does not match the selected finding version.",
+            );
+          const current = memory.messages.at(-1);
+          if (
+            !current ||
+            current.id !== memory.currentMessageId ||
+            current.role !== "user"
+          )
+            invalid(
+              "The current conversation turn must be the last user message.",
+            );
+          if (
+            new Set(memory.messages.map((item) => item.id)).size !==
+            memory.messages.length
+          )
+            invalid("Conversation message IDs must be unique.");
+          if (JSON.stringify(memory).length > memory.budgetCharacters)
+            invalid("The conversation exceeds its request-context budget.");
+        }),
     })
     .strict(),
   z
@@ -432,8 +721,79 @@ export const requestSchema = z.discriminatedUnion("agentType", [
       agentType: z.literal("connections"),
       context: z
         .object({
-          foundation: foundationSchema,
+          foundation: discoveryFoundationSchema,
           findings: z.array(discoveryFindingWithProvenance).min(2).max(12),
+          // Aligned by index with selected findings when Kevin explicitly
+          // compares earlier-context versions. These are historical source
+          // snapshots, not newly retrieved or current-campaign evidence.
+          sourceFoundations: z
+            .array(discoveryFoundationSchema)
+            .max(12)
+            .optional(),
+        })
+        .strict()
+        .superRefine((context, issue) => {
+          if (
+            context.sourceFoundations &&
+            context.sourceFoundations.length !== context.findings.length
+          )
+            issue.addIssue({
+              code: "custom",
+              message:
+                "Each selected finding requires its matching historical source snapshot.",
+            });
+        }),
+    })
+    .strict(),
+  z
+    .object({
+      ...base,
+      agentType: z.literal("strategySuggestions"),
+      context: z
+        .object({
+          sourceBrief: text.min(1),
+          campaignName: text,
+          objective: text,
+          audience: text,
+          originalRtb: text,
+          rtbApprovalStatus: z.enum([
+            "approved",
+            "not_approved",
+            "pending",
+            "unknown",
+          ]),
+          sourceExcerpts: z
+            .array(z.object({ id: item, label: item, excerpt: item }).strict())
+            .min(1)
+            .max(40),
+          sparkInputs: z
+            .array(
+              z
+                .object({ id: item, title: item, idea: item, excerpt: text })
+                .strict(),
+            )
+            .max(6),
+          selectedResearch: z
+            .array(z.object({ id: item, text: item, source: item }).strict())
+            .max(20),
+          savedFindings: z
+            .array(
+              z
+                .object({
+                  id: item,
+                  title: item,
+                  whatWeFound: item,
+                  whyItMayMatter: item,
+                  whatComplicatesIt: item,
+                  questionToExplore: item,
+                  evidenceState: z.enum(["evidence_supported", "research_gap"]),
+                })
+                .strict(),
+            )
+            .max(12),
+          currentDraft: z
+            .object({ briefLine: text, problem: text, insight: text })
+            .strict(),
         })
         .strict(),
     })
@@ -536,6 +896,7 @@ export interface AgentResponse<T = AgentData> {
   generation?: GenerationRecord;
 }
 export interface AIStatus {
+  model?: string;
   mode: "mock" | "live";
   provider: "mock" | "openai";
   configured: boolean;

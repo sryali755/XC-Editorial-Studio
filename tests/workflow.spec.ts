@@ -26,7 +26,7 @@ test("IMC import, independent preparation histories, selected context and persis
   });
   await expect(
     page.getByRole("textbox", { name: "IMC output brief", exact: false }),
-  ).toContainText("Supplied audience research.");
+  ).toHaveValue(/Supplied audience research\./);
   await importer.setInputFiles({
     name: "unsupported.pdf",
     mimeType: "application/pdf",

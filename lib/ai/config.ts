@@ -22,6 +22,7 @@ export function publicAIStatus(): AIStatus {
   return {
     mode: config.mode,
     provider: config.mode === "live" ? "openai" : "mock",
+    ...(config.mode === "live" ? { model: config.model } : {}),
     configured: !config.error,
     ...(config.error ? { error: config.error } : {}),
   };

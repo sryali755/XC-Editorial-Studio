@@ -5,6 +5,7 @@ import { useEffect, useRef, type RefObject } from "react";
 export function useDiscoveryDialog(
   container: RefObject<HTMLElement | null>,
   onClose: () => void,
+  modal = true,
 ) {
   const close = useRef(onClose);
   useEffect(() => {
@@ -30,7 +31,7 @@ export function useDiscoveryDialog(
         close.current();
         return;
       }
-      if (event.key !== "Tab") return;
+      if (event.key !== "Tab" || !modal) return;
       const items = focusable();
       const first = items[0],
         last = items.at(-1);
@@ -55,5 +56,5 @@ export function useDiscoveryDialog(
       document.removeEventListener("keydown", keyboard);
       if (previous?.isConnected) previous.focus();
     };
-  }, [container]);
+  }, [container, modal]);
 }

@@ -15,7 +15,7 @@ async function openDiscovery(
   page: Page,
   fail?: (request: DiscoveryRequest) => boolean,
 ) {
-  await page.goto("/");
+  await page.goto("/creative");
   await page.getByRole("button", { name: "Load sample IMC brief" }).click();
   await page
     .getByRole("button", { name: "Prepare XC Input Pack", exact: true })

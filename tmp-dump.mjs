@@ -1,0 +1,10 @@
+import { chromium } from "@playwright/test";
+import { writeFileSync } from "node:fs";
+const browser = await chromium.launch({ channel: "chrome" });
+const page = await browser.newPage();
+await page.goto("http://localhost:3000/");
+await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Input pack", exact: true }).click();
+await page.getByLabel("Import file for IMC brief", { exact: true }).setInputFiles("/Users/sryali755@cable.comcast.com/Downloads/Black_Friday_Informative_IMC_Brief.docx");
+await page.waitForFunction(() => document.querySelector('textarea[aria-label="IMC output brief"]')?.value.includes("Black Friday"), null, { timeout: 30000 });
+writeFileSync("/private/tmp/claude-502/-Users-sryali755-cable-comcast-com-Library-CloudStorage-OneDrive-Comcast-Desktop-XC-Editorial-studio/28e1ecd2-f9ed-4935-b62f-e475858025bf/scratchpad/bf/imported.txt", await page.getByRole("textbox", { name: "IMC output brief", exact: true }).inputValue());
+await browser.close();

@@ -58,7 +58,7 @@ test("brand metadata is extracted separately and legacy unedited campaign fields
     upstream: legacy,
     parsedIMC: { ...parsed, parserVersion: undefined },
   };
-  expect(getParsedIMC(state).parserVersion).toBe(3);
+  expect(getParsedIMC(state).parserVersion).toBe(5);
   expect(getUpstream(state).fields.campaignName.value).toBe(
     "Life Has Enough Drama",
   );
@@ -78,7 +78,7 @@ test("extracts the pasted mobile Markdown brief without inventing absent fields"
   expect(
     displayedFields.filter((field) => field?.status === "Supplied"),
   ).toHaveLength(13);
-  expect(parsed.parserVersion).toBe(3);
+  expect(parsed.parserVersion).toBe(5);
   expect(parsed.fields.objective).toMatchObject({
     status: "Supplied",
     sourceValue: mobileBusinessObjective,

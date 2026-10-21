@@ -17,6 +17,7 @@ export default defineConfig({
       AI_MODE: "mock",
       AI_PROVIDER: "openai",
       OPENAI_API_KEY: "",
+      XC_OFFLINE_TEST: "1",
     },
     reuseExistingServer: false,
   },

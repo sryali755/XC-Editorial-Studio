@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { demoPack } from "../../lib/demo";
 import { selectedFoundation } from "../../lib/ai/context";
+import { mobileIMCBrief } from "../fixtures/mobile-imc-brief";
+import {
+  applyStudioSource,
+  emptyStudio,
+  studioPack,
+} from "../../lib/discovery-studio";
 import { mockDiscovery } from "../../lib/ai/mock-discovery";
 import { discoveryEvidenceIssue } from "../../lib/ai/provider";
 import { discoveryPrompt } from "../../lib/ai/discovery-prompts";
@@ -80,6 +86,11 @@ const version = (number = 1): DiscoveryRunVersion => ({
 
 test("evidence is exact and source-bound; synthetic context and invented metadata are rejected", () => {
   const req = request();
+  // The old demo pack has no original source brief. Cite a supplied brief
+  // instead; a derived field in a sourceless demo must not become evidence.
+  req.context.foundation = selectedFoundation(
+    studioPack(applyStudioSource(emptyStudio(), mobileIMCBrief)),
+  );
   const data = mockDiscovery(req);
   expect(discoveryEvidenceIssue(req, data)).toBe("");
   const change = (
@@ -212,7 +223,7 @@ test("finding volleys stay out of lens threads and scoped retries preserve versi
   const lensThread = state.runs[0].thread;
   state = beginDiscoveryRequest(state, req, selected.inputPackVersion);
   expect(state.runs[0].thread).toEqual(lensThread);
-  expect(state.findingThreads[selected.id][0]).toMatchObject({
+  expect(state.findingThreads[ref][0]).toMatchObject({
     findingRef: ref,
     question: state.question,
     inputPackVersion: selected.inputPackVersion,
@@ -228,7 +239,7 @@ test("finding volleys stay out of lens threads and scoped retries preserve versi
   expect(failed.drafts).toEqual(state.drafts);
   const next = completeDiscoveryRequest(failed, req, version(2));
   expect(next.runs[0].thread).toEqual(lensThread);
-  expect(next.findingThreads[selected.id]).toHaveLength(2);
+  expect(next.findingThreads[ref]).toHaveLength(2);
   expect(next.drafts?.agents.brand).toBe("Unsent brand question");
   expect(next.drafts?.findings[ref]).toBe("");
   expect(knownDiscoveryFindings(next).get(ref)?.runVersion).toBe(1);

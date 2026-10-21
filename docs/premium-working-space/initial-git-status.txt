@@ -1,0 +1,155 @@
+ M README.md
+ M app/api/ai/agent/route.ts
+ M app/globals.css
+ M app/page.tsx
+ M components/BriefDocumentPreview.tsx
+ M components/InsightDiscoveryFeature.tsx
+ M components/InsightDiscoveryPortal.tsx
+ M components/InsightDiscoveryWorkspace.tsx
+ M components/PreparationOutputs.tsx
+ M components/StrategyPanels.tsx
+ M components/useDiscoveryDialog.ts
+ M docs/insight-discovery.md
+ M lib/ai/config.ts
+ M lib/ai/discovery-evidence.ts
+ M lib/ai/discovery-prompts.ts
+ M lib/ai/generation-settings.ts
+ M lib/ai/mock-discovery.ts
+ M lib/ai/mock-preparation.ts
+ M lib/ai/mock-provider.ts
+ M lib/ai/mock-sparks.ts
+ M lib/ai/openai-provider.ts
+ M lib/ai/prompts.ts
+ M lib/ai/provider.ts
+ M lib/ai/schemas.ts
+ M lib/ai/spark-quality.ts
+ M lib/brief-document.ts
+ M lib/campaign-display.ts
+ M lib/discovery-handoff.ts
+ M lib/discovery-persistence.ts
+ M lib/discovery-sources.ts
+ M lib/discovery-state.ts
+ M lib/discovery.ts
+ M lib/imc-parser.ts
+ M lib/preparation.ts
+ M lib/types.ts
+ M lib/upstream.ts
+ M package-lock.json
+ M package.json
+ M playwright.config.ts
+ M tests/ai/creative-controls.spec.ts
+ M tests/ai/discovery-followup.spec.ts
+ M tests/ai/sparks.spec.ts
+ M tests/discovery-followup.spec.ts
+ M tests/imc-parser.spec.ts
+ M tests/insight-discovery.spec.ts
+ M tests/workflow.spec.ts
+?? app/creative/
+?? app/discovery-v2.css
+?? app/studio-wireframe.css
+?? components/CampaignIdentityPanel.tsx
+?? components/DiscoveryInputPack.tsx
+?? components/DiscoveryRoundTableV2.tsx
+?? components/DocumentFileImport.tsx
+?? components/InsightDiscoveryStudio.tsx
+?? components/StrategySuggestions.tsx
+?? components/WorkingSpace.tsx
+?? docs/campaign-name-verification.md
+?? docs/campaign-name-verification/
+?? docs/connector-status-updates.md
+?? docs/document-upload.md
+?? docs/final-e2e-qa-verification.md
+?? docs/final-e2e-qa/
+?? docs/five-agent-quotation-verification.md
+?? docs/four-tab-ui-verification.md
+?? docs/insight-discovery-primary.md
+?? docs/insight-discovery-rev2.md
+?? docs/live-ai-readiness-verification.md
+?? docs/requirement2-correction-ledger.md
+?? docs/requirement5-verification.md
+?? docs/roundtable-one-finding/
+?? docs/strategy-studio-four-tab-ui/
+?? docs/strategy-studio-screenshots/
+?? docs/strategy-studio.md
+?? docs/working-space-simplification/
+?? lib/ai/discovery-submission.ts
+?? lib/ai/offline-model-client.ts
+?? lib/ai/strategy-suggestions.ts
+?? lib/browser-workspace-store.ts
+?? lib/campaign-identity.ts
+?? lib/campaign-naming.ts
+?? lib/discovery-connection-evidence.ts
+?? lib/discovery-connections.ts
+?? lib/discovery-context.ts
+?? lib/discovery-conversation-memory.ts
+?? lib/discovery-lens-quality.ts
+?? lib/discovery-questions.ts
+?? lib/discovery-rubrics.ts
+?? lib/discovery-studio.ts
+?? lib/document-import.ts
+?? lib/imc-campaign-scope.ts
+?? lib/imc-source-context.ts
+?? lib/samples/
+?? lib/studio-brief-input.ts
+?? lib/studio-imc-records.ts
+?? lib/workspace-suggestions.ts
+?? playwright.offline.config.ts
+?? playwright.upload-production.config.ts
+?? scripts/
+?? tests/ai/campaign-identity.spec.ts
+?? tests/ai/campaign-name-contract.spec.ts
+?? tests/ai/discovery-connections.spec.ts
+?? tests/ai/discovery-conversation-memory.spec.ts
+?? tests/ai/discovery-distinct-answer.spec.ts
+?? tests/ai/discovery-interpretation-labels.spec.ts
+?? tests/ai/discovery-lens-quality.spec.ts
+?? tests/ai/discovery-provenance-claims.spec.ts
+?? tests/ai/discovery-questions.spec.ts
+?? tests/ai/discovery-quotation-repair.spec.ts
+?? tests/ai/discovery-rev2.spec.ts
+?? tests/ai/discovery-scope-markers.spec.ts
+?? tests/ai/discovery-sdk.spec.ts
+?? tests/ai/discovery-studio.spec.ts
+?? tests/ai/discovery-submission.spec.ts
+?? tests/ai/input-pack-context.spec.ts
+?? tests/ai/input-pack-offline-fixture.spec.ts
+?? tests/ai/live-handoff.spec.ts
+?? tests/ai/offline-guard.spec.ts
+?? tests/ai/real-imc-extraction.spec.ts
+?? tests/ai/requirement2-context.spec.ts
+?? tests/ai/requirement2-mock-retry.spec.ts
+?? tests/ai/requirement2-state-safety.spec.ts
+?? tests/ai/requirement3-request-flow.spec.ts
+?? tests/ai/requirement3-turn-state.spec.ts
+?? tests/ai/requirement4-working-space.spec.ts
+?? tests/ai/requirement5-final-brief.spec.ts
+?? tests/ai/strategy-suggestions.spec.ts
+?? tests/ai/studio-imc-records.spec.ts
+?? tests/ai/workspace-selected-v0.spec.ts
+?? tests/discovery-another-answer.spec.ts
+?? tests/discovery-lens-quality.spec.ts
+?? tests/discovery-question-suggestions.spec.ts
+?? tests/discovery-quotation-retry.spec.ts
+?? tests/discovery-rev2.spec.ts
+?? tests/discovery-roundtable-one-finding.spec.ts
+?? tests/discovery-storage.spec.ts
+?? tests/discovery-studio.spec.ts
+?? tests/document-upload.spec.ts
+?? tests/fixtures/black-friday-campaign-identity.ts
+?? tests/fixtures/client-input-pack/
+?? tests/fixtures/document-uploads.ts
+?? tests/input-pack-offline-real-pdf.spec.ts
+?? tests/requirement2-real-fixture.spec.ts
+?? tests/requirement2-roundtable-safety.spec.ts
+?? tests/requirement2-ui-visual.spec.ts
+?? tests/requirement3-primary-ui.spec.ts
+?? tests/strategy-studio-campaign-name.spec.ts
+?? tests/strategy-studio-campaign-qa.spec.ts
+?? tests/strategy-studio-final-brief.spec.ts
+?? tests/strategy-studio-four-tab-ui.spec.ts
+?? tests/strategy-studio-live-readiness.spec.ts
+?? tests/strategy-studio-screenshots.spec.ts
+?? tests/strategy-studio-working-space.spec.ts
+?? tests/strategy-studio.spec.ts
+?? tests/strategy-suggestions.spec.ts
+?? tmp-dump.mjs

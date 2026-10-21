@@ -2,6 +2,7 @@ import { generateAgentResponse } from "@/lib/ai/provider";
 import { publicAIStatus } from "@/lib/ai/config";
 import { AgentError } from "@/lib/ai/errors";
 import { requestSchema } from "@/lib/ai/schemas";
+import { runValidatedAgentRequest } from "@/lib/ai/discovery-submission";
 
 export const runtime = "nodejs";
 // Allows one bounded provider retry while remaining statically analyzable by Next.js.
@@ -62,9 +63,12 @@ export async function POST(request: Request) {
         "Invalid agent request. Check the campaign context, selected sparks and approval before retrying.",
         400,
       );
-    return Response.json(await generateAgentResponse(parsed.data), {
-      headers: { "Cache-Control": "no-store" },
-    });
+    return Response.json(
+      await runValidatedAgentRequest(parsed.data, generateAgentResponse),
+      {
+        headers: { "Cache-Control": "no-store" },
+      },
+    );
   } catch (error) {
     return Response.json(
       {

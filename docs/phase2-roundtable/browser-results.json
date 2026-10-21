@@ -1,0 +1,645 @@
+{
+  "config": {
+    "argv": [
+      "/opt/homebrew/Cellar/node/25.9.0_2/bin/node",
+      "/private/tmp/xc-p2-test.uGH1mg/node_modules/.bin/playwright",
+      "test",
+      "-c",
+      "playwright.phase2.config.ts",
+      "--reporter=list,json",
+      "--output=/private/tmp/xc-p2-browser-guarded"
+    ],
+    "configFile": "/private/tmp/xc-p2-test.uGH1mg/playwright.phase2.config.ts",
+    "rootDir": "/private/tmp/xc-p2-test.uGH1mg/tests/phase2",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/private/tmp/xc-p2-browser-guarded",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "/private/tmp/xc-p2-test.uGH1mg/tests/phase2",
+        "testIgnore": [],
+        "testMatch": [
+          "roundtable.spec.ts"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list"
+      ],
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "roundtable.spec.ts",
+      "file": "roundtable.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "A: empty Round Table 1440",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1609,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T19:58:35.020Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-network-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrSW50ZXJjZXB0cyI6MCwic2VydmVyQWdlbnRSZXF1ZXN0cyI6MCwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiXSwiZXJyb3JzIjpbXX0="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "47dcec9f8476f7f2427c-bff72982c5459f64a5f6",
+          "file": "roundtable.spec.ts",
+          "line": 195,
+          "column": 7
+        },
+        {
+          "title": "D/E/G/H/I: completed, steering and independent histories 1440",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3490,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T19:58:37.148Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-network-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrSW50ZXJjZXB0cyI6MCwic2VydmVyQWdlbnRSZXF1ZXN0cyI6MCwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiXSwiZXJyb3JzIjpbXX0="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "47dcec9f8476f7f2427c-346c291becd03557afb2",
+          "file": "roundtable.spec.ts",
+          "line": 215,
+          "column": 7
+        },
+        {
+          "title": "A: empty Round Table 390",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1430,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T19:58:40.648Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-network-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrSW50ZXJjZXB0cyI6MCwic2VydmVyQWdlbnRSZXF1ZXN0cyI6MCwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiXSwiZXJyb3JzIjpbXX0="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "47dcec9f8476f7f2427c-6a10131f05261774d9ae",
+          "file": "roundtable.spec.ts",
+          "line": 195,
+          "column": 7
+        },
+        {
+          "title": "D/E/G/H/I: completed, steering and independent histories 390",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3294,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T19:58:42.089Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-network-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrSW50ZXJjZXB0cyI6MCwic2VydmVyQWdlbnRSZXF1ZXN0cyI6MCwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiXSwiZXJyb3JzIjpbXX0="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "47dcec9f8476f7f2427c-0cbdc6059c3ec2a656f0",
+          "file": "roundtable.spec.ts",
+          "line": 215,
+          "column": 7
+        },
+        {
+          "title": "A: empty Round Table 820",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1422,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T19:58:45.392Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-network-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrSW50ZXJjZXB0cyI6MCwic2VydmVyQWdlbnRSZXF1ZXN0cyI6MCwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiXSwiZXJyb3JzIjpbXX0="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "47dcec9f8476f7f2427c-b3db95fe6cf2de86dd0f",
+          "file": "roundtable.spec.ts",
+          "line": 195,
+          "column": 7
+        },
+        {
+          "title": "D/E/G/H/I: completed, steering and independent histories 820",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3608,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T19:58:46.823Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-network-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrSW50ZXJjZXB0cyI6MCwic2VydmVyQWdlbnRSZXF1ZXN0cyI6MCwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiXSwiZXJyb3JzIjpbXX0="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "47dcec9f8476f7f2427c-fdc20985da2200a31412",
+          "file": "roundtable.spec.ts",
+          "line": 215,
+          "column": 7
+        },
+        {
+          "title": "B/C/F/H/L: regeneration is independent, uses steering and preserves saved V2 and human drafts",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1977,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T19:58:50.442Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-network-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrSW50ZXJjZXB0cyI6MSwic2VydmVyQWdlbnRSZXF1ZXN0cyI6MCwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiXSwiZXJyb3JzIjpbXX0="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "47dcec9f8476f7f2427c-5882fbe2719d4c911a71",
+          "file": "roundtable.spec.ts",
+          "line": 319,
+          "column": 5
+        },
+        {
+          "title": "E/F/K: Ask is conversational only; histories, selected context and human drafts survive navigation and reload",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3468,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T19:58:52.430Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-network-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrSW50ZXJjZXB0cyI6Mywic2VydmVyQWdlbnRSZXF1ZXN0cyI6MCwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiLCJHRVQgaHR0cHM6Ly9mb250cy5nb29nbGVhcGlzLmNvbS9jc3MyIl0sImVycm9ycyI6W119"
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "47dcec9f8476f7f2427c-501615ef3a8a0cb02958",
+          "file": "roundtable.spec.ts",
+          "line": 376,
+          "column": 5
+        },
+        {
+          "title": "L: partial five-agent failure and operation-scoped retries retain valid histories",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2108,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T19:58:55.907Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-network-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrSW50ZXJjZXB0cyI6OCwic2VydmVyQWdlbnRSZXF1ZXN0cyI6MCwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiXSwiZXJyb3JzIjpbXX0="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "47dcec9f8476f7f2427c-cd5427b273dabac2c9f5",
+          "file": "roundtable.spec.ts",
+          "line": 428,
+          "column": 5
+        },
+        {
+          "title": "G: 0 findings render without invalid navigation",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1219,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T19:58:58.024Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-network-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrSW50ZXJjZXB0cyI6MCwic2VydmVyQWdlbnRSZXF1ZXN0cyI6MCwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiXSwiZXJyb3JzIjpbXX0="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "47dcec9f8476f7f2427c-6632f3da912e4591304c",
+          "file": "roundtable.spec.ts",
+          "line": 487,
+          "column": 7
+        },
+        {
+          "title": "G: 1 findings render without invalid navigation",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1293,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T19:58:59.256Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-network-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrSW50ZXJjZXB0cyI6MCwic2VydmVyQWdlbnRSZXF1ZXN0cyI6MCwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiXSwiZXJyb3JzIjpbXX0="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "47dcec9f8476f7f2427c-822296df69c42826221d",
+          "file": "roundtable.spec.ts",
+          "line": 487,
+          "column": 7
+        },
+        {
+          "title": "L: invalid partial structured output is not a completed history version",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1656,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T19:59:00.560Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-network-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrSW50ZXJjZXB0cyI6Miwic2VydmVyQWdlbnRSZXF1ZXN0cyI6MCwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiXSwiZXJyb3JzIjpbXX0="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "47dcec9f8476f7f2427c-4fe7e5ddd56f278cd722",
+          "file": "roundtable.spec.ts",
+          "line": 506,
+          "column": 5
+        },
+        {
+          "title": "J: separate Xfinity Pro campaign restores only its own findings and histories",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1900,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T19:59:02.224Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-network-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrSW50ZXJjZXB0cyI6MCwic2VydmVyQWdlbnRSZXF1ZXN0cyI6MCwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiXSwiZXJyb3JzIjpbXX0="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "47dcec9f8476f7f2427c-14a12ca3802711c79285",
+          "file": "roundtable.spec.ts",
+          "line": 534,
+          "column": 5
+        },
+        {
+          "title": "I/H: compare, save and set aside use distinct exact references; Working Space retains attribution and restores aside findings",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2198,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T19:59:04.132Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "offline-network-audit",
+                      "contentType": "application/json",
+                      "body": "eyJtb2NrSW50ZXJjZXB0cyI6MCwic2VydmVyQWdlbnRSZXF1ZXN0cyI6MCwiZGVuaWVkIjpbIkdFVCBodHRwczovL2ZvbnRzLmdvb2dsZWFwaXMuY29tL2NzczIiXSwiZXJyb3JzIjpbXX0="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "47dcec9f8476f7f2427c-8a9ff221caa8f2da6f44",
+          "file": "roundtable.spec.ts",
+          "line": 558,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-19T19:58:34.549Z",
+    "duration": 31879.698,
+    "expected": 14,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

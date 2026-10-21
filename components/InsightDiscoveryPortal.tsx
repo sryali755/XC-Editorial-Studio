@@ -6,6 +6,7 @@ import { approveDiscoveryCanvas } from "@/lib/discovery-handoff";
 import {
   discoveryStorageKey,
   readDiscoveryDraft,
+  writeDiscoveryDraft,
 } from "@/lib/discovery-persistence";
 import { recoverDiscoveryState } from "@/lib/discovery-state";
 import { compileInputPack, preparationReady } from "@/lib/preparation";
@@ -126,8 +127,7 @@ export default function InsightDiscoveryPortal({
     latestDiscovery.current = next;
     setDiscovery(next);
     try {
-      if (pack)
-        sessionStorage.setItem(discoveryStorageKey(pack), JSON.stringify(next));
+      if (pack) writeDiscoveryDraft(sessionStorage, pack, next);
     } catch {
       setHandoffError("Discovery could not be saved in this browser tab.");
     }

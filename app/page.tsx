@@ -1,17 +1,17 @@
 import StrategyWorkspace from "@/components/StrategyWorkspace";
-import InsightDiscoveryPortal from "@/components/InsightDiscoveryPortal";
+import InsightDiscoveryStudio from "@/components/InsightDiscoveryStudio";
 import { publicAIStatus } from "@/lib/ai/config";
+import "./discovery-v2.css";
+import "./studio-wireframe.css";
 export const dynamic = "force-dynamic";
+export const metadata = {
+  title: "XC · Strategy Studio",
+  description:
+    "Input Pack, Insight Discovery, human-led strategy and XC Brief.",
+};
 export default function Page() {
   const aiStatus = publicAIStatus();
-  const insightDiscoveryEnabled =
-    process.env.NEXT_PUBLIC_INSIGHT_DISCOVERY === "true";
-  return (
-    <>
-      <StrategyWorkspace aiStatus={aiStatus} />
-      {insightDiscoveryEnabled && (
-        <InsightDiscoveryPortal aiMode={aiStatus.mode} />
-      )}
-    </>
-  );
+  if (process.env.NEXT_PUBLIC_INSIGHT_DISCOVERY !== "false")
+    return <InsightDiscoveryStudio aiStatus={aiStatus} />;
+  return <StrategyWorkspace aiStatus={aiStatus} />;
 }

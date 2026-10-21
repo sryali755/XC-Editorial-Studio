@@ -2,9 +2,61 @@ import { sectionContent, type BriefDocument } from "@/lib/brief-document";
 
 export default function BriefDocumentPreview({
   document,
+  wireframe = false,
 }: {
   document: BriefDocument;
+  wireframe?: boolean;
 }) {
+  if (wireframe) {
+    const sections = document.groups.flatMap((group) => group.sections);
+    const rows = [
+      ["THE BUSINESS PROBLEM", "Problem"],
+      ["OBJECTIVE", "Objective"],
+      ["AUDIENCE", "Audience"],
+      ["INSIGHT", "Insight / Opportunity"],
+      ["JOB TO BE DONE", "Job to be done"],
+      ["REASONS TO BELIEVE", "Proof / RTB"],
+      ["STRATEGIC DIRECTION", "Strategic direction"],
+      ["WHAT WE NEED", "Deliverables"],
+      ["MANDATORIES", "Mandatories"],
+    ] as const;
+    const mainTitles = new Set<string>(rows.map(([, title]) => title));
+    return (
+      <article className="brief-paper brief-wireframe">
+        <header>
+          <span>XC CREATIVE BRIEF · {document.campaign.toUpperCase()}</span>
+          <small>{document.status}</small>
+        </header>
+        <h1>
+          {document.approved
+            ? sectionContent(document.approved)
+            : "Brief line not supplied"}
+        </h1>
+        <div className="brief-wireframe-rows">
+          {rows.map(([label, title]) => {
+            const section = sections.find((item) => item.title === title);
+            return (
+              <div className="brief-wireframe-row" key={title}>
+                <h2>{label}</h2>
+                <p>{section ? sectionContent(section) : "Not supplied."}</p>
+              </div>
+            );
+          })}
+        </div>
+        <details className="brief-wireframe-appendix">
+          <summary>Full selected source context and approval record</summary>
+          {sections
+            .filter((section) => !mainTitles.has(section.title))
+            .map((section) => (
+              <div key={section.id}>
+                <h3>{section.title}</h3>
+                <p>{sectionContent(section)}</p>
+              </div>
+            ))}
+        </details>
+      </article>
+    );
+  }
   return (
     <article className="brief-paper">
       <header className="brief-brand">

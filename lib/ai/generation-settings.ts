@@ -22,6 +22,7 @@ export function outputTokenBudget(agentType: string) {
     return 5000;
   if (agentType === "discovery") return 4500;
   if (agentType === "connections") return 3000;
+  if (agentType === "strategySuggestions") return 3500;
   // Six developed Sparks plus their rationales need the most headroom.
   return agentType === "finalBrief" || agentType === "sparks"
     ? 6000

@@ -1,6 +1,7 @@
 import { demoExecution } from "@/lib/demo";
 import { campaignDisplayName } from "@/lib/campaign-display";
-import { useRef, useState } from "react";
+import { usableCampaignName } from "@/lib/campaign-identity";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { briefFilename, buildBriefDocument } from "@/lib/brief-document";
 import BriefDocumentPreview from "./BriefDocumentPreview";
 import UpstreamContextPanel from "./UpstreamContextPanel";
@@ -226,25 +227,46 @@ export function ExecutionDirectionForm({
     </form>
   );
 }
-export function GeneratedBriefPreview({
+export function GeneratedBriefPreview(
+  props: Parameters<typeof BriefPreviewContent>[0],
+) {
+  // A version change must not inherit another brief's pending download/error.
+  return <BriefPreviewContent key={props.brief.id} {...props} />;
+}
+function BriefPreviewContent({
   brief,
   onRegenerate,
   onEdit,
   onBack,
+  onBackToDiscovery,
+  versionPicker,
   busy,
+  packaged = false,
 }: {
   brief: GeneratedBrief;
   onRegenerate: () => void;
   onEdit: () => void;
   onBack: () => void;
+  onBackToDiscovery?: () => void;
+  versionPicker?: ReactNode;
   busy: boolean;
+  packaged?: boolean;
 }) {
   const [downloading, setDownloading] = useState<"pdf" | "docx" | null>(null);
   const [downloadError, setDownloadError] = useState("");
   const downloadLock = useRef(false);
+  const exportScope = useRef({ active: true });
+  useEffect(() => {
+    const scope = exportScope.current;
+    scope.active = true;
+    return () => {
+      scope.active = false;
+    };
+  }, []);
   const documentModel = buildBriefDocument(brief);
+  const identityUnresolved = packaged && !usableCampaignName(brief.campaign);
   async function download(format: "pdf" | "docx") {
-    if (busy || downloadLock.current) return;
+    if (busy || downloadLock.current || identityUnresolved) return;
     downloadLock.current = true;
     setDownloading(format);
     setDownloadError("");
@@ -258,6 +280,9 @@ export function GeneratedBriefPreview({
           : await (
               await import("@/lib/export-brief-word")
             ).createBriefWord(documentModel);
+      // Imports and document generation can finish after navigation or a
+      // campaign/version switch. Discard that obsolete artifact.
+      if (!exportScope.current.active) return;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -267,46 +292,99 @@ export function GeneratedBriefPreview({
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch {
+      if (!exportScope.current.active) return;
       setDownloadError(
         `The ${format === "pdf" ? "PDF" : "Word"} download could not be created. Your brief is saved; please try again.`,
       );
     } finally {
       downloadLock.current = false;
-      setDownloading(null);
+      if (exportScope.current.active) setDownloading(null);
     }
   }
   return (
     <>
-      <div className="preview-actions">
-        <button className="button" onClick={onBack}>
-          ← Back to Strategy
-        </button>
+      <div className={`preview-actions${packaged ? " wireframe-actions" : ""}`}>
         <div>
-          <button className="button" disabled={busy} onClick={onEdit}>
-            Edit Execution Direction
+          <button className="button" onClick={onBack}>
+            {packaged ? "← Revise strategy" : "← Back to Strategy"}
           </button>
-          <button className="button" disabled={busy} onClick={onRegenerate}>
-            {busy ? "Regenerating…" : "Regenerate"}
-          </button>
-          <button
-            className="button primary"
-            disabled={busy || !!downloading}
-            onClick={() => download("pdf")}
-          >
-            {downloading === "pdf" ? "Preparing PDF…" : "Download PDF"}{" "}
-            <FileText size={16} />
-          </button>
-          <button
-            className="button"
-            disabled={busy || !!downloading}
-            onClick={() => download("docx")}
-          >
-            {downloading === "docx" ? "Preparing Word…" : "Download Word"}{" "}
-            <FileText size={16} />
-          </button>
-          <button className="button" onClick={() => window.print()}>
-            Print / Save PDF
-          </button>
+          {packaged && onBackToDiscovery && (
+            <button className="button" onClick={onBackToDiscovery}>
+              ← Back to Insight Discovery
+            </button>
+          )}
+        </div>
+        <div>
+          {versionPicker}
+          {!packaged && (
+            <>
+              <button className="button" disabled={busy} onClick={onEdit}>
+                Edit Execution Direction
+              </button>
+              <button className="button" disabled={busy} onClick={onRegenerate}>
+                {busy ? "Regenerating…" : "Regenerate"}
+              </button>
+            </>
+          )}
+          {packaged ? (
+            <details className="brief-export-menu">
+              <summary className="button primary">Export</summary>
+              <div>
+                <button
+                  className="button"
+                  disabled={busy || !!downloading || identityUnresolved}
+                  onClick={() => download("pdf")}
+                >
+                  {downloading === "pdf" ? "Preparing PDF…" : "Download PDF"}{" "}
+                  <FileText size={16} />
+                </button>
+                <button
+                  className="button"
+                  disabled={busy || !!downloading || identityUnresolved}
+                  onClick={() => download("docx")}
+                >
+                  {downloading === "docx" ? "Preparing Word…" : "Download Word"}{" "}
+                  <FileText size={16} />
+                </button>
+                <button
+                  className="button"
+                  disabled={identityUnresolved}
+                  onClick={() => window.print()}
+                >
+                  Print / Save PDF
+                </button>
+                <button
+                  className="button"
+                  disabled={busy}
+                  onClick={onRegenerate}
+                >
+                  {busy ? "Updating…" : "Update package"}
+                </button>
+              </div>
+            </details>
+          ) : (
+            <>
+              <button
+                className="button primary"
+                disabled={busy || !!downloading}
+                onClick={() => download("pdf")}
+              >
+                {downloading === "pdf" ? "Preparing PDF…" : "Download PDF"}{" "}
+                <FileText size={16} />
+              </button>
+              <button
+                className="button"
+                disabled={busy || !!downloading}
+                onClick={() => download("docx")}
+              >
+                {downloading === "docx" ? "Preparing Word…" : "Download Word"}{" "}
+                <FileText size={16} />
+              </button>
+              <button className="button" onClick={() => window.print()}>
+                Print / Save PDF
+              </button>
+            </>
+          )}
         </div>
       </div>
       {downloadError && (
@@ -314,7 +392,15 @@ export function GeneratedBriefPreview({
           {downloadError}
         </div>
       )}
-      <BriefDocumentPreview document={documentModel} />
+      {identityUnresolved && (
+        <div className="error brief-download-error" role="alert">
+          This saved historical brief has unresolved campaign identity. Its
+          original content is preserved. Review the campaign name in Input Pack,
+          confirm your current strategy and generate a new XC Brief before
+          exporting.
+        </div>
+      )}
+      <BriefDocumentPreview document={documentModel} wireframe={packaged} />
       <p className="center muted">
         Download the designed PDF or an editable Word document. Both include the
         full brief shown above.

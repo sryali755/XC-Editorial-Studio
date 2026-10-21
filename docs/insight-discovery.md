@@ -1,18 +1,18 @@
 # Insight Discovery POC
 
-Insight Discovery is an optional research mode that runs alongside the existing creative Round Table. It reuses the current prepared Input Pack but has a separate UI, five investigative prompts, version history, saved findings, threads, and human strategy canvas. It does not change the Round Table agents, creative prompts, brief-line blending, or the existing approval path.
+Insight Discovery is the primary application at `/`. It combines the Dynamic Input Pack, five research lenses, findings and source inspection, persistent volleys, My Thinking, a human whole-brief canvas, and approval-based final XC Brief packaging. See [the primary-workflow implementation report](insight-discovery-primary.md) for the conversion and verification results.
 
 ## Enable locally
 
-Set `NEXT_PUBLIC_INSIGHT_DISCOVERY=true` before starting `next dev` or building. The public flag is inlined by Next.js at build time; restart the development server after changing it. If unset or any value other than `true`, the original page renders without the Discovery entry.
+The existing `NEXT_PUBLIC_INSIGHT_DISCOVERY=true` setting enables the primary Discovery application. Discovery is also the default when the flag is unset. An explicit `false` retains the original root for recovery and regression testing. The old creative workspace is available at `/creative`.
 
-When enabled, the Discovery entry is added to the Dynamic XC Input Pack only after the existing preparation outputs are current and ready. The existing “Generate Strategic Perspectives” action continues to open the creative Round Table. Discovery runs in its own overlay and can hand a human-approved brief line into the existing execution and XC Brief stages.
+The home screen opens directly into Discovery. Input preparation, research and writing are accessible through persistent navigation. Research requires a supplied IMC brief but does not require prepared Research or selected creative Sparks. Human thinking and the whole brief are available before research. On `/creative` only, the earlier optional Discovery overlay and creative workflow remain available.
 
 ## Evidence and limitations
 
 The five lenses use the same selected Input Pack snapshot. This repository has no authorized live connectors to Tableau, iSpot, ACE, Datorama, Brand Hub, customer research, or external web research. Discovery therefore analyzes supplied context only and marks those sources as not connected. It must not describe those systems as searched. Mock-provider results are visibly marked `DEMO DATA` and are not evidence.
 
-Research state is kept in the current browser tab. Human-written problem, evidence/insight, hypothesis, strategic direction, open questions, and brief-line drafts remain separate from upstream RTB/JTBD fields. Approval explicitly records a human-authored strategy before handing it to the existing downstream workflow.
+Research state is kept in the current browser tab. Human-written problem, evidence/insight, hypothesis, strategic direction, open questions, and brief-line drafts remain separate from upstream RTB/JTBD fields. Explicit approval freezes the whole brief and references; Finalize XC Brief packages that snapshot without another model call. Original creative sessions remain preserved in their original storage key.
 
 This is a local POC feature. It does not implement enterprise authorization, source retrieval, production identity integration, or deployment.
 

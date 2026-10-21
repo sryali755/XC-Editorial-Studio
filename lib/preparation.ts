@@ -1,5 +1,7 @@
 import { runAgent } from "./ai/client";
 import { preparationText } from "./ai/format";
+import { sparkSetIssue } from "./ai/spark-quality";
+import { outputSchemas } from "./ai/schemas";
 import {
   getParsedIMC,
   getUpstream,
@@ -201,6 +203,62 @@ export function validCurrentPreparation(
   return true;
 }
 
+export function studioPreparationIssue(
+  state: PreparationState,
+  id: PreparationAgentId,
+  aiMode: "mock" | "live" = "mock",
+): string | undefined {
+  const output = state.outputs.find((candidate) => candidate.agentId === id);
+  const current = currentPreparation(state, id);
+  if (!state.sourceSnapshot.trim()) return "No IMC brief has been built.";
+  if (state.upstreamDraft.trim() !== state.sourceSnapshot.trim())
+    return "The edited IMC brief has not been rebuilt.";
+  if (!output) return "Not run.";
+  if (output.status === "pending") return "Generation is still pending.";
+  if (output.status === "failed" || output.error)
+    return output.error || "Generation failed; retry this agent.";
+  if (!current) return "No current version matches this IMC brief.";
+  if (output.status !== "success" && output.status !== "mock")
+    return "This version has not completed generation.";
+  if (aiMode === "live" && current.provider === "mock")
+    return "This is a demo output, not a live AI result.";
+  if (!current.text.trim()) return "The generated output is empty.";
+  if (id === "reasonToBelieve") {
+    const parsed = outputSchemas.rtb.safeParse(current.data);
+    if (!parsed.success) return "The RTB output is incomplete.";
+    const original = resolveRtb(getUpstream(state)).field;
+    if (
+      original.status === "Supplied" &&
+      parsed.data.originalRtb !== original.sourceValue
+    )
+      return "The original RTB does not match the current IMC brief.";
+    return;
+  }
+  if (id === "research")
+    return outputSchemas.research.safeParse(current.data).success
+      ? undefined
+      : "The research output is incomplete.";
+  const parsed = outputSchemas.sparks.safeParse(current.data);
+  if (!parsed.success || current.sparks.length !== 6)
+    return "Six complete Sparks are required.";
+  const issue = sparkSetIssue(
+    {
+      sparks: current.sparks.map((spark) => ({
+        ...spark,
+        title: spark.title ?? "",
+        rationale: spark.rationale ?? "",
+        campaignGrounding: spark.campaignGrounding ?? "",
+        hypothesisToValidate: spark.hypothesisToValidate ?? "",
+      })),
+    },
+    undefined,
+    getParsedIMC(state),
+  );
+  if (issue) return issue;
+  if (current.sparks.some((spark) => spark.excerpt_verified !== true))
+    return "Every Spark excerpt must be verified against the current IMC brief.";
+}
+
 export function preparationReady(
   state: PreparationState,
   aiMode: "mock" | "live" = "mock",
@@ -220,6 +278,24 @@ export function preparationReady(
     !!pack.reasonToBelieve.trim() &&
     !!pack.research.trim() &&
     !!pack.sparks.trim()
+  );
+}
+
+// The Discovery Input Pack requires structured, source-verifiable V0 artifacts.
+// Keep the older Creative-mode readiness contract for saved text-only versions.
+export function studioPreparationReady(
+  state: PreparationState,
+  aiMode: "mock" | "live" = "mock",
+) {
+  const currentSparks = currentPreparation(state, "sparks");
+  return (
+    preparationReady(state, aiMode) &&
+    !!currentSparks?.sparks.some((spark) =>
+      state.selectedSparkIds.includes(spark.id),
+    ) &&
+    preparationAgents.every(
+      (agent) => !studioPreparationIssue(state, agent.id, aiMode),
+    )
   );
 }
 

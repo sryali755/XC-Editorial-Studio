@@ -22,14 +22,16 @@ import {
   knownDiscoveryFindings,
 } from "@/lib/discovery";
 import { extractJobToBeDone } from "@/lib/ai/context";
-import { selectedFoundation } from "@/lib/ai/context";
+import { discoveryFoundation as selectedFoundation } from "@/lib/discovery-context";
 import { discoverySourceDocuments } from "@/lib/discovery-sources";
 import { discoveryDrafts } from "@/lib/discovery-state";
+import { discoveryRubrics } from "@/lib/discovery-rubrics";
 import SavedDiscoveryFinding from "./SavedDiscoveryFinding";
 import type {
   DiscoveryAction,
   DiscoveryFinding,
   DiscoveryLensId,
+  DiscoveryRetryRequest,
   DiscoveryState,
   StrategyInputPack,
 } from "@/lib/types";
@@ -42,6 +44,7 @@ const actionLabels: Record<DiscoveryAction, string> = {
   check_recency: "Check recency",
   compare_input: "Compare with input pack",
   ask_another_lens: "Ask another lens",
+  another_answer: "Get another answer",
   refresh: "Refresh against current context",
 };
 
@@ -93,7 +96,23 @@ function FindingCard({
     state.selectedFindingIds.includes(findingRef) ||
     state.selectedFindingIds.includes(finding.id);
   const stale = finding.inputPackVersion !== currentPackVersion;
-  const thread = state.findingThreads[finding.id] ?? [];
+  const thread =
+    state.findingThreads[findingRef] ??
+    (state.findingThreads[finding.id] ?? []).filter(
+      (entry) => entry.findingRef === findingRef,
+    );
+  const earlierThreads = Object.entries(state.findingThreads)
+    .filter(
+      ([ref, entries]) =>
+        ref.startsWith(`${finding.id}@`) &&
+        ref !== findingRef &&
+        entries.length > 0,
+    )
+    .sort(
+      ([left], [right]) =>
+        Number(right.slice(right.lastIndexOf("@") + 1)) -
+        Number(left.slice(left.lastIndexOf("@") + 1)),
+    );
   const toggle = (key: "savedFindingIds" | "selectedFindingIds") => {
     const active = key === "savedFindingIds" ? saved : selected;
     onChange({
@@ -119,6 +138,12 @@ function FindingCard({
   return (
     <article className="discovery-card" aria-label={finding.title}>
       <div className="discovery-card-meta">
+        <span>
+          {
+            discoveryLenses.find((lens) => lens.id === finding.lensId)
+              ?.shortName
+          }
+        </span>
         <span
           className={`evidence-state ${finding.evidenceState === "research_gap" ? "gap" : ""}`}
         >
@@ -338,6 +363,24 @@ function FindingCard({
           ))}
         </details>
       )}
+      {earlierThreads.map(([ref, entries]) => (
+        <details className="finding-thread" key={ref}>
+          <summary>
+            Earlier finding conversation · V
+            {ref.slice(ref.lastIndexOf("@") + 1)}
+            {" · "}
+            {entries.length} · historical context, not retargeted
+          </summary>
+          {entries.map((entry) => (
+            <p key={entry.id}>
+              <b>{entry.author}:</b> {entry.text}
+              <small>
+                {entry.inputPackVersion} · {entry.findingRef} · {entry.question}
+              </small>
+            </p>
+          ))}
+        </details>
+      ))}
     </article>
   );
 }
@@ -356,6 +399,7 @@ export default function InsightDiscoveryWorkspace({
   onApprove,
   onRetryLens,
   onCancelLens,
+  packLabel,
 }: {
   state: DiscoveryState;
   pack: StrategyInputPack;
@@ -363,17 +407,12 @@ export default function InsightDiscoveryWorkspace({
   busy: string[];
   onChange: (next: DiscoveryState) => void;
   onQuestionChange: (question: string, type: "problem" | "hypothesis") => void;
-  onRunLens: (request: {
-    lensId: DiscoveryLensId;
-    action: DiscoveryAction;
-    guidance: string;
-    selectedFinding?: DiscoveryFinding;
-    routedFromLens?: DiscoveryLensId;
-  }) => Promise<boolean>;
+  onRunLens: (request: DiscoveryRetryRequest) => Promise<boolean>;
   onRefreshAll: () => Promise<void>;
   onConnect: (guidance: string) => Promise<boolean>;
   onRetryLens: (lensId: DiscoveryLensId) => Promise<boolean>;
   onCancelLens: (lensId: DiscoveryLensId) => void;
+  packLabel?: string;
   onBriefLineChange: (value: string) => void;
   onApprove: () => void;
 }) {
@@ -384,7 +423,12 @@ export default function InsightDiscoveryWorkspace({
     (candidate) => candidate.lensId === state.selectedLensId,
   );
   const version = currentDiscoveryVersion(run);
-  const findings = version?.findings ?? [];
+  const findings =
+    state.findingsView === "all"
+      ? state.runs.flatMap(
+          (item) => currentDiscoveryVersion(item)?.findings ?? [],
+        )
+      : (version?.findings ?? []);
   const allFindings = useMemo(() => knownDiscoveryFindings(state), [state]);
   const saved = state.savedFindingIds
     .map((id) => allFindings.get(id))
@@ -395,7 +439,7 @@ export default function InsightDiscoveryWorkspace({
   const aside = (state.asideFindingIds ?? []).flatMap((id) =>
     allFindings.get(id) ? [allFindings.get(id)!] : [],
   );
-  const inspect = (finding: DiscoveryFinding) =>
+  const inspect = (finding: DiscoveryFinding) => {
     onChange({
       ...state,
       workspaceView: "discovery",
@@ -414,160 +458,253 @@ export default function InsightDiscoveryWorkspace({
           : run,
       ),
     });
-  const coverage = version?.sourceCoverage ?? discoverySourceCoverage(pack);
+  };
   const currentPackVersion = inputPackVersion(pack);
+  const coverage =
+    version?.inputPackVersion === currentPackVersion
+      ? version.sourceCoverage
+      : discoverySourceCoverage(pack);
   const lens = discoveryLenses.find(
     (candidate) => candidate.id === state.selectedLensId,
   )!;
   return (
     <div className="insight-discovery">
-      <section className="panel discovery-scope">
-        <div className="section-title">
-          <div>
-            <span className="eyebrow">INSIGHT DISCOVERY</span>
-            <h2>Investigate before you decide.</h2>
-            <p>
-              Five evidence disciplines, one shared context. Findings inform
-              Kevin’s strategy; they do not write or approve it.
-            </p>
-          </div>
-          <span className="pack-version">Input pack {currentPackVersion}</span>
-          <button
-            type="button"
-            className="button small"
-            onClick={() =>
-              onChange({
-                ...state,
-                workspaceView:
-                  state.workspaceView === "canvas" ? "discovery" : "canvas",
-              })
-            }
-          >
-            {state.workspaceView === "canvas"
-              ? "Return to Discovery"
-              : "Open strategy canvas"}
-          </button>
-        </div>
-        <div className="investigation-controls">
-          <label className="field investigation-type">
-            <span>Investigation mode</span>
-            <select
-              value={state.investigationType}
-              onChange={(event) =>
-                onQuestionChange(
-                  state.question,
-                  event.target.value as "problem" | "hypothesis",
-                )
-              }
-            >
-              <option value="problem">Explore a problem</option>
-              <option value="hypothesis">Investigate a hypothesis</option>
-            </select>
-          </label>
-          <label className="field investigation-question">
-            <span>Problem under investigation</span>
-            <textarea
-              rows={2}
-              value={state.question}
-              placeholder="What might explain the behavior or campaign problem?"
-              onChange={(event) =>
-                onQuestionChange(event.target.value, state.investigationType)
-              }
-            />
-            <small>
-              Editing this question never rewrites the original RTB, JTBD or
-              brief.
-            </small>
-          </label>
-          <button
-            className="button"
-            disabled={busy.length > 0 || !state.question.trim()}
-            onClick={onRefreshAll}
-          >
-            <RefreshCw size={14} /> Refresh all lenses
-          </button>
-        </div>
-        <details className="source-coverage">
-          <summary>
-            <Database size={14} /> Source coverage
-          </summary>
-          <div className="source-coverage-grid">
-            {coverage.map((source) => (
-              <div key={source.source}>
-                <b>{source.source}</b>
-                <span className={`source-status ${source.status}`}>
-                  {statusLabel(source.status)}
-                </span>
-                <p>{source.detail}</p>
-              </div>
-            ))}
-          </div>
-        </details>
-      </section>
-
-      <div className="lens-tabs" role="tablist" aria-label="Research lenses">
-        {discoveryLenses.map((candidate) => {
-          const candidateRun = state.runs.find(
-            (item) => item.lensId === candidate.id,
-          );
-          return (
+      <>
+        <section className="panel discovery-scope">
+          <div className="section-title">
+            <div>
+              <span className="eyebrow">INSIGHT DISCOVERY</span>
+              <h2>Investigate before you decide.</h2>
+              <p>
+                Five evidence disciplines, one shared context. Findings inform
+                Kevin’s strategy; they do not write or approve it.
+              </p>
+            </div>
+            <span className="pack-version">
+              Input pack {currentPackVersion}
+            </span>
             <button
-              key={candidate.id}
-              role="tab"
-              id={`discovery-tab-${candidate.id}`}
-              data-lens={candidate.id}
-              aria-controls={`discovery-lens-${candidate.id}`}
-              tabIndex={candidate.id === state.selectedLensId ? 0 : -1}
-              aria-selected={candidate.id === state.selectedLensId}
-              className={`${candidate.color} ${candidate.id === state.selectedLensId ? "active" : ""}`}
+              type="button"
+              className="button small"
               onClick={() =>
-                onChange({ ...state, selectedLensId: candidate.id })
-              }
-              onKeyDown={(event) => {
-                if (
-                  !["ArrowLeft", "ArrowRight", "Home", "End"].includes(
-                    event.key,
-                  )
-                )
-                  return;
-                event.preventDefault();
-                const index = discoveryLenses.findIndex(
-                  (item) => item.id === candidate.id,
-                );
-                const next =
-                  event.key === "Home"
-                    ? 0
-                    : event.key === "End"
-                      ? discoveryLenses.length - 1
-                      : (index +
-                          (event.key === "ArrowRight" ? 1 : -1) +
-                          discoveryLenses.length) %
-                        discoveryLenses.length;
                 onChange({
                   ...state,
-                  selectedLensId: discoveryLenses[next].id,
-                });
-                event.currentTarget.parentElement
-                  ?.querySelector<HTMLButtonElement>(
-                    `[data-lens="${discoveryLenses[next].id}"]`,
-                  )
-                  ?.focus();
-              }}
+                  workspaceView:
+                    state.workspaceView === "canvas" ? "discovery" : "canvas",
+                })
+              }
             >
-              <span>{candidate.icon}</span>
-              <b>{candidate.shortName}</b>
-              <small>
-                {candidateRun?.status ?? "idle"}
-                {currentDiscoveryVersion(candidateRun)?.findings.some(
-                  (finding) => finding.inputPackVersion !== currentPackVersion,
-                )
-                  ? " · Needs refresh"
-                  : ""}
-              </small>
+              {state.workspaceView === "canvas"
+                ? "Return to Discovery"
+                : "Open strategy canvas"}
             </button>
-          );
-        })}
-      </div>
+          </div>
+          <details className="studio-source-summary">
+            <summary>Shared input context · original upstream ask</summary>
+            <dl>
+              <dt>Campaign</dt>
+              <dd>{pack.campaignName || "Not supplied"}</dd>
+              <dt>Business objective</dt>
+              <dd>{pack.objective || "Not supplied"}</dd>
+              <dt>Audience</dt>
+              <dd>{pack.audience || "Not supplied"}</dd>
+              <dt>Original RTB</dt>
+              <dd>{pack.reasonToBelieve || "Not supplied"}</dd>
+              <dt>Original JTBD</dt>
+              <dd>
+                {extractJobToBeDone(pack.parsedIMC?.sourceText) ||
+                  "Not supplied"}
+              </dd>
+              <dt>Product / constraints</dt>
+              <dd>
+                {[pack.product, pack.constraints].filter(Boolean).join(" · ") ||
+                  "Not supplied"}
+              </dd>
+            </dl>
+            {!!pack.evidenceSparks?.length && (
+              <p>
+                Evidence-led Sparks: {pack.evidenceSparks.length} starting
+                findings or gaps. Existing cases are context to deepen, rather
+                than new discoveries.
+              </p>
+            )}
+          </details>
+          <div className="investigation-controls">
+            <label className="field investigation-type">
+              <span>Investigation mode</span>
+              <select
+                value={state.investigationType}
+                onChange={(event) =>
+                  onQuestionChange(
+                    state.question,
+                    event.target.value as "problem" | "hypothesis",
+                  )
+                }
+              >
+                <option value="problem">Explore a problem</option>
+                <option value="hypothesis">Investigate a hypothesis</option>
+              </select>
+            </label>
+            <label className="field investigation-question">
+              <span>Problem under investigation</span>
+              <textarea
+                rows={2}
+                value={state.question}
+                placeholder="What might explain the behavior or campaign problem?"
+                onChange={(event) =>
+                  onQuestionChange(event.target.value, state.investigationType)
+                }
+              />
+              <small>
+                Editing this question never rewrites the original RTB, JTBD or
+                brief.
+              </small>
+            </label>
+            <button
+              className="button"
+              disabled={
+                busy.length > 0 ||
+                !state.question.trim() ||
+                !pack.parsedIMC?.sourceText.trim() ||
+                state.enabledLensIds?.length === 0
+              }
+              onClick={onRefreshAll}
+            >
+              <Search size={14} />{" "}
+              {state.runs.some((run) => run.versions.length)
+                ? "Refresh all lenses"
+                : "Explore"}
+            </button>
+          </div>
+          {!pack.parsedIMC?.sourceText.trim() && (
+            <p className="context-note">
+              Add the IMC brief in the Input pack to start research. My Thinking
+              and the whole brief are available now.
+            </p>
+          )}
+          <details className="discovery-lens-scope">
+            <summary>Edit scope · enabled lenses</summary>
+            <div className="studio-actions">
+              {discoveryLenses.map((lens) => (
+                <label className="check-action" key={lens.id}>
+                  <input
+                    type="checkbox"
+                    checked={
+                      !state.enabledLensIds ||
+                      state.enabledLensIds.includes(lens.id)
+                    }
+                    onChange={(event) =>
+                      onChange({
+                        ...state,
+                        enabledLensIds: event.target.checked
+                          ? [
+                              ...new Set([
+                                ...(state.enabledLensIds ??
+                                  discoveryLenses.map((item) => item.id)),
+                                lens.id,
+                              ]),
+                            ]
+                          : (
+                              state.enabledLensIds ??
+                              discoveryLenses.map((item) => item.id)
+                            ).filter((id) => id !== lens.id),
+                      })
+                    }
+                  />
+                  {lens.shortName}
+                </label>
+              ))}
+            </div>
+          </details>
+          <details className="source-coverage">
+            <summary>
+              <Database size={14} /> Source coverage
+            </summary>
+            <div className="source-coverage-grid">
+              {coverage.map((source) => (
+                <div key={source.source}>
+                  <b>{source.source}</b>
+                  <span className={`source-status ${source.status}`}>
+                    {statusLabel(source.status)}
+                  </span>
+                  <p>{source.detail}</p>
+                </div>
+              ))}
+            </div>
+          </details>
+        </section>
+
+        <div className="lens-tabs" role="tablist" aria-label="Research lenses">
+          {discoveryLenses.map((candidate) => {
+            const candidateRun = state.runs.find(
+              (item) => item.lensId === candidate.id,
+            );
+            return (
+              <button
+                key={candidate.id}
+                role="tab"
+                id={`discovery-tab-${candidate.id}`}
+                data-lens={candidate.id}
+                aria-controls={`discovery-lens-${candidate.id}`}
+                tabIndex={candidate.id === state.selectedLensId ? 0 : -1}
+                aria-selected={candidate.id === state.selectedLensId}
+                className={`${candidate.color} ${candidate.id === state.selectedLensId ? "active" : ""}`}
+                onClick={() =>
+                  onChange({ ...state, selectedLensId: candidate.id })
+                }
+                onKeyDown={(event) => {
+                  if (
+                    !["ArrowLeft", "ArrowRight", "Home", "End"].includes(
+                      event.key,
+                    )
+                  )
+                    return;
+                  event.preventDefault();
+                  const index = discoveryLenses.findIndex(
+                    (item) => item.id === candidate.id,
+                  );
+                  const next =
+                    event.key === "Home"
+                      ? 0
+                      : event.key === "End"
+                        ? discoveryLenses.length - 1
+                        : (index +
+                            (event.key === "ArrowRight" ? 1 : -1) +
+                            discoveryLenses.length) %
+                          discoveryLenses.length;
+                  onChange({
+                    ...state,
+                    selectedLensId: discoveryLenses[next].id,
+                  });
+                  event.currentTarget.parentElement
+                    ?.querySelector<HTMLButtonElement>(
+                      `[data-lens="${discoveryLenses[next].id}"]`,
+                    )
+                    ?.focus();
+                }}
+              >
+                <span>{candidate.icon}</span>
+                <b>{candidate.shortName}</b>
+                <small>
+                  {candidateRun?.status ?? "idle"}
+                  {candidateRun?.status === "complete" &&
+                  currentDiscoveryVersion(candidateRun)?.findings.every(
+                    (finding) => finding.evidenceState === "research_gap",
+                  )
+                    ? " · Needs source"
+                    : ""}
+                  {currentDiscoveryVersion(candidateRun)?.findings.some(
+                    (finding) =>
+                      finding.inputPackVersion !== currentPackVersion,
+                  )
+                    ? " · Needs refresh"
+                    : ""}
+                </small>
+              </button>
+            );
+          })}
+        </div>
+      </>
 
       <div
         className={`discovery-layout ${state.workspaceView === "canvas" ? "canvas-view" : ""}`}
@@ -611,6 +748,14 @@ export default function InsightDiscoveryWorkspace({
               </label>
             )}
           </div>
+          <details className="lens-rubric">
+            <summary>How this lens investigates</summary>
+            <ol>
+              {discoveryRubrics[lens.id].map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          </details>
           {run?.error && (
             <div className="lens-error">
               <div className="error" role="alert">
@@ -625,6 +770,33 @@ export default function InsightDiscoveryWorkspace({
               </button>
             </div>
           )}
+          {version &&
+            (version.inputPackVersion !== currentPackVersion ||
+              version.question !== state.question ||
+              version.investigationType !== state.investigationType) && (
+              <p className="context-note" role="status">
+                These findings preserve an earlier input pack or investigation
+                question. Refresh this lens to examine the current scope.
+              </p>
+            )}
+          <button
+            className="button small"
+            disabled={
+              busy.includes(lens.id) ||
+              !pack.parsedIMC?.sourceText.trim() ||
+              !state.question.trim()
+            }
+            onClick={() =>
+              onRunLens({
+                lensId: lens.id,
+                action: "refresh",
+                guidance:
+                  "Refresh only this lens against the current input pack and investigation question.",
+              })
+            }
+          >
+            Refresh this lens
+          </button>
           {busy.includes(lens.id) && (
             <button
               type="button"
@@ -647,25 +819,81 @@ export default function InsightDiscoveryWorkspace({
             </div>
           )}
           <div className="discovery-cards">
-            {findings
-              .filter(
-                (finding) =>
-                  !(state.asideFindingIds ?? []).includes(
-                    discoveryFindingRef(finding),
-                  ),
-              )
-              .map((finding) => (
-                <FindingCard
-                  key={finding.id}
-                  finding={finding}
-                  state={state}
-                  currentPackVersion={currentPackVersion}
-                  pack={pack}
-                  busy={busy.includes(lens.id)}
-                  onChange={onChange}
-                  onInvestigate={onRunLens}
-                />
+            <div
+              className="studio-actions"
+              role="group"
+              aria-label="Discoveries view"
+            >
+              {(
+                [
+                  ["selected", "Selected lens"],
+                  ["all", "All lenses"],
+                  ["tensions", "Tensions and questions"],
+                ] as const
+              ).map(([view, label]) => (
+                <button
+                  key={view}
+                  type="button"
+                  className={`button small ${(state.findingsView ?? "selected") === view ? "is-selected" : ""}`}
+                  aria-pressed={(state.findingsView ?? "selected") === view}
+                  onClick={() => onChange({ ...state, findingsView: view })}
+                >
+                  {label}
+                </button>
               ))}
+            </div>
+            {state.findingsView === "tensions" && (
+              <div className="panel">
+                <h3>Tensions and questions</h3>
+                <p>
+                  Contradictions remain open. Agent agreement is not validation.
+                </p>
+                {state.runs
+                  .flatMap(
+                    (item) => currentDiscoveryVersion(item)?.findings ?? [],
+                  )
+                  .map((finding) => (
+                    <div key={discoveryFindingRef(finding)}>
+                      <b>{finding.title}</b>
+                      <p>{finding.whatComplicatesIt}</p>
+                      <p>{finding.questionToExplore}</p>
+                      <small>
+                        {finding.lensId} · {finding.inputPackVersion} · V
+                        {finding.runVersion}
+                      </small>
+                    </div>
+                  ))}
+                {!state.runs.some((run) => run.versions.length) && (
+                  <p>
+                    Research gaps, limitations and further questions will appear
+                    here.
+                  </p>
+                )}
+              </div>
+            )}
+            {state.findingsView !== "tensions" && (
+              <>
+                {findings
+                  .filter(
+                    (finding) =>
+                      !(state.asideFindingIds ?? []).includes(
+                        discoveryFindingRef(finding),
+                      ),
+                  )
+                  .map((finding) => (
+                    <FindingCard
+                      key={finding.id}
+                      finding={finding}
+                      state={state}
+                      currentPackVersion={currentPackVersion}
+                      pack={pack}
+                      busy={busy.includes(finding.lensId)}
+                      onChange={onChange}
+                      onInvestigate={onRunLens}
+                    />
+                  ))}
+              </>
+            )}
           </div>
           <form
             className="panel agent-volley"
@@ -704,7 +932,11 @@ export default function InsightDiscoveryWorkspace({
             </label>
             <button
               className="button"
-              disabled={busy.includes(lens.id) || !agentGuidance.trim()}
+              disabled={
+                busy.includes(lens.id) ||
+                !agentGuidance.trim() ||
+                !pack.parsedIMC?.sourceText.trim()
+              }
             >
               Explore deeper
             </button>
@@ -800,6 +1032,10 @@ export default function InsightDiscoveryWorkspace({
             <h3>
               Saved discoveries <span className="count">{saved.length}</span>
             </h3>
+            <p className="context-note">
+              Saving means worth considering. It does not verify evidence or
+              approve a strategy.
+            </p>
             {saved.length ? (
               saved.map((finding) => (
                 <SavedDiscoveryFinding
@@ -869,50 +1105,102 @@ export default function InsightDiscoveryWorkspace({
             >
               <GitMerge size={14} /> Connect these findings
             </button>
-            {state.connectionNotes.map((connection) => (
-              <div className="connection-note" key={connection.id}>
-                <span>INTERPRETATION · NOT VALIDATION</span>
-                {connection.demo && <span>DEMO DATA</span>}
-                <textarea
-                  rows={5}
-                  value={connection.note}
-                  aria-label="Edit connection note"
-                  onChange={(event) =>
-                    onChange({
-                      ...state,
-                      connectionNotes: state.connectionNotes.map((item) =>
-                        item.id === connection.id
-                          ? {
-                              ...item,
-                              note: event.target.value,
-                              editedByKevin: true,
+            {state.connectionNotes
+              .filter((connection) => !connection.rejected)
+              .map((connection) => (
+                <div className="connection-note" key={connection.id}>
+                  <span>INTERPRETATION · NOT VALIDATION</span>
+                  {connection.demo && <span>DEMO DATA</span>}
+                  <textarea
+                    rows={5}
+                    value={connection.note}
+                    aria-label="Edit connection note"
+                    onChange={(event) =>
+                      onChange({
+                        ...state,
+                        connectionNotes: state.connectionNotes.map((item) =>
+                          item.id === connection.id
+                            ? {
+                                ...item,
+                                note: event.target.value,
+                                editedByKevin: true,
+                              }
+                            : item,
+                        ),
+                      })
+                    }
+                  />
+                  <details>
+                    <summary>Relationships, tensions and questions</summary>
+                    {connection.findingVersions.map((reference) => (
+                      <small
+                        key={`${reference.findingId}@${reference.runVersion}`}
+                      >
+                        {reference.findingId} · V{reference.runVersion} ·{" "}
+                        {reference.inputPackVersion} · Run{" "}
+                        {reference.researchRunId}
+                        {allFindings.get(
+                          `${reference.findingId}@${reference.runVersion}`,
+                        ) && (
+                          <button
+                            className="text-button"
+                            onClick={() =>
+                              inspect(
+                                allFindings.get(
+                                  `${reference.findingId}@${reference.runVersion}`,
+                                )!,
+                              )
                             }
-                          : item,
-                      ),
-                    })
-                  }
-                />
-                <details>
-                  <summary>Relationships, tensions and questions</summary>
-                  {connection.findingVersions.map((reference) => (
-                    <small
-                      key={`${reference.findingId}@${reference.runVersion}`}
+                          >
+                            Inspect source finding
+                          </button>
+                        )}
+                      </small>
+                    ))}
+                    {[
+                      ...connection.relationships,
+                      ...connection.tensions,
+                      ...connection.questions,
+                    ].map((item) => (
+                      <p key={item}>{item}</p>
+                    ))}
+                  </details>
+                  <div className="studio-actions">
+                    <button
+                      className="button small"
+                      onClick={() =>
+                        onChange({
+                          ...state,
+                          connectionNotes: state.connectionNotes.map((item) =>
+                            item.id === connection.id
+                              ? { ...item, saved: !item.saved }
+                              : item,
+                          ),
+                        })
+                      }
                     >
-                      {reference.findingId} · V{reference.runVersion} ·{" "}
-                      {reference.inputPackVersion} · Run{" "}
-                      {reference.researchRunId}
-                    </small>
-                  ))}
-                  {[
-                    ...connection.relationships,
-                    ...connection.tensions,
-                    ...connection.questions,
-                  ].map((item) => (
-                    <p key={item}>{item}</p>
-                  ))}
-                </details>
-              </div>
-            ))}
+                      {connection.saved
+                        ? "Saved connection"
+                        : "Save connection note"}
+                    </button>
+                    <button
+                      className="text-button"
+                      onClick={() =>
+                        onChange({
+                          ...state,
+                          connectionNotes: state.connectionNotes.map((item) =>
+                            item.id === connection.id
+                              ? { ...item, rejected: true }
+                              : item,
+                          ),
+                        })
+                      }
+                    >
+                      Reject connection
+                    </button>
+                  </div>
+                </div>
+              ))}
           </div>
           <details className="whole-brief" open>
             <summary>Open whole brief canvas</summary>
@@ -951,17 +1239,75 @@ export default function InsightDiscoveryWorkspace({
                 onChange={(event) => onBriefLineChange(event.target.value)}
               />
             </label>
+            {(
+              [
+                ["context", "Context", pack.campaignName],
+                ["objective", "Objective", pack.objective],
+                ["audience", "Audience", pack.audience],
+                ["thoughtStarters", "Thought-starters", ""],
+                ["deliverables", "Deliverables", pack.channel],
+                ["mandatories", "Mandatories", pack.constraints],
+                ["timelines", "Timelines", ""],
+              ] as const
+            ).map(([key, label, fallback]) => (
+              <label className="field" key={key}>
+                <span>{label} · human draft</span>
+                <textarea
+                  rows={3}
+                  value={state.wholeBrief?.[key] ?? fallback}
+                  onChange={(event) =>
+                    onChange({
+                      ...state,
+                      wholeBrief: {
+                        ...state.wholeBrief,
+                        [key]: event.target.value,
+                      },
+                    })
+                  }
+                />
+              </label>
+            ))}
+            {state.connectionNotes.some(
+              (connection) => connection.rejected,
+            ) && (
+              <details>
+                <summary>Rejected connections · preserved history</summary>
+                {state.connectionNotes
+                  .filter((connection) => connection.rejected)
+                  .map((connection) => (
+                    <div key={connection.id}>
+                      <p>{connection.note}</p>
+                      <button
+                        className="text-button"
+                        onClick={() =>
+                          onChange({
+                            ...state,
+                            connectionNotes: state.connectionNotes.map(
+                              (item) =>
+                                item.id === connection.id
+                                  ? { ...item, rejected: false }
+                                  : item,
+                            ),
+                          })
+                        }
+                      >
+                        Restore connection
+                      </button>
+                    </div>
+                  ))}
+              </details>
+            )}
             <button
               className="button primary"
-              disabled={!briefLine.trim()}
+              disabled={!briefLine.trim() || !pack.parsedIMC?.sourceText.trim()}
               onClick={onApprove}
             >
               Approve human-authored strategy <ArrowRight size={14} />
             </button>
           </details>
           <small className="context-integrity">
-            Current context: {currentPackVersion}. Findings retain the exact
-            input-pack version they analyzed.
+            Current context: {packLabel ?? currentPackVersion}. Findings retain
+            the exact input-pack version they analyzed.
           </small>
         </aside>
       </div>
