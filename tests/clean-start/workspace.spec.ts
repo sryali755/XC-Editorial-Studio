@@ -90,13 +90,21 @@ for (const width of [1440, 768, 390]) {
       .getByRole("button", { name: "Build Input Pack", exact: true })
       .click();
     await expect.poll(() => mockCalls.length).toBe(3);
-    await expect(page.getByText(/Ready · V0/, { exact: true })).toHaveCount(3);
+    await expect(page.locator(".studio-agent-status")).toHaveText([
+      /Ready.*V0/,
+      /Ready.*V0/,
+      /Ready.*V0/,
+    ]);
     const packPanel = page.getByRole("region", {
       name: "Dynamic Input Pack",
       exact: true,
     });
-    await packPanel.locator("summary").click();
-    await expect(packPanel.locator(".studio-pack-summary > dt")).toHaveText([
+    await packPanel.locator(".studio-pack-details > summary").click();
+    await expect(
+      packPanel.locator(
+        ".dynamic-pack-details > section:first-child > .studio-pack-summary > dt",
+      ),
+    ).toHaveText([
       "Campaign",
       "Campaign Objective",
       "Target Audience",
@@ -105,6 +113,9 @@ for (const width of [1440, 768, 390]) {
       "Data Points & Research",
       "Sparks",
     ]);
+    await expect(
+      packPanel.locator('[aria-label="Saved Round Table Insights"]'),
+    ).toHaveCount(0);
     await expect(packPanel).not.toContainText(
       "Not explicitly supplied in the brief.",
     );
@@ -178,6 +189,9 @@ for (const width of [1440, 768, 390]) {
       )
       .toBe(5);
     await expect(page.locator(".v2-finding-actions")).toHaveCount(5);
+    await expect(
+      page.locator('[aria-label="Saved Round Table Insights"]'),
+    ).toHaveCount(0);
     for (const actions of await page.locator(".v2-finding-actions").all()) {
       await expect(actions.getByRole("button")).toHaveCount(1);
       await expect(actions).not.toContainText("Discuss");
@@ -189,6 +203,14 @@ for (const width of [1440, 768, 390]) {
       })
       .first()
       .click();
+    const savedInsightSection = page.locator(
+      '.v2-pack-content [aria-label="Saved Round Table Insights"]',
+    );
+    await expect(savedInsightSection).toHaveCount(1);
+    await expect(
+      savedInsightSection.locator(".dynamic-pack-agent-group"),
+    ).toHaveCount(1);
+    await expect(savedInsightSection).toContainText("1 saved finding");
     await nav("Finalize Strategy").click();
     for (const section of [
       "Supporting Strategy Context",
@@ -362,6 +384,11 @@ for (const width of [1440, 768, 390]) {
     await expect(
       page.getByLabel("IMC output brief", { exact: true }),
     ).toHaveValue(source);
+    await expect(
+      page
+        .getByRole("region", { name: "Dynamic Input Pack", exact: true })
+        .locator('[aria-label="Saved Round Table Insights"]'),
+    ).toHaveCount(1);
     await expect(page.getByText(/Ready · V0/, { exact: true })).toHaveCount(3);
     expect(mockCalls.length).toBe(18);
     const preserved = await current();

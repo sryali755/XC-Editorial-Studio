@@ -36,10 +36,12 @@ function savedFindingsByLens(state: DiscoveryState) {
     seen.add(ref);
     return [finding];
   });
-  return discoveryLenses.map((lens) => ({
-    ...lens,
-    findings: findings.filter((finding) => finding.lensId === lens.id),
-  }));
+  return discoveryLenses
+    .map((lens) => ({
+      ...lens,
+      findings: findings.filter((finding) => finding.lensId === lens.id),
+    }))
+    .filter((group) => group.findings.length > 0);
 }
 
 function SavedFindingDetails({ finding }: { finding: DiscoveryFinding }) {
@@ -276,21 +278,21 @@ export default function DynamicInputPackDetails({
           </details>
         )}
       </section>
-      <section
-        className="dynamic-pack-saved-insights"
-        aria-label="Saved Round Table Insights"
-      >
-        <h3>Saved Round Table Insights</h3>
-        {savedGroups.map((group) => (
-          <details className="dynamic-pack-agent-group" key={group.id}>
-            <summary>
-              <span>{agentNames[group.id]}</span>
-              <small>
-                {group.findings.length} saved{" "}
-                {group.findings.length === 1 ? "finding" : "findings"}
-              </small>
-            </summary>
-            {group.findings.length ? (
+      {savedGroups.length > 0 && (
+        <section
+          className="dynamic-pack-saved-insights"
+          aria-label="Saved Round Table Insights"
+        >
+          <h3>Saved Round Table Insights</h3>
+          {savedGroups.map((group) => (
+            <details className="dynamic-pack-agent-group" key={group.id}>
+              <summary>
+                <span>{agentNames[group.id]}</span>
+                <small>
+                  {group.findings.length} saved{" "}
+                  {group.findings.length === 1 ? "finding" : "findings"}
+                </small>
+              </summary>
               <div>
                 {group.findings.map((finding) => (
                   <SavedFindingDetails
@@ -299,14 +301,10 @@ export default function DynamicInputPackDetails({
                   />
                 ))}
               </div>
-            ) : (
-              <p className="dynamic-pack-empty">
-                No findings saved from this agent yet.
-              </p>
-            )}
-          </details>
-        ))}
-      </section>
+            </details>
+          ))}
+        </section>
+      )}
     </div>
   );
 }
