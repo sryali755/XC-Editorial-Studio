@@ -27,6 +27,7 @@ import type {
 } from "@/lib/types";
 import InsightDiscoveryWorkspace from "./InsightDiscoveryWorkspace";
 import DiscoveryRoundTableV2 from "./DiscoveryRoundTableV2";
+import TeamDiscussion from "./TeamDiscussion";
 import { useDiscoveryDialog } from "./useDiscoveryDialog";
 import {
   crossLensIssue,
@@ -121,6 +122,9 @@ export default function InsightDiscoveryFeature({
   getCurrentPack?: () => StrategyInputPack;
   restoredVersionIds?: string[];
 }) {
+  const [discussionView, setDiscussionView] = useState<"individual" | "team">(
+    "individual",
+  );
   const seeded = useMemo(() => seededState(pack), [pack]);
   const [draft, setDraft] = useState(() => {
     const recovered = recoverDiscoveryState(state ?? seeded);
@@ -728,13 +732,61 @@ export default function InsightDiscoveryFeature({
       )}
     </>
   );
+  const discussionContent = (
+    <>
+      <div
+        className="team-view-selector"
+        role="tablist"
+        aria-label="Insight Discovery discussion view"
+      >
+        <button
+          id="individual-roundtable-tab"
+          type="button"
+          role="tab"
+          aria-selected={discussionView === "individual"}
+          aria-controls="individual-roundtable-panel"
+          className={discussionView === "individual" ? "is-active" : ""}
+          onClick={() => setDiscussionView("individual")}
+        >
+          Individual Round Table
+        </button>
+        <button
+          id="team-discussion-tab"
+          type="button"
+          role="tab"
+          aria-selected={discussionView === "team"}
+          aria-controls="team-discussion-panel"
+          className={discussionView === "team" ? "is-active" : ""}
+          onClick={() => setDiscussionView("team")}
+        >
+          Team Discussion <span>Experimental</span>
+        </button>
+      </div>
+      <div
+        id="individual-roundtable-panel"
+        role="tabpanel"
+        aria-labelledby="individual-roundtable-tab"
+        hidden={discussionView !== "individual"}
+      >
+        {content}
+      </div>
+      <div
+        id="team-discussion-panel"
+        role="tabpanel"
+        aria-labelledby="team-discussion-tab"
+        hidden={discussionView !== "team"}
+      >
+        <TeamDiscussion />
+      </div>
+    </>
+  );
   if (presentation === "page")
     return (
       <section
         className="discovery-page"
         aria-label="Insight Discovery workspace"
       >
-        {content}
+        {discussionContent}
       </section>
     );
   return (
@@ -759,7 +811,7 @@ export default function InsightDiscoveryFeature({
             <X size={15} /> Close
           </button>
         </header>
-        {content}
+        {discussionContent}
       </section>
     </div>
   );

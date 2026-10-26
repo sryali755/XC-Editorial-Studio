@@ -3,6 +3,7 @@ import InsightDiscoveryStudio from "@/components/InsightDiscoveryStudio";
 import { publicAIStatus } from "@/lib/ai/config";
 import "./discovery-v2.css";
 import "./studio-wireframe.css";
+import "./team-discussion.css";
 export const dynamic = "force-dynamic";
 export const metadata = {
   title: "XC · Strategy Studio",
