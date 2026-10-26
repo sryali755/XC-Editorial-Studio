@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { ArrowRight, Search, X } from "lucide-react";
 import {
   connectDiscoveryFindings,
@@ -28,6 +34,7 @@ import type {
 import InsightDiscoveryWorkspace from "./InsightDiscoveryWorkspace";
 import DiscoveryRoundTableV2 from "./DiscoveryRoundTableV2";
 import { useDiscoveryDialog } from "./useDiscoveryDialog";
+import TeamDiscussion from "./TeamDiscussion";
 import {
   crossLensIssue,
   currentPeerFindings,
@@ -38,6 +45,7 @@ import {
   conversationRegenerationRequest,
   conversationContextBefore,
 } from "@/lib/roundtable-history";
+import { campaignDisplayLabel } from "@/lib/campaign-naming";
 
 function threadIdentity(parts: readonly string[]) {
   const text = JSON.stringify(parts);
@@ -121,6 +129,11 @@ export default function InsightDiscoveryFeature({
   getCurrentPack?: () => StrategyInputPack;
   restoredVersionIds?: string[];
 }) {
+  const [discussionView, setDiscussionView] = useState<"individual" | "team">(
+    "individual",
+  );
+  const individualTabRef = useRef<HTMLButtonElement>(null);
+  const teamTabRef = useRef<HTMLButtonElement>(null);
   const seeded = useMemo(() => seededState(pack), [pack]);
   const [draft, setDraft] = useState(() => {
     const recovered = recoverDiscoveryState(state ?? seeded);
@@ -628,6 +641,15 @@ export default function InsightDiscoveryFeature({
   if (!open) return null;
   const Workspace =
     presentation === "page" ? DiscoveryRoundTableV2 : InsightDiscoveryWorkspace;
+  function handleDiscussionTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    let next: "individual" | "team" | undefined;
+    if (event.key === "ArrowLeft" || event.key === "Home") next = "individual";
+    if (event.key === "ArrowRight" || event.key === "End") next = "team";
+    if (!next) return;
+    event.preventDefault();
+    setDiscussionView(next);
+    (next === "individual" ? individualTabRef : teamTabRef).current?.focus();
+  }
   const content = (
     <>
       {error && (
@@ -734,7 +756,62 @@ export default function InsightDiscoveryFeature({
         className="discovery-page"
         aria-label="Insight Discovery workspace"
       >
-        {content}
+        <div
+          className="team-view-selector"
+          role="tablist"
+          aria-label="Insight Discovery discussion mode"
+        >
+          <button
+            ref={individualTabRef}
+            id="individual-roundtable-tab"
+            type="button"
+            role="tab"
+            aria-selected={discussionView === "individual"}
+            aria-controls="individual-roundtable-panel"
+            tabIndex={discussionView === "individual" ? 0 : -1}
+            className={discussionView === "individual" ? "is-active" : ""}
+            onClick={() => setDiscussionView("individual")}
+            onKeyDown={handleDiscussionTabKeyDown}
+          >
+            Individual Round Table
+          </button>
+          <button
+            ref={teamTabRef}
+            id="team-discussion-tab"
+            type="button"
+            role="tab"
+            aria-selected={discussionView === "team"}
+            aria-controls="team-discussion-panel"
+            tabIndex={discussionView === "team" ? 0 : -1}
+            className={discussionView === "team" ? "is-active" : ""}
+            onClick={() => setDiscussionView("team")}
+            onKeyDown={handleDiscussionTabKeyDown}
+          >
+            Team Discussion <span>Experimental</span>
+          </button>
+        </div>
+        <div
+          id="individual-roundtable-panel"
+          role="tabpanel"
+          aria-labelledby="individual-roundtable-tab"
+          hidden={discussionView !== "individual"}
+        >
+          {content}
+        </div>
+        <div
+          id="team-discussion-panel"
+          role="tabpanel"
+          aria-labelledby="team-discussion-tab"
+          hidden={discussionView !== "team"}
+        >
+          {busy.length > 0 && (
+            <div className="team-background-status" role="status">
+              <Search size={14} aria-hidden /> Individual Round Table work is
+              still running in the background and will finish normally.
+            </div>
+          )}
+          <TeamDiscussion campaignLabel={campaignDisplayLabel(pack)} />
+        </div>
       </section>
     );
   return (

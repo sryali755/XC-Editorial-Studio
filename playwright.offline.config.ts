@@ -19,6 +19,7 @@ const discoveryFiles = [
   "**/requirement3-primary-ui.spec.ts",
   "**/strategy-studio*.spec.ts",
   "**/strategy-suggestions.spec.ts",
+  "**/team-discussion.spec.ts",
 ];
 const legacyFiles = [
   "**/agent-refinement.spec.ts",

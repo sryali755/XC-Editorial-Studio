@@ -16,6 +16,16 @@ Open http://localhost:3000 on the computer running the application.
 
 Choose **Load sample IMC brief**, then **Prepare XC Input Pack** to begin the demonstration. Review the three preparation agents, select at least one strategic spark, and generate the five perspectives. Refine candidates independently, select or combine brief lines, approve the final direction, and supply execution details to generate a brief. Mock mode remains the default.
 
+## Experimental Team Discussion
+
+Insight Discovery defaults to the validated **Individual Round Table**. The
+adjacent **Team Discussion** mode demonstrates group-chat, threaded, and hybrid
+discussion layouts using an explicitly labeled, fixed Movers sample. Its
+messages, replies, saved items, simulated failures, and deeper-look response
+remain in memory only: they do not call an AI or research service, consume the
+selected campaign Input Pack, persist across refreshes, or enter Finalize
+Strategy.
+
 ## Checks
 
 ```sh
@@ -35,6 +45,7 @@ Browser tests use Playwright and require Google Chrome. Keep AI_MODE=mock for th
 - `components/PreparationOutputs.tsx`: shared spark selections, research sections, and extracted context summaries.
 - `components/UpstreamContextPanel.tsx`: upstream messaging, omission statuses, restrictions, and source records.
 - `components/AgentRoundTable.tsx`: five personas, refinement, selection, synthesis, and approval.
+- `components/TeamDiscussion.tsx` and `components/*Prototype.tsx`: isolated experimental Team Discussion layouts.
 - `components/StrategyWorkspace.tsx`: session state and workflow navigation.
 - `components/StrategyPanels.tsx`: shared fields, input summary, execution direction, and generated brief preview.
 - `lib/types.ts`: TypeScript contracts.
@@ -43,6 +54,7 @@ Browser tests use Playwright and require Google Chrome. Keep AI_MODE=mock for th
 - `lib/execution.ts`: inherit known approved context while preserving manual execution edits.
 - `lib/services.ts`: perspective, synthesis, and final-brief API adapters.
 - `app/api/ai/agent/route.ts`: Node.js POST generation route and public GET configuration status.
+- `app/team-discussion.css`: scoped styles for the experimental Team Discussion.
 - `lib/ai/`: provider abstraction, structured schemas, prompts, serializers, OpenAI client, and preserved deterministic mock helpers.
 - `tests/`: browser workflow and responsive-layout checks.
 
