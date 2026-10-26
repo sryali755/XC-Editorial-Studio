@@ -13,7 +13,7 @@ import {
 
 type DiscoveryAgent = "discovery" | "connections";
 const envelope = z.object({
-  provider: z.enum(["mock", "openai"]),
+  provider: z.enum(["mock", "openai", "writer"]),
   model: z.string().optional(),
   generatedAt: z.iso.datetime(),
   data: z.unknown(),

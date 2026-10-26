@@ -61,9 +61,18 @@ export async function generateMock(request: AgentRequest): Promise<AgentData> {
                 : "not_supplied",
           originalRtbApprovalStatus: resolved.approvalStatus,
           xcAdaptation: version.text,
+          proposedJTBD:
+            upstream.fields.audience.status === "Supplied" &&
+            upstream.fields.objective.status === "Supplied"
+              ? "When I consider the offer described in this brief, I want to understand its benefits and requirements, so I can decide whether it fits my needs."
+              : null,
           adaptationStatus: "not_approved",
           reviewNotes: resolved.approvalNote ? [resolved.approvalNote] : [],
-          evidenceGaps: [],
+          evidenceGaps:
+            upstream.fields.audience.status !== "Supplied" ||
+            upstream.fields.objective.status !== "Supplied"
+              ? ["Audience and objective context are needed to propose a JTBD."]
+              : [],
         };
       })();
     if (request.agentType === "sparks") {

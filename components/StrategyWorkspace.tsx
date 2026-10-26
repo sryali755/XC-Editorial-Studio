@@ -391,8 +391,8 @@ export default function StrategyWorkspace({
                 {aiStatus.mode === "mock"
                   ? "AI outputs are simulated."
                   : "AI responses are generated live."}{" "}
-                Writer and enterprise research connectors are not connected.
-                Work is saved in this browser tab when storage is available.
+                Enterprise research connectors are not connected. Work is saved
+                in this browser tab when storage is available.
               </p>
             </details>
             <div className="sidebar-footer">
@@ -439,7 +439,7 @@ export default function StrategyWorkspace({
             </span>
             {aiStatus.mode === "mock"
               ? "Illustrative campaign content and simulated AI responses. No live Writer connection."
-              : "Live AI-generated responses. Writer and enterprise research connectors are not yet connected."}
+              : `Live AI-generated responses via ${aiStatus.provider}. Enterprise research connectors are not connected.`}
           </div>
           {aiStatus.error && (
             <div className="error" role="alert">

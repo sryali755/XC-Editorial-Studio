@@ -1,7 +1,10 @@
 import {
   discoverySourceDocuments,
   locatedDiscoveryCitation,
+  resolveDiscoveryCitation,
+  sourceIdentityMatches,
 } from "../discovery-sources";
+import { originalSourceExcerpt } from "../source-registry";
 import type { AgentData, AgentRequest } from "./schemas";
 import { crossLensIssue } from "../discovery-lens-quality";
 
@@ -29,7 +32,9 @@ export function unsupportedDiscoveryFactualAssertion(
       /(?:[“"]([^”"]{3,})[”"]|‘([^’]{3,})’)/g,
     )) {
       const quotedText = quote[1] ?? quote[2];
-      if (!excerpts.some((excerpt) => excerpt.includes(quotedText))) {
+      if (
+        !excerpts.some((excerpt) => originalSourceExcerpt(excerpt, quotedText))
+      ) {
         // Identify the actual defect for the bounded repair, without logging
         // the response or relaxing quotation checks in interpretation fields.
         // The model receives this escaped preview only as untrusted input data.
@@ -47,7 +52,9 @@ export function unsupportedDiscoveryFactualAssertion(
         /(?:\b(?:\d+(?:\.\d+)?\s*(?:%|percent\b|percentage points?\b|in\s+\d+\b|out of\s+\d+\b)|(?:one|two|three|four|five|six|seven|eight|nine)\s+in\s+(?:ten|\d+))|\$\s*\d+(?:\.\d+)?)(?!\w)/i.test(
           sentence,
         ) &&
-        !excerpts.some((excerpt) => excerpt.includes(sentence.trim()))
+        !excerpts.some((excerpt) =>
+          originalSourceExcerpt(excerpt, sentence.trim()),
+        )
       )
         return `unsupported quantified assertion in the finding text (${field})`;
     }
@@ -69,7 +76,8 @@ export function normalizeDiscoveryEvidenceMetadata(
     findings: data.findings.map((finding) => ({
       ...finding,
       evidence: finding.evidence.map((evidence) => {
-        const verified = locatedDiscoveryCitation(sources, evidence);
+        const resolved = resolveDiscoveryCitation(sources, evidence);
+        const verified = resolved?.source;
         if (!verified || evidence.accessScope !== "supplied") return evidence;
         const audienceOk =
           evidence.audience === "Not supplied" ||
@@ -81,6 +89,19 @@ export function normalizeDiscoveryEvidenceMetadata(
           verified.text.includes(evidence.date);
         return {
           ...evidence,
+          ...(resolved &&
+          (resolved.method === "format_normalized" ||
+            evidence.source === verified.documentId ||
+            evidence.locator === verified.passageId)
+            ? {
+                source: verified.identity,
+                locator: verified.locator,
+                excerpt: resolved.excerpt,
+                documentId: verified.documentId,
+                passageId: verified.passageId,
+                matchMethod: resolved.method,
+              }
+            : {}),
           audience: audienceOk
             ? evidence.audience
             : (verified.audience ?? "Not supplied"),
@@ -131,25 +152,25 @@ export function validateDiscoveryEvidence(
       return `Finding ${index + 1} is labeled evidence-supported but has no evidence.`;
     if (finding.evidenceState === "research_gap" && finding.evidence.length)
       return `Finding ${index + 1} is a research gap but presents evidence as a finding.`;
-    for (const evidence of finding.evidence) {
+    for (const [evidenceIndex, evidence] of finding.evidence.entries()) {
       if (evidence.accessScope !== "supplied")
         return `Finding ${index + 1} claims access to a source that is not connected.`;
+      const path = `findings[${index}].evidence[${evidenceIndex}]`;
       const matches = sources.filter((source) =>
-        [source.identity, ...source.aliases].some(
-          (name) => name.toLowerCase() === evidence.source.toLowerCase(),
-        ),
+        sourceIdentityMatches(source, evidence),
       );
       const excerptMatches = matches.filter(
         (source) =>
-          evidence.excerpt.trim() && source.text.includes(evidence.excerpt),
+          evidence.excerpt.trim() &&
+          originalSourceExcerpt(source.text, evidence.excerpt),
       );
       if (!excerptMatches.length)
-        return `Finding ${index + 1} includes an excerpt or source identity that cannot be verified in the current Input Pack. Use an exact original-source excerpt or return a research gap.`;
+        return `Finding ${index + 1} includes an excerpt or source identity that cannot be verified in the current Input Pack (${path}.${matches.length ? "excerpt" : "source"}). Use a registered document/passage reference and an original-source excerpt or return a research gap.`;
       if (!evidence.locator?.trim())
-        return `Finding ${index + 1} requires an exact source locator for this excerpt.`;
+        return `Finding ${index + 1} requires an exact source locator for this excerpt (${path}.locator).`;
       const verified = locatedDiscoveryCitation(sources, evidence);
       if (!verified)
-        return `Finding ${index + 1} has an unsupported source locator. Use the page, slide or line span containing the exact excerpt.`;
+        return `Finding ${index + 1} has an unsupported source locator or ambiguous attribution (${path}.locator). Use the registered passage containing the excerpt; do not change its document or page.`;
       if (
         evidence.date !== "Not supplied" &&
         evidence.date !== verified.date &&
@@ -172,4 +193,46 @@ export function validateDiscoveryEvidence(
     }
   }
   return "";
+}
+
+export function validatedDiscoveryFindings(
+  request: Extract<AgentRequest, { agentType: "discovery" }>,
+  data: Extract<AgentData, { findings: unknown }>,
+) {
+  const findings: typeof data.findings = [],
+    issues: { path: string; message: string }[] = [];
+  if (request.context.action === "another_answer" && data.findings.length !== 1)
+    return {
+      findings,
+      issues: [
+        {
+          path: "findings",
+          message: "Another answer must return exactly one distinct finding.",
+        },
+      ],
+    };
+  for (const [index, finding] of data.findings.entries()) {
+    const singleIssue = validateDiscoveryEvidence(request, {
+      ...data,
+      findings: [finding],
+    });
+    const duplicateIssue =
+      !singleIssue && !request.context.preparationRole
+        ? crossLensIssue(
+            request.context.lens,
+            [...findings, finding],
+            request.context.peerFindings ?? [],
+          )
+        : "";
+    const message = singleIssue || duplicateIssue;
+    if (message)
+      issues.push({
+        path: `findings[${index}]`,
+        message: message
+          .replace(/^Finding 1\b/, `Finding ${index + 1}`)
+          .replace(/findings\[0\]/g, `findings[${index}]`),
+      });
+    else findings.push(finding);
+  }
+  return { findings, issues };
 }

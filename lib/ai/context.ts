@@ -1,6 +1,7 @@
 import type { StrategyInputPack } from "../types";
 import { extractUpstream, resolveRtb } from "../upstream";
 import type { Foundation } from "./schemas";
+import { canonicalCampaign } from "../canonical-campaign";
 
 export function extractJobToBeDone(source = "") {
   const lines = source.split(/\r?\n/);
@@ -37,6 +38,16 @@ export function selectedFoundation(pack: StrategyInputPack): Foundation {
   const rtb = resolveRtb(requirements);
   const jobToBeDone = extractJobToBeDone(pack.parsedIMC?.sourceText);
   return {
+    canonicalCampaign: canonicalCampaign({
+      sourceBrief: pack.parsedIMC?.sourceText,
+      requirements,
+      campaignContext: { campaignName },
+      suppliedEvidence: pack.suppliedEvidence,
+      proposedJTBD: pack.proposedJTBD,
+      currentRtb: { proposal: pack.proposedRTB ?? "" },
+      selectedSparks: pack.selectedSparks,
+    }),
+    ...(pack.proposedJTBD ? { proposedJTBD: pack.proposedJTBD } : {}),
     ...(pack.parsedIMC?.sourceText
       ? { sourceBrief: pack.parsedIMC.sourceText }
       : {}),
@@ -108,10 +119,16 @@ export function selectedFoundation(pack: StrategyInputPack): Foundation {
 }
 export function foundationPack(foundation: Foundation): StrategyInputPack {
   return {
+    ...(foundation.canonicalCampaign
+      ? { canonicalCampaign: foundation.canonicalCampaign }
+      : {}),
     ...foundation.campaignContext,
     upstream: foundation.requirements,
     reasonToBelieve: foundation.currentRtb.original,
     proposedRTB: foundation.currentRtb.proposal,
+    ...(foundation.proposedJTBD
+      ? { proposedJTBD: foundation.proposedJTBD }
+      : {}),
     rtbApprovalStatus: foundation.currentRtb.approvalStatus,
     research: foundation.currentResearch,
     sparks: foundation.selectedSparks.map((s) => s.text).join("\n"),

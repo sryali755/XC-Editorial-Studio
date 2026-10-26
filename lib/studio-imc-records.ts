@@ -1,3 +1,4 @@
+import { classifyCampaignHeading } from "./campaign-field-classifier";
 export type StudioIMCGroup =
   | "campaign_name"
   | "parent_platform"
@@ -27,6 +28,27 @@ export interface StudioIMCRecord {
 }
 
 function group(label: string): StudioIMCGroup | undefined {
+  const shared = classifyCampaignHeading(label).key;
+  const mapped: Partial<Record<NonNullable<typeof shared>, StudioIMCGroup>> = {
+    campaignName: "campaign_name",
+    background: "campaign_background",
+    businessObjectives: "business_objective",
+    campaignObjectives: "business_objective",
+    communicationObjectives: "marketing_objective",
+    audiences: "audience_segment",
+    jtbd: "job_to_be_done",
+    rtbs: "reason_to_believe",
+    insights: "research_evidence",
+    research: "research_evidence",
+    creativeConsiderations: "creative_constraint",
+    keyMessages: "key_message",
+    deliverables: "deliverable",
+    constraints: "creative_constraint",
+    timelines: "timing",
+    product: "product_offer",
+    channels: "channel",
+  };
+  if (shared && mapped[shared]) return mapped[shared];
   const normalized = label
     .toLowerCase()
     .replace(/[^a-z0-9 ]/g, " ")
@@ -103,8 +125,10 @@ function labelAt(line: string) {
     /^\s*(?:[-*]\s+)?(?:\*\*)?([^:\n]{3,90}?)(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.*)$/,
   );
   const raw = headingInline?.[1] ?? heading?.[1] ?? inline?.[1] ?? plain;
-  if (!raw) return undefined;
-  const label = raw
+  const candidate =
+    raw ?? (classifyCampaignHeading(line.trim()).key ? line.trim() : undefined);
+  if (!candidate) return undefined;
+  const label = candidate
     .replace(/^\d+[.)]\s*/, "")
     .replace(/\*\*/g, "")
     .trim();

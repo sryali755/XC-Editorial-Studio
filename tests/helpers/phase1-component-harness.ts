@@ -7,6 +7,7 @@ import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { DiscoveryStudioSession } from "../../lib/discovery-studio";
 import type { PreparationVersion } from "../../lib/types";
+import { seedStudioDiscovery, studioPack } from "../../lib/discovery-studio";
 type Element = React.ReactElement<Record<string, unknown>>;
 function loadComponent(
   filename: string,
@@ -99,6 +100,7 @@ export function componentHarness(
     cursor = 0;
     tree = component.default({
       session,
+      discovery: seedStudioDiscovery(studioPack(session)),
       aiMode: "mock",
       onExplore() {},
       onBuildActivity() {},
@@ -147,6 +149,14 @@ export function componentHarness(
     },
   };
 }
+function componentChildren(node: Element): React.ReactNode {
+  return typeof node.type === "function" &&
+    node.type.name === "DynamicInputPackDetails"
+    ? (node.type as (props: Record<string, unknown>) => React.ReactNode)(
+        node.props,
+      )
+    : (node.props.children as React.ReactNode);
+}
 export function nodes(
   node: React.ReactNode,
   predicate: (element: Element) => boolean,
@@ -154,17 +164,17 @@ export function nodes(
   if (Array.isArray(node))
     return node.flatMap((child) => nodes(child, predicate));
   if (!React.isValidElement<Record<string, unknown>>(node)) return [];
-  return [
-    ...(predicate(node) ? [node] : []),
-    ...nodes(node.props.children as React.ReactNode, predicate),
-  ];
+  // The current Input Pack delegates its summary to this pure component.
+  // Expand its actual JSX for structural assertions, retaining every assertion.
+  const children = componentChildren(node);
+  return [...(predicate(node) ? [node] : []), ...nodes(children, predicate)];
 }
 export function text(node: React.ReactNode): string {
   if (node == null || typeof node === "boolean") return "";
   if (typeof node === "string" || typeof node === "number") return String(node);
   if (Array.isArray(node)) return node.map(text).join("");
   return React.isValidElement<{ children?: React.ReactNode }>(node)
-    ? text(node.props.children)
+    ? text(componentChildren(node))
     : "";
 }
 export function button(tree: React.ReactNode, name: string) {

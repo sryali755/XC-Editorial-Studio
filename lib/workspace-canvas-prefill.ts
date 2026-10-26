@@ -149,7 +149,14 @@ export function canvasPrefill(
   }
 
   let job = missing("add audience needs or a supplied JTBD");
-  if (selectedJob)
+  if (pack.proposedJTBD?.trim())
+    job = {
+      value: pack.proposedJTBD,
+      kind: "selected",
+      label:
+        "Selected agent-proposed V0 JTBD · not original or approved · Validate",
+    };
+  else if (selectedJob)
     job = {
       value: selectedJob.text,
       kind: "selected",

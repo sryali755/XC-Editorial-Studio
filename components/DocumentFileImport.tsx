@@ -97,7 +97,7 @@ export default function DocumentFileImport({
             : "Upload file"}
       </button>
       <small>
-        PDF, DOCX, PPTX, TXT, MD or CSV · up to 15 MB
+        PDF, DOCX, PPTX, TXT, MD or CSV
         {variant !== "dropzone" && (
           <>
             <br />

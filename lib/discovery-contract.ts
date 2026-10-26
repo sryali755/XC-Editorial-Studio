@@ -21,7 +21,7 @@ export interface DiscoveryCardContract {
   createdAt: string;
   updatedAt: string;
   evidenceState: "evidence_supported" | "research_gap";
-  provider?: "mock" | "openai";
+  provider?: "mock" | "openai" | "writer";
 }
 
 export function discoveryCardContract(

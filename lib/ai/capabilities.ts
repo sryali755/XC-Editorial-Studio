@@ -18,6 +18,18 @@ export function modelCapabilities(
   provider: string,
   model: string,
 ): ModelCapabilities | undefined {
+  // Writer documents JSON-schema responses and an 8,192-token output limit.
+  // https://dev.writer.com/home/structured-output
+  // https://dev.writer.com/home/models
+  if (provider === "writer" && model === "palmyra-x5")
+    return {
+      structuredOutput: true,
+      temperature: true,
+      topP: true,
+      reasoningEfforts: [],
+      verbosity: false,
+      maxOutputTokens: 8192,
+    };
   if (provider === "openai" && model === "gpt-5.5")
     return {
       structuredOutput: true,

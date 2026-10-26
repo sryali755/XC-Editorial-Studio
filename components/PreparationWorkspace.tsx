@@ -164,7 +164,8 @@ function PreparationCard({
                 ? "CURRENT OUTPUT PRESERVED · GENERATION PENDING"
                 : id === "reasonToBelieve"
                   ? `PROPOSED XC ADAPTATION · ${current.provider === "mock" ? "MOCK · " : ""}NOT APPROVED`
-                  : current.provider === "openai"
+                  : current.provider === "openai" ||
+                      current.provider === "writer"
                     ? "PREPARED OUTPUT · AI PROPOSAL"
                     : current.provider === "manual"
                       ? "PREPARED OUTPUT · EDITED"

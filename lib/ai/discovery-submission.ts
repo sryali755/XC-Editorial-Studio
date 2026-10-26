@@ -8,6 +8,7 @@ import { detectIMCCampaignScopes } from "../imc-campaign-scope";
 import { parseIMCBrief } from "../imc-parser";
 import { usableCampaignName } from "../campaign-identity";
 import { campaignIdentityIssue } from "../campaign-naming";
+import { canonicalCampaign } from "../canonical-campaign";
 import {
   sourceCampaignNames,
   sourceJobContext,
@@ -27,6 +28,15 @@ type DiscoveryFoundation = Extract<
   AgentRequest,
   { agentType: "discovery" }
 >["context"]["foundation"];
+const stable = (value: unknown): string =>
+  Array.isArray(value)
+    ? `[${value.map(stable).join(",")}]`
+    : value && typeof value === "object"
+      ? `{${Object.entries(value)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([key, item]) => `${JSON.stringify(key)}:${stable(item)}`)
+          .join(",")}}`
+      : JSON.stringify(value);
 function foundationIssue(foundation: DiscoveryFoundation): string | undefined {
   const source = foundation.sourceBrief ?? "";
   if (!source.trim())
@@ -205,6 +215,36 @@ function foundationIssue(foundation: DiscoveryFoundation): string | undefined {
       !exactGroundingExcerpt(excerpt, source)
     )
       return `Selected Spark ${spark.id} quotes text outside the selected IMC brief. Reselect the Spark before running Discovery.`;
+  }
+  if (foundation.canonicalCampaign) {
+    const expected = canonicalCampaign(foundation);
+    // This view can predate a legitimate human clarification or new selection.
+    // Only its immutable source claims must match. Prompts recompute editable
+    // metadata rather than trusting a client-supplied derived suggestion.
+    const immutable = (view: typeof expected) => ({
+      version: view.version,
+      // Attachments may have changed since the derived view was built. Their
+      // current registry is rebuilt from suppliedEvidence, never this cache.
+      sourceRegistry: {
+        ...view.sourceRegistry,
+        documents: view.sourceRegistry.documents.filter(
+          (doc) => doc.kind === "imc",
+        ),
+        passages: view.sourceRegistry.passages.filter((passage) =>
+          view.sourceRegistry.documents.some(
+            (doc) => doc.kind === "imc" && doc.id === passage.documentId,
+          ),
+        ),
+      },
+      fields: view.fields,
+      unknowns: view.unknowns,
+      usable: view.usable,
+    });
+    if (
+      stable(immutable(foundation.canonicalCampaign)) !==
+      stable(immutable(expected))
+    )
+      return "The canonical campaign or registered source passages conflict with the selected source context. Rebuild the Input Pack before running Discovery.";
   }
   return undefined;
 }

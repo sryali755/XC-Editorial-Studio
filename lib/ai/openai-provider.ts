@@ -1,7 +1,7 @@
 import "server-only";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
-import { aiConfig } from "./config";
+import { DEFAULT_OPENAI_MODEL } from "./config";
 import { AgentError } from "./errors";
 import { buildAgentPrompt } from "./prompts";
 import { modelCapabilities, validatedModelSettings } from "./capabilities";
@@ -12,6 +12,7 @@ import {
 import {
   outputSchemas,
   discoveryGenerationSchema,
+  rtbGenerationSchema,
   sparkGenerationSchema,
   sparkRevisionGenerationSchema,
   type AgentRequest,
@@ -210,7 +211,7 @@ export async function generateOpenAI(
       false,
     );
   try {
-    const model = aiConfig().model;
+    const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_OPENAI_MODEL;
     const requestedSettings =
       "modelSettings" in request ? request.modelSettings : {};
     const settings = validatedModelSettings(
@@ -239,7 +240,9 @@ export async function generateOpenAI(
           : sparkGenerationSchema
         : request.agentType === "discovery"
           ? discoveryGenerationSchema
-          : outputSchemas[request.agentType];
+          : request.agentType === "rtb"
+            ? rtbGenerationSchema
+            : outputSchemas[request.agentType];
     const budget = outputTokenBudget(request.agentType);
     if (budget > modelCapabilities("openai", model)!.maxOutputTokens)
       throw new AgentError(

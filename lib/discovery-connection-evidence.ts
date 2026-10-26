@@ -4,7 +4,9 @@ import {
   isLegacyDiscoveryLocator,
   isSpecificDiscoveryLocator,
   locatedDiscoveryCitation,
+  sourceIdentityMatches,
 } from "./discovery-sources";
+import { originalSourceExcerpt } from "./source-registry";
 import type { DiscoveryFinding, StrategyInputPack } from "./types";
 import type { Foundation } from "./ai/schemas";
 import { unsupportedDiscoveryFactualAssertion } from "./ai/discovery-evidence";
@@ -42,11 +44,9 @@ export function validateConnectionFindingEvidenceForFoundation(
         return `${finding.title} cites a source that is not supplied and accessible.`;
       const excerptExists = sources.some(
         (candidate) =>
-          [candidate.identity, ...candidate.aliases].some(
-            (name) => name.toLowerCase() === evidence.source.toLowerCase(),
-          ) &&
+          sourceIdentityMatches(candidate, evidence) &&
           evidence.excerpt.trim() &&
-          candidate.text.includes(evidence.excerpt),
+          originalSourceExcerpt(candidate.text, evidence.excerpt),
       );
       if (!excerptExists)
         return `${finding.title} includes an excerpt or source identity that cannot be verified in the supplied Input Pack.`;

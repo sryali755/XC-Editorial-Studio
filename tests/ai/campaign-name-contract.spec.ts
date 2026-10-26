@@ -62,6 +62,28 @@ test.beforeEach(() => {
   expect(process.env.XC_OFFLINE_TEST).toBe("1");
 });
 
+test("campaign display names are not capped by a character limit", () => {
+  const session = applyStudioSource(emptyStudio(), blackFridayNamingSource);
+  const name = "C".repeat(100_000);
+  const confirmed = confirmStudioCampaignName(session, name);
+  const pack = studioPack(confirmed);
+  expect(pack.campaignName).toBe(name);
+  const longNameRequest = request(pack);
+  if (!("foundation" in longNameRequest.context))
+    throw new Error("Discovery request lacks its source foundation.");
+  expect(longNameRequest.context.foundation.campaignContext.campaignName).toBe(
+    name,
+  );
+  const longSource = request(pack);
+  if (!("foundation" in longSource.context))
+    throw new Error("Discovery request lacks its source foundation.");
+  longSource.context.foundation.sourceBrief = "B".repeat(100_000);
+  const parsedLongSource = requestSchema.parse(longSource);
+  if (!("foundation" in parsedLongSource.context))
+    throw new Error("Parsed discovery request lacks its source foundation.");
+  expect(parsedLongSource.context.foundation.sourceBrief?.length).toBe(100_000);
+});
+
 test("Black Friday cover yields an attributed candidate, never an automatically confirmed name or platform", () => {
   const session = applyStudioSource(emptyStudio(), blackFridayNamingSource);
   const pack = studioPack(session),
@@ -89,6 +111,47 @@ test("Black Friday cover yields an attributed candidate, never an automatically 
       "Human strategy",
     ),
   ).toThrow(/campaign name/i);
+});
+
+test("Word import notes do not hide the Gateway document title or turn it into an official campaign name", () => {
+  const source = `Source: Gateway IMC Brief KM.docx
+Extraction: Word text only; layout normalized. Review against the original document.
+Import notes (not source evidence): Word layout is normalized. Review tables and reading order before applying.
+
+Gateway IMC Brief – Revised for Helix Test
+
+Project Description: Display banners within the Evergreen layer of our Imagine That Comms Framework to drive Gateway adoption.
+Business Objective: Reduce churn through increasing adoption of the latest Gateways.
+Target Audience: Existing Xfinity Internet customers with older eligible Gateway equipment`;
+  const identity = resolveCampaignIdentity(source);
+  expect(identity.sourceDocumentFileName).toBe("Gateway IMC Brief KM.docx");
+  expect(identity.sourceDocumentTitle).toBe(
+    "Gateway IMC Brief – Revised for Helix Test",
+  );
+  expect(identity.sourceCandidate).toEqual({
+    name: "Gateway IMC Brief – Revised for Helix Test",
+    kind: "cover_title",
+    excerpt: "Gateway IMC Brief – Revised for Helix Test",
+    locator: "imc:lines:5-5",
+  });
+  expect(identity.displayName).toBe("");
+  expect(identity.confirmationStatus).toBe("unresolved");
+
+  const confirmed = studioPack(
+    confirmStudioCampaignName(
+      applyStudioSource(emptyStudio(), source),
+      "Gateway Adoption",
+    ),
+  );
+  expect(confirmed.campaignName).toBe("Gateway Adoption");
+  expect(confirmed.campaignIdentity).toMatchObject({
+    sourceName: "",
+    sourceDocumentTitle: "Gateway IMC Brief – Revised for Helix Test",
+    origin: "human_confirmed",
+    confirmationStatus: "human_confirmed",
+  });
+  expect(confirmed.objective).toContain("Reduce churn");
+  expect(confirmed.audience).toContain("older eligible Gateway equipment");
 });
 
 test("confirmed Black Friday display metadata propagates without rewriting original source fields", async () => {

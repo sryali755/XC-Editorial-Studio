@@ -1,6 +1,7 @@
 import { extractJobToBeDone } from "./context";
 import { sparkTerritoryTypes, type AgentRequest } from "./schemas";
 import type { SourceField } from "../types";
+import { canonicalCampaign } from "../canonical-campaign";
 
 export const SPARKS_PROMPT_VERSION = "sparks-v1.3";
 export const SPARK_EXCERPT_REPAIR_MARKER = "SPARK_EXCERPT_REPAIR_ONLY:";
@@ -230,6 +231,7 @@ export function sparksUserMessage(
     : request.sparkRevision?.targetId
       ? targetedMessage(request)
       : initialMessage(request);
-  if (!attempt) return base;
-  return `${base}\n\nVALIDATION RETRY\n${retryInstruction || "The prior response was invalid. Return only valid JSON matching the requested schema and item count."}`;
+  const context = `${base}\n\nREGISTERED CAMPAIGN CONTEXT (source facts, review flags and stable references)\n${JSON.stringify(canonicalCampaign({ sourceBrief: request.context.parsedIMC.sourceText, requirements: request.context.upstream }))}`;
+  if (!attempt) return context;
+  return `${context}\n\nVALIDATION RETRY\n${retryInstruction || "The prior response was invalid. Return only valid JSON matching the requested schema and item count."}`;
 }

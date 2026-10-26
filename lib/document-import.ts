@@ -1,18 +1,16 @@
 // Client-side, deterministic extraction only. No LLM calls or external uploads.
 import { strFromU8, unzipSync } from "fflate";
+import { buildSourceRegistry, type SourceRegistry } from "./source-registry";
+import { campaignSections } from "./campaign-field-classifier";
 
-export const DOCUMENT_MAX_BYTES = 15 * 1024 * 1024;
-export const DOCUMENT_MAX_CHARS = 60_000;
 export const DOCUMENT_ACCEPT = ".pdf,.pptx,.docx,.txt,.md,.csv";
 export interface ImportedDocument {
+  sourceRegistry?: SourceRegistry;
   text: string;
   fileName: string;
   format: "PDF" | "PowerPoint" | "Word" | "Text";
   warnings: string[];
 }
-const MAX_XML_BYTES = 12 * 1024 * 1024;
-const MAX_PARTS = 1000;
-
 function xml(bytes: Uint8Array | undefined): XMLDocument {
   if (!bytes)
     throw new Error(
@@ -69,34 +67,15 @@ function paragraphs(root: Element | Document): string {
     .join("\n");
 }
 function officeParts(bytes: Uint8Array): Record<string, Uint8Array> {
-  let total = 0,
-    count = 0;
   try {
     return unzipSync(bytes, {
       filter: (part) => {
-        if (++count > MAX_PARTS)
-          throw new Error(
-            "This Office file has too many parts. Split it into smaller files.",
-          );
-        const required =
-          /^(?:\[Content_Types\]\.xml|word\/(?:document|header\d+|footer\d+|footnotes|endnotes)\.xml|ppt\/presentation\.xml|ppt\/_rels\/presentation\.xml\.rels|ppt\/slides\/slide\d+\.xml)$/.test(
-            part.name,
-          );
-        if (!required) return false;
-        total += part.originalSize;
-        if (total > MAX_XML_BYTES)
-          throw new Error(
-            "This Office file expands to too much text. Split it into smaller files.",
-          );
-        return true;
+        return /^(?:\[Content_Types\]\.xml|word\/(?:document|header\d+|footer\d+|footnotes|endnotes)\.xml|ppt\/presentation\.xml|ppt\/_rels\/presentation\.xml\.rels|ppt\/slides\/slide\d+\.xml)$/.test(
+          part.name,
+        );
       },
     });
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      /too many parts|too much text/.test(error.message)
-    )
-      throw error;
+  } catch {
     throw new Error(
       "This Office file is corrupted, encrypted or not a valid .pptx/.docx file. Open it in Office and save an unprotected copy.",
     );
@@ -175,10 +154,8 @@ function powerPoint(bytes: Uint8Array) {
   const slideIds = Array.from(slideList?.children ?? []).filter(
     (child) => child.localName === "sldId",
   );
-  if (!slideIds.length || slideIds.length > 150)
-    throw new Error(
-      "Use a PowerPoint with 1–150 slides. Split larger decks before importing.",
-    );
+  if (!slideIds.length)
+    throw new Error("This presentation has no slides to import.");
   const imageSlides: number[] = [],
     emptySlides: number[] = [];
   const slides = slideIds.map((id, index) => {
@@ -240,13 +217,8 @@ async function pdf(bytes: Uint8Array) {
   };
   try {
     const document = await task.promise;
-    if (document.numPages > 150)
-      throw new Error(
-        "Use a PDF of 150 pages or fewer. Split larger files before importing.",
-      );
     const pages: string[] = [],
       emptyPages: number[] = [];
-    let count = 0;
     for (let number = 1; number <= document.numPages; number++) {
       const page = await document.getPage(number);
       const content = await page.getTextContent({ disableNormalization: true });
@@ -278,11 +250,6 @@ async function pdf(bytes: Uint8Array) {
         previousEnd = x + item.width;
       }
       if (!text.trim()) emptyPages.push(number);
-      count += text.length;
-      if (count > DOCUMENT_MAX_CHARS)
-        throw new Error(
-          "The extracted text exceeds 60,000 characters. Split the file or paste the relevant brief; nothing was truncated.",
-        );
       pages.push(
         `## Source page ${number}\n${text.trim() || "[No extractable text on this page.]"}`,
       );
@@ -304,10 +271,7 @@ async function pdf(bytes: Uint8Array) {
       ],
     };
   } catch (error) {
-    if (
-      error instanceof Error &&
-      /150 pages|60,000|No readable text/.test(error.message)
-    )
+    if (error instanceof Error && /No readable text/.test(error.message))
       throw error;
     throw new Error(
       "Unable to read this PDF. It may be password-protected, corrupted or unsupported. Save an unprotected searchable PDF and retry.",
@@ -328,10 +292,6 @@ export async function extractDocument(file: File): Promise<ImportedDocument> {
     );
   if (!file.size)
     throw new Error("This file is empty. Choose a file with text.");
-  if (file.size > DOCUMENT_MAX_BYTES)
-    throw new Error(
-      "Choose a file up to 15 MB, or split it into smaller files.",
-    );
   const bytes = new Uint8Array(await file.arrayBuffer());
   let result: { text: string; warnings: string[] };
   const format =
@@ -372,10 +332,23 @@ export async function extractDocument(file: File): Promise<ImportedDocument> {
       "No readable text was found in this file. Paste the original source text instead.",
     );
   const safeName = file.name.replace(/[\r\n\0]/g, " ");
-  const text = `Source: ${safeName}\n${format === "Text" ? "" : `Extraction: ${format} text only; layout normalized. Review against the original document.\nImport notes (not source evidence): ${result.warnings.join(" ")}\n\n`}${result.text.trim()}`;
-  if (text.length > DOCUMENT_MAX_CHARS)
-    throw new Error(
-      "The extracted text exceeds 60,000 characters. Split the file or paste the relevant brief; nothing was truncated.",
+  const ambiguous = campaignSections(result.text).filter(
+    (section) =>
+      !section.classification.key && section.classification.candidates.length,
+  );
+  if (ambiguous.length)
+    result.warnings.push(
+      `Some headings fit multiple campaign fields and need review: ${ambiguous
+        .map((section) => section.label)
+        .slice(0, 3)
+        .join(", ")}. Original text is retained.`,
     );
-  return { text, fileName: safeName, format, warnings: result.warnings };
+  const text = `Source: ${safeName}\n${format === "Text" ? "" : `Extraction: ${format} text only; layout normalized. Review against the original document.\nImport notes (not source evidence): ${result.warnings.join(" ")}\n\n`}${result.text.trim()}`;
+  return {
+    text,
+    fileName: safeName,
+    format,
+    warnings: result.warnings,
+    sourceRegistry: buildSourceRegistry(text),
+  };
 }

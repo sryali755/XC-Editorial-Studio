@@ -39,7 +39,11 @@ function coverTitle(source: string) {
   for (const line of lines) {
     const value = line.trim().replace(/^#{1,6}\s+/, "");
     if (!value || /^\d+$/.test(value)) continue;
-    if (/^(?:Source|Extraction|Import notes|Document title)\s*:/i.test(value))
+    if (
+      /^(?:Source|Extraction|Import notes(?:\s*\([^)]*\))?|Document title)\s*:/i.test(
+        value,
+      )
+    )
       continue;
     if (
       /^(?:(?:January|February|March|April|May|June|July|August|September|October|November|December)\b|\d{4}\b|\d{1,2}[/-]\d)/i.test(
@@ -149,7 +153,6 @@ export function resolveCampaignIdentity(
     confirmation.sourceBrief === source &&
     names.length < 2 &&
     usableCampaignName(confirmation.name) &&
-    confirmation.name.length <= 300 &&
     Number.isFinite(Date.parse(confirmation.confirmedAt));
   const displayName = confirmed ? confirmation!.name : sourceName;
   const humanAlias = confirmed && confirmation!.name !== sourceName;

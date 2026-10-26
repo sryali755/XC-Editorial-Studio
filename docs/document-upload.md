@@ -10,17 +10,17 @@ The importer preserves textual content without model rewriting. Office paragraph
 
 ## Limits and explicit gaps
 
-- Up to 15 MiB per file, 60,000 extracted characters including provenance, and 150 PDF pages/PowerPoint slides. Oversized input is rejected, not silently truncated.
+- The importer imposes no file-byte, extracted-text, PDF-page, PowerPoint-slide, Office-part-count, or expanded-XML-size ceiling. Imports remain local to the browser; device/browser memory and performance can still prevent exceptionally large files from completing. Applying large source text to AI workflows may also encounter hosting request limits or the configured provider's request/context limits.
 - Embedded images/charts are not interpreted, and OCR is not implemented. Image-bearing slides and PDF pages with no extractable text are flagged. Image-only documents fail with instructions to supply searchable text. The Black Friday deck has important text inside images; that text must be supplied separately.
 - PowerPoint speaker notes and linked documents are not imported. Word body text and textual headers, footers, footnotes and endnotes are included. Review complex tables, columns and floating text against the original.
 - Older binary `.ppt` and `.doc` files are not parsed. Save them as `.pptx`/`.docx` or a searchable PDF. Corrupt/password-protected Office or PDF files report an error; no mock or invented text is substituted.
-- ZIP imports restrict extracted XML parts, part count and expanded XML size; they do not extract images/attachments or execute macros. XML entity/DOCTYPE declarations are rejected. No files are written to disk by the importer.
+- Office ZIP imports only read the XML parts used for text; images and attachments are not extracted, and macros are not executed. XML entity/DOCTYPE declarations are rejected. No files are written to disk by the importer.
 
-The existing creative workspace's text importer and protected creative files are unchanged. New upload controls are isolated to the primary Insight Discovery workflow. Model, low reasoning effort, credentials and AI endpoints are unchanged. Existing `fflate` and `pdfjs-dist` versions are promoted from development to production dependencies; no new service or package version is introduced.
+The creative workspace's separate text importer keeps its existing format handling and workflow; its former 250 KB app-imposed size limit is removed. New document-format upload controls are isolated to the primary Insight Discovery workflow. Model, low reasoning effort, credentials and AI endpoints are unchanged. Existing `fflate` and `pdfjs-dist` versions are promoted from development to production dependencies; no new service or package version is introduced.
 
 ## Files
 
-- `lib/document-import.ts`: bounded browser extraction and validation.
+- `lib/document-import.ts`: browser extraction and format/integrity validation.
 - `components/DocumentFileImport.tsx`: upload, progress, preview/error notes.
 - `components/DiscoveryInputPack.tsx`: primary brief and evidence controls.
 - `package.json`, `package-lock.json`: dependency classification only.
@@ -39,7 +39,7 @@ The existing creative workspace's text importer and protected creative files are
 | Typecheck, lint, production build                    | Passed.                                                                                     |
 | Visual QA                                            | Production desktop/mobile PowerPoint-upload screenshots inspected; no horizontal overflow.  |
 
-Coverage includes exact RTB preservation and unknown approval, Word field/value tables and tracked deletions, PowerPoint primary slide order despite repeated section IDs, searchable PDF worker loading, blank/scanned PDFs, malformed files, expansion/file/text limits, older-format conversion messages, failure preservation, explicit evidence addition, and no automatic AI/file POST requests when importing.
+Coverage includes exact RTB preservation and unknown approval, Word field/value tables and tracked deletions, PowerPoint primary slide order despite repeated section IDs, searchable PDF worker loading, blank/scanned PDFs, malformed files, long-text and large-file preservation, older-format conversion messages, failure preservation, explicit evidence addition, and no automatic AI/file POST requests when importing.
 
 Verification ran in an isolated source copy, with mock-mode test servers on ports 3102/3103. No paid model call was made. The user's private source files were read for optional local acceptance only and are not included in the application or committed tests.
 

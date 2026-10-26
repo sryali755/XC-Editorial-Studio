@@ -1,7 +1,10 @@
 import type { Foundation } from "./ai/schemas";
 import type { DiscoverySourceCoverage } from "./types";
+import { buildSourceRegistry, originalSourceExcerpt } from "./source-registry";
 
 export interface DiscoverySourceDocument {
+  documentId?: string;
+  passageId?: string;
   date?: string;
   audience?: string;
   identity: string;
@@ -12,6 +15,8 @@ export interface DiscoverySourceDocument {
 }
 
 export interface DiscoveryCitation {
+  documentId?: string;
+  passageId?: string;
   source: string;
   locator?: string;
   excerpt: string;
@@ -36,85 +41,50 @@ export function isLegacyDiscoveryLocator(locator?: string): boolean {
   );
 }
 
-// A locator identifies a retained source span, not merely a field name. PDF
-// pages and PowerPoint slides are available from document extraction; plain
-// text/Word content has line spans and is never assigned a fabricated page.
-function imcSourceSpans(source: string): DiscoverySourceDocument[] {
-  if (!source.trim()) return [];
-  const lines = source.split(/\r?\n/);
-  const markers = lines.flatMap((line, index) => {
-    const page = line.match(
-      /^(?:(?:## Source page|PDF PAGE)\s+(\d+)|---\s*Source page\s+(\d+)\s*---)\s*$/i,
-    );
-    const slide = line.match(/^## Source slide\s+(\d+)\s*$/i);
-    return page
-      ? [{ index, kind: "page", number: Number(page[1] ?? page[2]) }]
-      : slide
-        ? [{ index, kind: "slide", number: Number(slide[1]) }]
-        : [];
-  });
-  const span = (
-    start: number,
-    end: number,
-    locator: string,
-    identity: string,
-  ) => ({
-    identity,
-    locator,
-    aliases: ["IMC brief", "Supplied IMC brief"],
-    text: lines.slice(start, end).join("\n").trim(),
-    accessScope: "supplied" as const,
-  });
-  const lineSpans = (start: number, end: number) => {
-    const result: DiscoverySourceDocument[] = [];
-    let cursor = start;
-    while (cursor < end) {
-      while (cursor < end && !lines[cursor].trim()) cursor++;
-      if (cursor >= end) break;
-      const first = cursor;
-      while (cursor < end && lines[cursor].trim()) cursor++;
-      const last = cursor;
-      result.push(
-        span(
-          first,
-          last,
-          `imc:lines:${first + 1}-${last}`,
-          `IMC brief — lines ${first + 1}–${last}`,
-        ),
-      );
-    }
-    return result;
-  };
-  if (!markers.length) return lineSpans(0, lines.length);
-  const result = lineSpans(0, markers[0].index);
-  for (const [index, marker] of markers.entries()) {
-    const end = markers[index + 1]?.index ?? lines.length;
-    result.push(
-      span(
-        marker.index,
-        end,
-        `imc:${marker.kind}:${marker.number}`,
-        `IMC brief — source ${marker.kind} ${marker.number}`,
-      ),
-    );
-  }
-  return result.filter((item) => item.text);
-}
-
 export function locatedDiscoveryCitation(
   sources: DiscoverySourceDocument[],
   evidence: DiscoveryCitation,
 ): DiscoverySourceDocument | undefined {
+  return resolveDiscoveryCitation(sources, evidence)?.source;
+}
+
+export function sourceIdentityMatches(
+  source: DiscoverySourceDocument,
+  evidence: DiscoveryCitation,
+) {
+  return (
+    (!evidence.documentId || source.documentId === evidence.documentId) &&
+    (!evidence.passageId || source.passageId === evidence.passageId) &&
+    [source.identity, ...source.aliases, source.documentId].some(
+      (name) => name?.toLowerCase() === evidence.source.toLowerCase(),
+    )
+  );
+}
+
+export function resolveDiscoveryCitation(
+  sources: DiscoverySourceDocument[],
+  evidence: DiscoveryCitation,
+) {
   if (!isSpecificDiscoveryLocator(evidence.locator) || !evidence.excerpt.trim())
     return undefined;
-  return sources.find(
-    (source) =>
-      source.locator === evidence.locator &&
-      [source.identity, ...source.aliases].some(
-        (name) => name.toLowerCase() === evidence.source.toLowerCase(),
-      ) &&
-      source.text.includes(evidence.excerpt),
+  const matches = sources.flatMap((source) => {
+    if (
+      !sourceIdentityMatches(source, evidence) ||
+      (source.locator !== evidence.locator &&
+        source.passageId !== evidence.locator)
+    )
+      return [];
+    const match = originalSourceExcerpt(source.text, evidence.excerpt);
+    return match ? [{ source, ...match }] : [];
+  });
+  const identities = new Set(
+    matches.map(
+      (match) =>
+        `${match.source.documentId ?? match.source.identity}:${match.source.passageId ?? match.source.locator}`,
+    ),
   );
+  // Never silently attribute a normalized excerpt to another document/page.
+  return identities.size === 1 ? matches[0] : undefined;
 }
 
 // This adapter reads user-supplied context. It does not represent a network
@@ -147,21 +117,38 @@ export const suppliedDiscoverySourceProvider: DiscoverySourceProvider = {
     });
     const fields = foundation.requirements.fields;
     const originals = fields.research?.sourceValue ?? "";
-    const spans = imcSourceSpans(foundation.sourceBrief ?? "");
+    const registry = buildSourceRegistry(
+      foundation.sourceBrief ?? "",
+      foundation.suppliedEvidence,
+    );
+    const suppliedIds = new Set(
+      registry.documents
+        .filter((doc) => doc.kind === "supplied")
+        .map((doc) => doc.id),
+    );
+    const registered = registry.passages.map((passage) => ({
+      ...passage,
+      passageId: passage.id,
+      accessScope: "supplied" as const,
+    }));
+    const spans = registered.filter(
+      (passage) => !suppliedIds.has(passage.documentId),
+    );
     const originalField = (identity: string, aliases: string[], text: string) =>
-      spans
-        .filter((source) => usable(text) && source.text.includes(text))
-        .map((source) => document(identity, source.locator, aliases, text));
+      spans.flatMap((source) => {
+        const match = usable(text) && originalSourceExcerpt(source.text, text);
+        return match
+          ? [
+              {
+                ...document(identity, source.locator, aliases, match.excerpt),
+                documentId: source.documentId,
+                passageId: source.passageId,
+              },
+            ]
+          : [];
+      });
     return [
-      ...(foundation.suppliedEvidence ?? []).map((source) => ({
-        identity: source.source,
-        locator: source.locator || `supplied:${source.id}`,
-        aliases: [],
-        text: source.text,
-        accessScope: source.accessScope,
-        date: source.date,
-        audience: source.audience,
-      })),
+      ...registered.filter((passage) => suppliedIds.has(passage.documentId)),
       ...spans,
       ...Object.entries(foundation.campaignContext).flatMap(([key, text]) =>
         originalField(`IMC brief — ${key}`, [], text ?? ""),

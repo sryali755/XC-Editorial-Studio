@@ -33,12 +33,14 @@ const originalEnvironment = {
   AI_PROVIDER: process.env.AI_PROVIDER,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   OPENAI_MODEL: process.env.OPENAI_MODEL,
+  WRITER_API_KEY: process.env.WRITER_API_KEY,
 };
 test.beforeEach(() => {
   process.env.AI_MODE = "mock";
   delete process.env.OPENAI_API_KEY;
   delete process.env.OPENAI_MODEL;
-  delete process.env.AI_PROVIDER;
+  process.env.AI_PROVIDER = "openai";
+  delete process.env.WRITER_API_KEY;
 });
 test.afterEach(() => {
   for (const [key, value] of Object.entries(originalEnvironment)) {
@@ -170,7 +172,7 @@ test("live missing-key/provider configuration is explicit, sanitized and never s
   );
 });
 
-test("route validates shape, approval, size and origin before any generation", async () => {
+test("route validates shape, approval and origin while accepting large valid requests", async () => {
   async function post(body: unknown, headers = {}) {
     return POST(
       new Request("http://localhost/api/ai/agent", {
@@ -185,10 +187,12 @@ test("route validates shape, approval, size and origin before any generation", a
   expect(
     (await post(prep("rtb"), { origin: "https://another-site.test" })).status,
   ).toBe(403);
-  expect(
-    (await post(prep("rtb"), { "content-length": "1000001" })).status,
-  ).toBe(413);
-  expect((await post({ padding: "x".repeat(1_000_001) })).status).toBe(413);
+  const largeRequest = structuredClone(prep("rtb"));
+  if (largeRequest.agentType !== "rtb")
+    throw new Error("Expected an RTB preparation request.");
+  largeRequest.context.parsedIMC.sourceText = "X".repeat(1_000_001);
+  expect((await post(largeRequest)).status).toBe(200);
+  expect((await post({ padding: "x".repeat(1_000_001) })).status).toBe(400);
   const unapproved = finalRequest();
   if (unapproved.agentType === "finalBrief")
     unapproved.context.approvedStrategy.approvalState =
@@ -325,6 +329,8 @@ test("OpenAI SDK sends Responses JSON schemas and validates transport outputs wi
     originalRtbStatus: "supplied",
     originalRtbApprovalStatus: "unknown",
     xcAdaptation: "Proposal",
+    proposedJTBD:
+      "When I consider this offer, I want to understand its benefits, so I can choose what fits my needs.",
     adaptationStatus: "not_approved",
     reviewNotes: [],
     evidenceGaps: [],
@@ -408,6 +414,8 @@ test("provider errors distinguish quota, authentication and retryable throttling
     originalRtbStatus: "supplied",
     originalRtbApprovalStatus: "unknown",
     xcAdaptation: "Proposal",
+    proposedJTBD:
+      "When I consider this offer, I want to understand its benefits, so I can choose what fits my needs.",
     adaptationStatus: "not_approved",
     reviewNotes: [],
     evidenceGaps: [],

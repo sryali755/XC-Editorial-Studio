@@ -12,7 +12,7 @@ import type { PreparationAgentId, StrategyInputPack } from "./types";
 // with Discovery foundations and all existing persistence/approval snapshots.
 export function selectedJtbdFraming(pack: StrategyInputPack) {
   return {
-    text: pack.proposedRTB ?? "",
+    text: pack.proposedJTBD || pack.proposedRTB || "",
     versionId: pack.selectedPreparationVersions?.reasonToBelieve,
   };
 }
@@ -132,6 +132,10 @@ export function buildStudioCampaign(
   displayName: string,
 ) {
   const next = applyStudioSource(current, source);
+  if (!studioPack(next).canonicalCampaign?.usable)
+    throw Error(
+      "No usable campaign context was identified. Review the document headings or supply an objective, audience, background or product proof before building. The original document is preserved.",
+    );
   return displayName.trim() &&
     studioPack(next).campaignName === displayName.trim()
     ? next

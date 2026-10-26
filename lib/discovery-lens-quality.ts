@@ -106,6 +106,17 @@ export function crossLensIssue(
     /^the supplied source states:\s*[“"]/i.test(finding.whatWeFound);
   for (const [index, finding] of findings.entries()) {
     if (
+      lens !== "analogous" &&
+      /\b(?:analogu[ey]|analogous|outside.category)\b/i.test(finding.title) &&
+      /\b(?:case|cases|not evidenced|not supplied|no documented)\b/i.test(
+        finding.title + " " + finding.whatWeFound,
+      ) &&
+      /\b(?:not (?:supplied|evidenced)|no (?:supplied|documented)|research gap)\b/i.test(
+        finding.title + " " + finding.whatWeFound,
+      )
+    )
+      return `Finding ${index + 1} is an analogous-case gap in the ${lens} lens (findings[${index}].title). Investigate this lens's own responsibility: ${lensAssignments[lens]}`;
+    if (
       findings
         .slice(index + 1)
         .some((other) => sameTitle(finding, other) || sameBody(finding, other))

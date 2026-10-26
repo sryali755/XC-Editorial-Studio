@@ -120,7 +120,7 @@ test("every model-facing output schema serializes through the installed SDK; sav
   // and require a locator string (possibly empty) only at the model boundary.
   expect(() =>
     zodTextFormat(outputSchemas.discovery, "legacy_parser_only"),
-  ).toThrow(/locator.*optional/);
+  ).toThrow(/validationIssues.*optional/);
   const historical = mockDiscovery(discoveryRequest("consumer"));
   expect(outputSchemas.discovery.safeParse(historical).success).toBe(true);
   expect(discoveryGenerationSchema.safeParse(historical).success).toBe(true);

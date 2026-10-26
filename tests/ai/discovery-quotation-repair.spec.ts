@@ -130,6 +130,9 @@ for (const field of [
     const bad = mockDiscovery(input);
     bad.findings[0][field] =
       'A customer told us "I always cancel when I move."';
+    // No valid sibling can be retained in this total-rejection case. Mixed
+    // batches are covered separately by the pipeline partial-result contract.
+    bad.findings = [bad.findings[0]];
     expect(validateDiscoveryEvidence(input, bad)).toContain(field);
     const model = createOfflineModelClient([
       JSON.stringify(bad),

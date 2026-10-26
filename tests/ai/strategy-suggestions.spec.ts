@@ -17,13 +17,19 @@ import { generateAgentResponse } from "../../lib/ai/provider";
 import { generateOpenAI } from "../../lib/ai/openai-provider";
 
 const originalMode = process.env.AI_MODE;
+const originalProvider = process.env.AI_PROVIDER;
 const originalKey = process.env.OPENAI_API_KEY;
+const originalWriterKey = process.env.WRITER_API_KEY;
 const originalModel = process.env.OPENAI_MODEL;
 test.afterEach(() => {
   if (originalMode === undefined) delete process.env.AI_MODE;
   else process.env.AI_MODE = originalMode;
+  if (originalProvider === undefined) delete process.env.AI_PROVIDER;
+  else process.env.AI_PROVIDER = originalProvider;
   if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
   else process.env.OPENAI_API_KEY = originalKey;
+  if (originalWriterKey === undefined) delete process.env.WRITER_API_KEY;
+  else process.env.WRITER_API_KEY = originalWriterKey;
   if (originalModel === undefined) delete process.env.OPENAI_MODEL;
   else process.env.OPENAI_MODEL = originalModel;
 });
@@ -201,7 +207,9 @@ test("unsupported excerpts, unselected Sparks, duplicate lines and malformed res
 
 test("live mode without credentials fails rather than returning mock suggestions", async () => {
   process.env.AI_MODE = "live";
+  process.env.AI_PROVIDER = "writer";
   delete process.env.OPENAI_API_KEY;
+  delete process.env.WRITER_API_KEY;
   const { pack, discovery } = fixture();
   await expect(
     generateAgentResponse(
@@ -210,7 +218,7 @@ test("live mode without credentials fails rather than returning mock suggestions
         context: strategySuggestionContext(pack, discovery),
       }),
     ),
-  ).rejects.toThrow(/OPENAI_API_KEY/);
+  ).rejects.toThrow(/WRITER_API_KEY/);
 });
 
 test("live transport uses the existing model, low effort and strict schema without a paid request", async () => {

@@ -17,6 +17,7 @@ import {
   type SparksRequest,
 } from "./sparks-prompt";
 import { workflowPrompts } from "./workflow-prompts";
+import { canonicalCampaign } from "../canonical-campaign";
 import {
   CONNECTIONS_PROMPT_VERSION,
   DISCOVERY_PROMPT_VERSION,
@@ -50,9 +51,11 @@ export function agentPromptVersion(agent: AgentType) {
           ? CONNECTIONS_PROMPT_VERSION
           : agent === "strategySuggestions"
             ? "xc-strategy-suggestions-1.1"
-            : agent === "rtb" || agent === "research"
-              ? `xc-${agent}-3.1`
-              : `xc-${agent}-3.0`;
+            : agent === "rtb"
+              ? "xc-rtb-3.3"
+              : agent === "research"
+                ? `xc-${agent}-3.1`
+                : `xc-${agent}-3.0`;
 }
 
 export function buildAgentPrompt(
@@ -112,6 +115,14 @@ export function buildAgentPrompt(
     ),
     input: JSON.stringify({
       context: request.context,
+      ...("parsedIMC" in request.context
+        ? {
+            canonicalCampaign: canonicalCampaign({
+              sourceBrief: request.context.parsedIMC.sourceText,
+              requirements: request.context.upstream,
+            }),
+          }
+        : {}),
       steeringText: request.guidance?.trim() ?? "",
       previousVersion: request.previousVersion ?? null,
       ...("sparkRevision" in request && request.sparkRevision

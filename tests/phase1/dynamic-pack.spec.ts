@@ -178,7 +178,15 @@ test("empty, unrun and failed packs remain honest; campaign switching never chan
     expect(text(panel)).toContain("Generate a JTBD to continue.");
     expect(text(panel)).toContain("No data points selected.");
     expect(text(panel)).toContain("No Sparks selected");
-    expect(nodes(panel, (node) => node.type === "dt")).toHaveLength(7);
+    // Count the seven selected fields, excluding the separate source-status
+    // definition list inside Additional campaign context.
+    const selectedContext = nodes(
+      panel,
+      (node) => node.props.className === "studio-pack-summary",
+    )[0];
+    expect(nodes(selectedContext, (node) => node.type === "dt")).toHaveLength(
+      7,
+    );
   }
   const failed = structuredClone(movers.session);
   failed.preparation.outputs[0].status = "failed";

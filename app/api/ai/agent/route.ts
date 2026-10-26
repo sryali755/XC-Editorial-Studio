@@ -7,7 +7,6 @@ import { runValidatedAgentRequest } from "@/lib/ai/discovery-submission";
 export const runtime = "nodejs";
 // Allows one bounded provider retry while remaining statically analyzable by Next.js.
 export const maxDuration = 300;
-const MAX_BODY = 1_000_000;
 export async function GET() {
   return Response.json(publicAIStatus(), {
     headers: { "Cache-Control": "no-store" },
@@ -27,30 +26,8 @@ export async function POST(request: Request) {
       );
     if (!request.headers.get("content-type")?.includes("application/json"))
       throw new AgentError("Send a JSON request body.", 415);
-    if (Number(request.headers.get("content-length")) > MAX_BODY)
-      throw new AgentError(
-        "This brief is too large. Shorten the input and retry.",
-        413,
-      );
-    const reader = request.body?.getReader();
-    if (!reader) throw new AgentError("A request body is required.", 400);
-    let size = 0,
-      body = "";
-    const decoder = new TextDecoder();
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      size += chunk.value.byteLength;
-      if (size > MAX_BODY) {
-        await reader.cancel();
-        throw new AgentError(
-          "This brief is too large. Shorten the input and retry.",
-          413,
-        );
-      }
-      body += decoder.decode(chunk.value, { stream: true });
-    }
-    body += decoder.decode();
+    if (!request.body) throw new AgentError("A request body is required.", 400);
+    const body = await request.text();
     let raw: unknown;
     try {
       raw = JSON.parse(body);

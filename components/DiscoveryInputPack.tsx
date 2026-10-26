@@ -559,8 +559,8 @@ export default function DiscoveryInputPack({
       setError("Give the evidence a source name and its original text.");
       return;
     }
-    if (session.evidence.length >= 20 || source.text.length > 60000) {
-      setError("Use up to 20 sources, each at most 60,000 characters.");
+    if (session.evidence.length >= 20) {
+      setError("Use up to 20 supporting evidence sources.");
       return;
     }
     if (
@@ -850,6 +850,11 @@ export default function DiscoveryInputPack({
                 )}
               {current && agent.id === "reasonToBelieve" && (
                 <div className="studio-agent-main">
+                  <span className="eyebrow">PROPOSED JTBD · NOT APPROVED</span>
+                  <p className="studio-proposed-framing">
+                    {rtbData?.proposedJTBD ||
+                      "No separate proposed JTBD recorded. Regenerate this agent to request one from the current brief."}
+                  </p>
                   <span className="eyebrow">PROPOSED XC FRAMING</span>
                   <p className="studio-proposed-framing">
                     {rtbData?.xcAdaptation ||
@@ -858,7 +863,21 @@ export default function DiscoveryInputPack({
                   <label className="studio-choice">
                     <input
                       type="checkbox"
-                      checked={session.selectedRtbVersionId === current.id}
+                      disabled={
+                        !!issue ||
+                        !(
+                          rtbData?.xcAdaptation?.trim() ||
+                          rtbData?.proposedJTBD?.trim()
+                        )
+                      }
+                      checked={
+                        !issue &&
+                        !!(
+                          rtbData?.xcAdaptation?.trim() ||
+                          rtbData?.proposedJTBD?.trim()
+                        ) &&
+                        session.selectedRtbVersionId === current.id
+                      }
                       onChange={() =>
                         onChange((s) => ({
                           ...s,
@@ -870,7 +889,7 @@ export default function DiscoveryInputPack({
                       }
                     />
                     <span>
-                      Include this proposal in the Dynamic Input Pack
+                      Include these proposals in the Dynamic Input Pack
                       <small>
                         AI suggestion · not an approved product claim
                       </small>

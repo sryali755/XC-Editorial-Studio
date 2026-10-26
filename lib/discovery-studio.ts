@@ -7,9 +7,11 @@ import {
 } from "./preparation";
 import { exactGroundingExcerpt } from "./ai/spark-quality";
 import { outputSchemas } from "./ai/schemas";
+import { rtbOutputIssue } from "./ai/rtb-quality";
 import { researchSections } from "./ai/format";
 import { extractJobToBeDone } from "./ai/context";
 import { parseIMCBrief } from "./imc-parser";
+import { canonicalCampaign } from "./canonical-campaign";
 import {
   extractUpstream,
   getUpstream,
@@ -247,12 +249,27 @@ export function studioPack(session: DiscoveryStudioSession): StrategyInputPack {
         version.sourceBrief === session.preparation.sourceSnapshot,
     );
   const parsedRtb = outputSchemas.rtb.safeParse(rtb?.data);
+  const validProposal =
+    parsedRtb.success &&
+    parsedRtb.data.originalRtb === (originalRtb.sourceValue || null) &&
+    !rtbOutputIssue(parsedRtb.data, getUpstream(session.preparation));
   const selectedAdaptation =
-    parsedRtb.success && parsedRtb.data.originalRtb === originalRtbText
+    parsedRtb.success && validProposal
       ? (parsedRtb.data.xcAdaptation ?? "")
       : "";
+  const proposedJTBD =
+    parsedRtb.success && validProposal ? parsedRtb.data.proposedJTBD || "" : "";
   return {
     ...pack,
+    canonicalCampaign: canonicalCampaign({
+      sourceBrief: session.preparation.sourceSnapshot,
+      requirements: getUpstream(session.preparation),
+      campaignContext: { campaignName: identity.displayName || "" },
+      suppliedEvidence: session.evidence,
+      proposedJTBD,
+      currentRtb: { proposal: selectedAdaptation },
+      selectedSparks,
+    }),
     workspaceBuildId: session.workspaceBuildId,
     campaignName: identity.displayName || "",
     campaignIdentity: identity,
@@ -264,13 +281,16 @@ export function studioPack(session: DiscoveryStudioSession): StrategyInputPack {
     jtbdContext,
     parentPlatform: sourceParentPlatform(session.preparation.sourceSnapshot),
     proposedRTB: selectedAdaptation,
+    ...(proposedJTBD ? { proposedJTBD } : {}),
     selectedPreparationVersions: {
-      ...(selectedAdaptation && rtb ? { reasonToBelieve: rtb.id } : {}),
+      ...((selectedAdaptation || proposedJTBD) && rtb
+        ? { reasonToBelieve: rtb.id }
+        : {}),
       ...(currentResearch ? { research: currentResearch.id } : {}),
       ...(sparkVersion ? { sparks: sparkVersion.id } : {}),
     },
     selectedPreparationProviders: {
-      ...(selectedAdaptation && rtb?.provider
+      ...((selectedAdaptation || proposedJTBD) && rtb?.provider
         ? { reasonToBelieve: rtb.provider }
         : {}),
       ...(selectedResearch.length && currentResearch?.provider
@@ -470,8 +490,6 @@ export function applyStudioSource(
 ): DiscoveryStudioSession {
   if (!source.trim())
     throw new Error("Supply an IMC brief before updating the input pack.");
-  if (source.length > 60000)
-    throw new Error("Use a brief of 60,000 characters or fewer.");
   const parsedIMC = parseIMCBrief(source);
   if (
     new Set(parsedIMC.fields.campaign.occurrences.filter(usableCampaignName))
@@ -591,14 +609,8 @@ export function confirmStudioCampaignName(
   current: DiscoveryStudioSession,
   name: string,
 ): DiscoveryStudioSession {
-  if (
-    !current.preparation.sourceSnapshot ||
-    !usableCampaignName(name) ||
-    name.trim().length > 300
-  )
-    throw new Error(
-      "Enter a clear campaign name of 300 characters or fewer and confirm it explicitly.",
-    );
+  if (!current.preparation.sourceSnapshot || !usableCampaignName(name))
+    throw new Error("Enter a clear campaign name and confirm it explicitly.");
   if (
     sourceCampaignNames(parseIMCBrief(current.preparation.sourceSnapshot))
       .length > 1

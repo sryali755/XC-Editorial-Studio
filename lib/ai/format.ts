@@ -5,7 +5,12 @@ import { withDiscoveryCanvas } from "../discovery-brief";
 
 export function preparationText(data: AgentData): string {
   if ("originalRtb" in data)
-    return [data.xcAdaptation, ...data.reviewNotes, ...data.evidenceGaps]
+    return [
+      data.proposedJTBD && `Proposed JTBD · not approved\n${data.proposedJTBD}`,
+      data.xcAdaptation,
+      ...data.reviewNotes,
+      ...data.evidenceGaps,
+    ]
       .filter(Boolean)
       .join("\n\n");
   if ("sparks" in data)

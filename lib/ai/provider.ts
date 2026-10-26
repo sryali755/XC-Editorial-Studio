@@ -21,12 +21,14 @@ import { applySparkRevision, sparkRevisionPlan } from "./spark-revision";
 import { aiConfig } from "./config";
 import { AgentError } from "./errors";
 import { generateMock } from "./mock-provider";
-import { generateOpenAI } from "./openai-provider";
+import { generateOpenAI as generateOpenAIResponse } from "./openai-provider";
+import { generateWriter } from "./writer-provider";
 import { isOfflineModelClient } from "./offline-model-client";
 import type OpenAI from "openai";
 import {
   normalizeDiscoveryEvidenceMetadata,
   validateDiscoveryEvidence,
+  validatedDiscoveryFindings,
 } from "./discovery-evidence";
 import {
   perspectiveQualityReview,
@@ -45,6 +47,7 @@ import { fieldText, reconcileUpstream, resolveRtb } from "../upstream";
 import type { SourceField } from "../types";
 import { ROUND_TABLE_PROMPT_VERSIONS } from "../roundtable-prompts";
 import { strategySuggestionIssue } from "./strategy-suggestions";
+import { rtbOutputIssue } from "./rtb-quality";
 import { sourceCampaignNames } from "../imc-source-context";
 import { SPARK_EXCERPT_REPAIR_MARKER } from "./sparks-prompts-v1";
 
@@ -261,6 +264,18 @@ export async function generateAgentResponse(
   // Exercise the real parsing, validation and retry path without selecting or
   // constructing a network-connected model client.
   const mode = simulatedModel ? "live" : config.mode;
+  // Route every initial request and corrective attempt to the same provider.
+  // Registered offline OpenAI stubs remain local, even with Writer as default.
+  const generateModel = (
+    value: AgentRequest,
+    sdk?: OpenAI,
+    attempt = 0,
+    id = "",
+    instruction = "",
+  ) =>
+    simulatedModel || config.provider === "openai"
+      ? generateOpenAIResponse(value, sdk, attempt, id, instruction)
+      : generateWriter(value, attempt, id, instruction);
   sparkRevisionPlan(request);
   // Re-parse at the trust boundary, never trusting missing/changed parsed values from a client.
   if (
@@ -293,10 +308,20 @@ export async function generateAgentResponse(
       );
     const effective =
       mode === "live"
-        ? validatedModelSettings("openai", config.model, {
-            reasoningEffort: perspectiveReasoningEffort(request.versionNumber),
-            ...settings,
-          })
+        ? validatedModelSettings(
+            simulatedModel ? "openai" : config.provider,
+            simulatedModel ? "gpt-5.5" : config.model,
+            {
+              ...(simulatedModel || config.provider === "openai"
+                ? {
+                    reasoningEffort: perspectiveReasoningEffort(
+                      request.versionNumber,
+                    ),
+                  }
+                : {}),
+              ...settings,
+            },
+          )
         : {};
     generation = {
       agentId: request.agentType,
@@ -327,7 +352,7 @@ export async function generateAgentResponse(
   let generated: AgentData;
   try {
     generated = await (mode === "live"
-      ? generateOpenAI(request, offlineClient, 0, requestId)
+      ? generateModel(request, offlineClient, 0, requestId)
       : generateMock(request));
   } catch (error) {
     if (
@@ -341,7 +366,7 @@ export async function generateAgentResponse(
     )
       throw error;
     generationAttempt = 1;
-    generated = await generateOpenAI(request, offlineClient, 1, requestId);
+    generated = await generateModel(request, offlineClient, 1, requestId);
   }
   if (request.agentType === "sparks") {
     const merge = () => {
@@ -356,7 +381,7 @@ export async function generateAgentResponse(
         : "Invalid Sparks response.";
     if (issue() && mode === "live" && generationAttempt === 0) {
       generationAttempt = 1;
-      generated = await generateOpenAI(
+      generated = await generateModel(
         request,
         offlineClient,
         1,
@@ -404,7 +429,7 @@ export async function generateAgentResponse(
               intent: "improve",
             },
           };
-          const repaired = await generateOpenAI(
+          const repaired = await generateModel(
             repairRequest,
             offlineClient,
             1,
@@ -441,10 +466,14 @@ export async function generateAgentResponse(
   }
   if (request.agentType === "discovery") {
     generated = normalizeDiscoveryEvidenceMetadata(request, generated);
+    const firstValid =
+      "findings" in generated
+        ? validatedDiscoveryFindings(request, generated)
+        : undefined;
     let issue = discoveryEvidenceIssue(request, generated);
     if (issue && mode === "live" && generationAttempt === 0) {
       generationAttempt = 1;
-      generated = await generateOpenAI(
+      generated = await generateModel(
         request,
         offlineClient,
         1,
@@ -453,6 +482,47 @@ export async function generateAgentResponse(
       );
       generated = normalizeDiscoveryEvidenceMetadata(request, generated);
       issue = discoveryEvidenceIssue(request, generated);
+    }
+    if (issue && "findings" in generated) {
+      const finalValid = validatedDiscoveryFindings(request, generated);
+      const candidates = [
+        ...finalValid.findings,
+        ...(firstValid?.findings ?? []),
+      ];
+      const kept: typeof candidates = [];
+      for (const candidate of candidates) {
+        if (
+          !kept.some(
+            (item) =>
+              item.title === candidate.title &&
+              item.whatWeFound === candidate.whatWeFound,
+          ) &&
+          !validateDiscoveryEvidence(request, {
+            findings: [...kept, candidate],
+            retrievalNote: generated.retrievalNote,
+          })
+        )
+          kept.push(candidate);
+      }
+      if (kept.length) {
+        const validationIssues = [
+          ...(firstValid?.issues ?? []),
+          ...finalValid.issues,
+        ].filter(
+          (item, index, items) =>
+            items.findIndex(
+              (other) =>
+                other.path === item.path && other.message === item.message,
+            ) === index,
+        );
+        generated = {
+          ...generated,
+          findings: kept.slice(0, 4),
+          validationIssues,
+          retrievalNote: `${generated.retrievalNote}\nSome findings were withheld after validation: ${validationIssues.map((item) => `${item.path}: ${item.message}`).join("; ")}`,
+        };
+        issue = "";
+      }
     }
     if (issue)
       throw new AgentError(
@@ -501,7 +571,7 @@ export async function generateAgentResponse(
       Boolean(review.blockingIssue) || review.retryChecks.length > 0;
     if (needsRetry && mode === "live" && generationAttempt === 0) {
       generationAttempt = 1;
-      generated = await generateOpenAI(
+      generated = await generateModel(
         request,
         offlineClient,
         1,
@@ -553,11 +623,20 @@ export async function generateAgentResponse(
     throw new AgentError(
       "This agent returned an invalid structured response. Please retry.",
     );
+  if (request.agentType === "rtb" && "originalRtb" in result.data) {
+    const parsed = parseIMCBrief(request.context.parsedIMC.sourceText);
+    const issue = rtbOutputIssue(
+      result.data,
+      reconcileUpstream(parsed, request.context.upstream),
+      true,
+    );
+    if (issue) throw new AgentError(issue, 422, "rtb_output_incomplete", true);
+  }
   return {
     provider: simulatedModel
       ? "mock"
       : config.mode === "live"
-        ? "openai"
+        ? config.provider
         : "mock",
     ...(simulatedModel
       ? { model: "deterministic-offline-model" }

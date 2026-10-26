@@ -5,6 +5,7 @@ import {
   type AgentRequest,
 } from "./schemas";
 import type { ParsedIMCBrief } from "../types";
+import { originalSourceExcerpt } from "../source-registry";
 
 const normalize = (text: string) =>
   text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
@@ -28,9 +29,10 @@ export function exactGroundingExcerpt(
   campaignGrounding: string,
   sourceBrief: string,
 ) {
-  return groundingCandidates(campaignGrounding).find((candidate) =>
-    sourceBrief.includes(candidate),
-  );
+  for (const candidate of groundingCandidates(campaignGrounding)) {
+    const match = originalSourceExcerpt(sourceBrief, candidate);
+    if (match) return match.excerpt;
+  }
 }
 
 function sparkExcerpt(spark: AgentDataMap["sparks"]["sparks"][number]) {
@@ -60,6 +62,10 @@ export function markSparkExcerptVerification(
       !onlyId || spark.id === onlyId
         ? {
             ...spark,
+            ...(spark.excerpt &&
+            exactGroundingExcerpt(spark.excerpt, sourceBrief)
+              ? { excerpt: exactGroundingExcerpt(spark.excerpt, sourceBrief)! }
+              : {}),
             excerpt_verified: Boolean(
               exactGroundingExcerpt(sparkExcerpt(spark), sourceBrief),
             ),

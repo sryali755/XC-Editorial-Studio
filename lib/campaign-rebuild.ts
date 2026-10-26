@@ -131,10 +131,11 @@ export async function stageCampaignRebuild(
   const freshRtb = currentPreparation(next.preparation, "reasonToBelieve")!;
   const freshData = freshRtb.data;
   next.selectedRtbVersionId =
-    pack.proposedRTB &&
+    (pack.proposedRTB || pack.proposedJTBD) &&
     freshData &&
     "xcAdaptation" in freshData &&
-    freshData.xcAdaptation === pack.proposedRTB
+    (freshData.xcAdaptation || "") === (pack.proposedRTB || "") &&
+    (freshData.proposedJTBD || "") === (pack.proposedJTBD || "")
       ? freshRtb.id
       : "";
   next.selectedResearchIds = studioResearchChoices(next)

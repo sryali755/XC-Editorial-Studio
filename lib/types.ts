@@ -7,6 +7,7 @@ import type {
 import type { GenerationRecord } from "./ai/schemas";
 import type { PersonalitySettings } from "./creative-controls";
 import type { StudioIMCRecord } from "./studio-imc-records";
+import type { CanonicalCampaign } from "./canonical-campaign";
 import type {
   SourceJobContext,
   SourceParentPlatform,
@@ -15,7 +16,7 @@ export interface GenerationMetadata {
   promptTemplateVersion?: string;
   promptVersion?: string;
   generation?: GenerationRecord;
-  provider?: "mock" | "openai" | "manual";
+  provider?: "mock" | "openai" | "writer" | "manual";
   model?: string;
   generatedAt?: string;
   data?: AgentData;
@@ -47,12 +48,15 @@ export interface CampaignIdentity {
   confirmationStatus?: "source_confirmed" | "human_confirmed" | "unresolved";
 }
 export interface StrategyInputPack {
+  canonicalCampaign?: CanonicalCampaign;
   workspaceBuildId?: string;
   jtbdContext?: SourceJobContext;
   parentPlatform?: SourceParentPlatform;
   campaignIdentity?: CampaignIdentity;
   imcRecords?: StudioIMCRecord[];
   originalJTBD?: string;
+  // Selected agent interpretation; never an original source or approval.
+  proposedJTBD?: string;
   selectedPreparationVersions?: {
     reasonToBelieve?: string;
     research?: string;
@@ -214,6 +218,9 @@ export interface DiscoverySourceCoverage {
   detail: string;
 }
 export interface DiscoveryEvidenceReference {
+  documentId?: string;
+  passageId?: string;
+  matchMethod?: "exact" | "format_normalized";
   source: string;
   locator?: string;
   excerpt: string;
@@ -223,7 +230,7 @@ export interface DiscoveryEvidenceReference {
   accessScope: "supplied" | "connected" | "restricted";
 }
 export interface DiscoveryFinding {
-  provider?: "mock" | "openai";
+  provider?: "mock" | "openai" | "writer";
   id: string;
   researchRunId?: string;
   createdAt?: string;
@@ -270,6 +277,7 @@ export interface DiscoveryThreadMessage {
   usedNewRetrieval?: boolean;
 }
 export interface DiscoveryRunVersion {
+  validationIssues?: { path: string; message: string }[];
   retrievalNote?: string;
   retrievalStatus?: DiscoveryThreadMessage["retrievalStatus"];
   revisesFindingRef?: string;
@@ -288,7 +296,7 @@ export interface DiscoveryRunVersion {
   inputPackVersion: string;
   findings: DiscoveryFinding[];
   sourceCoverage: DiscoverySourceCoverage[];
-  provider?: "mock" | "openai";
+  provider?: "mock" | "openai" | "writer";
   model?: string;
 }
 export interface DiscoveryLensRun {
@@ -301,7 +309,7 @@ export interface DiscoveryLensRun {
   error?: string;
 }
 export interface DiscoveryConnectionNote {
-  provider?: "mock" | "openai";
+  provider?: "mock" | "openai" | "writer";
   retrievalStatus?: "supplied_only";
   generatedNote?: string;
   editVersions?: { id: string; text: string; createdAt: string }[];
@@ -355,7 +363,7 @@ export interface DiscoveryState {
     createdAt: string;
     fingerprint: string;
     inputPackVersion: string;
-    provider: "mock" | "openai";
+    provider: "mock" | "openai" | "writer";
     model?: string;
     context: Extract<
       AgentRequest,

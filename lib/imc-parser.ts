@@ -4,6 +4,12 @@ import type {
   ParsedIMCField,
   UpstreamKey,
 } from "./types";
+import {
+  classifyCampaignHeading,
+  legacyCampaignFields,
+} from "./campaign-field-classifier";
+
+export const IMC_PARSER_VERSION = 7;
 
 // One canonical extraction schema, independent of agent prompts and UI field names.
 export const imcSchema: {
@@ -54,9 +60,11 @@ export const imcSchema: {
     upstreamKey: "originalRTB",
     aliases: [
       "RTB",
+      "RTBs",
       "Reasons to believe",
       "Reason to Believe (RTB)",
       "Reasons to Believe (RTB)",
+      "Reasons to Believe (RTBs)",
       "Reasons to Believe – by tactic length",
       "Original upstream RTB",
     ],
@@ -247,6 +255,14 @@ function resolveLabel(value: string) {
     const key = labels.get(normalize(candidate));
     if (key) return key;
   }
+  const classified = classifyCampaignHeading(stripMarkdownLabel(value));
+  if (classified.key)
+    return (
+      legacyCampaignFields[classified.key] ?? `canonical:${classified.key}`
+    );
+  // Reviewable multi-purpose labels delimit the preceding field without
+  // assigning their ambiguous contents to that field or either candidate.
+  if (classified.candidates.length > 1) return "canonical:needs_review";
 }
 
 function classify(occurrences: string[]): ParsedIMCField {
@@ -590,7 +606,7 @@ export function parseIMCBrief(sourceText: string): ParsedIMCBrief {
   }
   return Object.freeze({
     schemaVersion: 1,
-    parserVersion: 5,
+    parserVersion: IMC_PARSER_VERSION,
     sourceText,
     fields: Object.freeze(
       Object.fromEntries(

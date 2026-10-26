@@ -1,5 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import path from "node:path";
 import {
   pdfFixture,
@@ -137,7 +136,7 @@ test("searchable PDF worker loads locally, text is staged, and blank/scanned PDF
   );
   await expect(draft).toHaveValue(previous);
 });
-test("corrupt, oversized, unsupported and old binary files give actionable errors without losing the draft", async ({
+test("corrupt, unsupported and old binary files give actionable errors without losing the draft", async ({
   page,
 }) => {
   const { input, draft } = await openInputs(page);
@@ -173,25 +172,6 @@ test("corrupt, oversized, unsupported and old binary files give actionable error
       buffer: Buffer.from("binary"),
       expected: "Choose a PDF",
     },
-    {
-      name: "large.pdf",
-      buffer: Buffer.alloc(15 * 1024 * 1024 + 1),
-      expected: "up to 15 MB",
-    },
-    {
-      name: "long.txt",
-      buffer: Buffer.from("X".repeat(60001)),
-      expected: "nothing was truncated",
-    },
-    {
-      name: "bomb.docx",
-      buffer: Buffer.from(
-        zipSync({
-          "word/document.xml": strToU8("X".repeat(12 * 1024 * 1024 + 1)),
-        }),
-      ),
-      expected: "expands to too much text",
-    },
   ];
   for (const item of cases) {
     await input.setInputFiles({
@@ -204,6 +184,48 @@ test("corrupt, oversized, unsupported and old binary files give actionable error
     );
     await expect(draft).toHaveValue("Existing unsaved brief must stay intact.");
   }
+});
+test("text imports above the previous file-size and character limits are preserved completely", async ({
+  page,
+}) => {
+  const { input, draft } = await openInputs(page);
+  await draft.fill("");
+  const source = Buffer.alloc(15 * 1024 * 1024 + 1, "A");
+  await input.setInputFiles({
+    name: "large.txt",
+    mimeType: "text/plain",
+    buffer: source,
+  });
+  await expect(
+    page.getByText("Loaded large.txt into the draft.", { exact: false }),
+  ).toBeVisible();
+  const imported = await draft.evaluate((element) => {
+    const value = (element as HTMLTextAreaElement).value;
+    return {
+      length: value.length,
+      startsWithSource: value.startsWith("Source: large.txt\n"),
+      endsWithSourceText: value.endsWith("A"),
+    };
+  });
+  expect(imported).toEqual({
+    length: "Source: large.txt\n".length + source.length,
+    startsWithSource: true,
+    endsWithSourceText: true,
+  });
+
+  const longBrief = "X".repeat(60_001);
+  await input.setInputFiles({
+    name: "long.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from(longBrief),
+  });
+  await expect(
+    page.getByText("Loaded long.txt into the draft.", { exact: false }),
+  ).toBeVisible();
+  const longImported = await draft.evaluate(
+    (element) => (element as HTMLTextAreaElement).value,
+  );
+  expect(longImported).toContain(longBrief);
 });
 test("supporting-document upload stages attributed evidence and requires explicit addition", async ({
   page,

@@ -37,8 +37,8 @@ test("Phase 1 test process denies fetch and HTTP before any connection", () => {
   expect(process.env.AI_MODE).toBe("mock");
   expect(process.env.OPENAI_API_KEY).toBe("");
   expect(process.env.XC_OFFLINE_TEST).toBe("1");
-  expect(() => fetch("http://127.0.0.1:1/forbidden")).toThrow("PHASE1_NO_API");
-  expect(() => httpRequest("http://127.0.0.1:1/forbidden")).toThrow(
+  expect(() => fetch("http://127.0.0.1:3000/forbidden")).toThrow("PHASE1_NO_API");
+  expect(() => httpRequest("http://127.0.0.1:3000/forbidden")).toThrow(
     "PHASE1_NO_API",
   );
 });
@@ -135,9 +135,13 @@ test("G: selected composition and version restoration preserve unrelated inputs"
 test("C: Build validates names atomically and never mutates original evidence", () => {
   const { session, source } = phase1Fixture();
   const before = structuredClone(session);
-  for (const name of ["", "None", " ", "a".repeat(301)])
+  for (const name of ["", "None", " "])
     expect(() => buildStudioCampaign(session, source, name)).toThrow();
   expect(session).toEqual(before);
+  const longName = "a".repeat(100_000);
+  expect(
+    studioPack(buildStudioCampaign(session, source, longName)).campaignName,
+  ).toBe(longName);
   const updated = buildStudioCampaign(
     session,
     source,

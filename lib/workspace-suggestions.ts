@@ -55,7 +55,9 @@ function selectionContext(pack: StrategyInputPack) {
   return {
     packVersion: inputPackVersion(pack),
     campaign: pack.campaignName,
-    framing: pack.proposedRTB?.trim() ?? "",
+    framing: [pack.proposedJTBD?.trim(), pack.proposedRTB?.trim()]
+      .filter(Boolean)
+      .join("\n\n"),
     research: (pack.selectedResearch ?? []).map(
       (x) => `${x.id} · V${x.version} · ${x.text}`,
     ),

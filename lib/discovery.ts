@@ -303,9 +303,12 @@ export async function generateDiscoveryVersion({
       ? ("unavailable" as const)
       : ("insufficient" as const)
     : ("supplied_only" as const);
-  const retrievalNote = allGaps
+  const baseRetrievalNote = allGaps
     ? "Only supplied sources were checked. No external or enterprise source is connected; the available material did not establish this answer."
     : "Only supplied sources were analyzed; no new evidence was retrieved. Claims remain qualified by their original source.";
+  const retrievalNote = response.data.validationIssues?.length
+    ? `${baseRetrievalNote}\nSome generated findings were withheld: ${response.data.validationIssues.map((issue) => `${issue.path}: ${issue.message}`).join("; ")}`
+    : baseRetrievalNote;
   const revisesFindingRef =
     current && selectedFinding
       ? discoveryFindingRef(selectedFinding)
@@ -329,6 +332,9 @@ export async function generateDiscoveryVersion({
     inputPackVersion: packVersion,
     retrievalStatus,
     retrievalNote,
+    ...(response.data.validationIssues?.length
+      ? { validationIssues: response.data.validationIssues }
+      : {}),
     ...(revisesFindingRef ? { revisesFindingRef } : {}),
     ...(revisionSummary ? { revisionSummary } : {}),
     inputPackSnapshot: structuredClone(pack),

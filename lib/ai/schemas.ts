@@ -8,8 +8,10 @@ import {
   type PerspectiveId,
 } from "../creative-controls";
 import { modelSettingsSchema } from "./generation-settings";
+import { canonicalCampaignSchema } from "../canonical-campaign";
 
 const text = z.string().max(60000);
+const sourceText = z.string();
 const item = z.string().min(1).max(12000);
 const list = z.array(item).max(30);
 const line = z.object({ id: item, line: item, rationale: text }).strict();
@@ -127,7 +129,10 @@ const discoveryEvidence = z
   .object({
     source: item,
     locator: text.optional(),
-    excerpt: item,
+    documentId: text.optional(),
+    passageId: text.optional(),
+    matchMethod: z.enum(["exact", "format_normalized"]).optional(),
+    excerpt: text,
     date: text,
     audience: text,
     context: text,
@@ -146,7 +151,7 @@ const discoveryFinding = z
   })
   .strict();
 const discoveryFindingWithProvenance = discoveryFinding.extend({
-  provider: z.enum(["mock", "openai"]).optional(),
+  provider: z.enum(["mock", "openai", "writer"]).optional(),
   id: item,
   researchRunId: text.optional(),
   createdAt: text.optional(),
@@ -189,6 +194,8 @@ export const outputSchemas = {
         "unknown",
       ]),
       xcAdaptation: text.nullable(),
+      // Optional for historical saved versions; new model responses require it.
+      proposedJTBD: text.nullable().optional(),
       adaptationStatus: z.literal("not_approved"),
       reviewNotes: list,
       evidenceGaps: list,
@@ -196,7 +203,7 @@ export const outputSchemas = {
     .strict(),
   research: z
     .object({
-      campaignName: text,
+      campaignName: sourceText,
       objectives: text,
       audience: text,
       productInformation: text,
@@ -228,6 +235,9 @@ export const outputSchemas = {
     .object({
       findings: z.array(discoveryFinding).min(1).max(4),
       retrievalNote: text,
+      validationIssues: z
+        .array(z.object({ path: text, message: text }).strict())
+        .optional(),
     })
     .strict(),
   connections: z
@@ -268,7 +278,7 @@ export const outputSchemas = {
   synthesis: z.object({ synthesizedLines: z.array(line).length(1) }).strict(),
   finalBrief: z
     .object({
-      campaign: text,
+      campaign: sourceText,
       objective: text,
       reasonToBelieve: text,
       audience: text,
@@ -289,15 +299,29 @@ export type AgentType = keyof typeof outputSchemas;
 // Keep historical/parser schemas compatible with saved findings without a
 // locator. The model-facing strict schema must require every field; use an
 // empty locator when no reference was supplied.
-export const discoveryGenerationSchema = outputSchemas.discovery.extend({
-  findings: z
-    .array(
-      discoveryFinding.extend({
-        evidence: z.array(discoveryEvidence.extend({ locator: text })).max(4),
-      }),
-    )
-    .min(1)
-    .max(4),
+export const discoveryGenerationSchema = outputSchemas.discovery
+  .omit({ validationIssues: true })
+  .extend({
+    findings: z
+      .array(
+        discoveryFinding.extend({
+          evidence: z
+            .array(
+              discoveryEvidence
+                .omit({ documentId: true, passageId: true, matchMethod: true })
+                .extend({ locator: text }),
+            )
+            .max(4),
+        }),
+      )
+      .min(1)
+      .max(4),
+  });
+
+// Saved RTB versions may predate the separate JTBD field. Require it for
+// newly generated model output without rewriting those historical versions.
+export const rtbGenerationSchema = outputSchemas.rtb.extend({
+  proposedJTBD: text.nullable(),
 });
 
 export type AgentDataMap = {
@@ -306,15 +330,15 @@ export type AgentDataMap = {
 export type AgentData = AgentDataMap[AgentType];
 
 const sourceField = z.object({
-  value: text,
-  sourceValue: text,
+  value: sourceText,
+  sourceValue: sourceText,
   status: z.enum([
     "Supplied",
     "Not supplied",
     "Intentionally excluded",
     "Needs clarification",
   ]),
-  note: text,
+  note: sourceText,
 });
 const fieldShape = Object.fromEntries(
   upstreamFields.map(({ key }) => [key, sourceField]),
@@ -322,37 +346,39 @@ const fieldShape = Object.fromEntries(
 export const upstreamSchema = z.object({ fields: z.object(fieldShape) });
 const campaignContext = z
   .object({
-    campaignName: text,
-    objective: text,
-    audience: text,
-    product: text,
-    channel: text,
-    constraints: text,
-    jobToBeDone: text.optional(),
+    campaignName: sourceText,
+    objective: sourceText,
+    audience: sourceText,
+    product: sourceText,
+    channel: sourceText,
+    constraints: sourceText,
+    jobToBeDone: sourceText.optional(),
   })
   .strict();
 export const foundationSchema = z
   .object({
+    canonicalCampaign: canonicalCampaignSchema.optional(),
+    proposedJTBD: sourceText.optional(),
     campaignIdentity: z
       .object({
         origin: z.enum(["source", "human_confirmed"]),
-        sourceReference: text,
+        sourceReference: sourceText,
         confirmedAt: z.iso.datetime().optional(),
         id: item.optional(),
-        displayName: text.optional(),
-        sourceName: text.optional(),
-        sourceDocumentTitle: text.optional(),
-        sourceDocumentFileName: text.optional(),
+        displayName: sourceText.optional(),
+        sourceName: sourceText.optional(),
+        sourceDocumentTitle: sourceText.optional(),
+        sourceDocumentFileName: sourceText.optional(),
         sourceCandidate: z
           .object({
-            name: item,
+            name: sourceText,
             kind: z.enum(["explicit", "cover_title"]),
-            excerpt: item,
+            excerpt: sourceText,
             locator: item,
           })
           .strict()
           .optional(),
-        humanConfirmedName: text.optional(),
+        humanConfirmedName: sourceText.optional(),
         confirmationStatus: z
           .enum(["source_confirmed", "human_confirmed", "unresolved"])
           .optional(),
@@ -361,9 +387,9 @@ export const foundationSchema = z
       .optional(),
     parentPlatform: z
       .object({
-        name: text,
-        sourceValue: text,
-        excerpt: text,
+        name: sourceText,
+        sourceValue: sourceText,
+        excerpt: sourceText,
         line: z.number().int().positive(),
       })
       .strict()
@@ -373,9 +399,9 @@ export const foundationSchema = z
         original: z.array(
           z
             .object({
-              label: text,
-              text,
-              excerpt: text,
+              label: sourceText,
+              text: sourceText,
+              excerpt: sourceText,
               line: z.number().int().positive(),
               approvalStatus: z.literal("unknown"),
             })
@@ -384,9 +410,9 @@ export const foundationSchema = z
         proposed: z.array(
           z
             .object({
-              label: text,
-              text,
-              excerpt: text,
+              label: sourceText,
+              text: sourceText,
+              excerpt: sourceText,
               line: z.number().int().positive(),
               approvalStatus: z.literal("not_approved"),
             })
@@ -400,11 +426,11 @@ export const foundationSchema = z
         z
           .object({
             id: item,
-            source: item,
-            locator: text,
-            text: item,
-            date: text,
-            audience: text,
+            source: sourceText,
+            locator: sourceText,
+            text: sourceText,
+            date: sourceText,
+            audience: sourceText,
             accessScope: z.literal("supplied"),
           })
           .strict(),
@@ -413,11 +439,11 @@ export const foundationSchema = z
       .optional(),
     evidenceSparks: z.array(discoveryFindingWithProvenance).max(30).optional(),
     campaignContext,
-    sourceBrief: text.optional(),
+    sourceBrief: sourceText.optional(),
     currentRtb: z
       .object({
-        original: text,
-        proposal: text,
+        original: sourceText,
+        proposal: sourceText,
         status: sourceField.shape.status,
         approvalStatus: z.enum([
           "approved",
@@ -434,7 +460,7 @@ export const foundationSchema = z
         z
           .object({
             id: item,
-            text: item,
+            text,
             versionId: item,
             version: z.number().int().nonnegative(),
             title: text.optional(),
@@ -534,7 +560,7 @@ const preparation = z
   .object({
     parsedIMC: z.object({
       schemaVersion: z.literal(1),
-      sourceText: text.min(1),
+      sourceText: sourceText.min(1),
     }),
     upstream: upstreamSchema,
     selectedContent: z
@@ -751,11 +777,11 @@ export const requestSchema = z.discriminatedUnion("agentType", [
       agentType: z.literal("strategySuggestions"),
       context: z
         .object({
-          sourceBrief: text.min(1),
-          campaignName: text,
-          objective: text,
-          audience: text,
-          originalRtb: text,
+          sourceBrief: sourceText.min(1),
+          campaignName: sourceText,
+          objective: sourceText,
+          audience: sourceText,
+          originalRtb: sourceText,
           rtbApprovalStatus: z.enum([
             "approved",
             "not_approved",
@@ -763,7 +789,9 @@ export const requestSchema = z.discriminatedUnion("agentType", [
             "unknown",
           ]),
           sourceExcerpts: z
-            .array(z.object({ id: item, label: item, excerpt: item }).strict())
+            .array(
+              z.object({ id: item, label: item, excerpt: sourceText }).strict(),
+            )
             .min(1)
             .max(40),
           sparkInputs: z
@@ -889,7 +917,7 @@ export type GenerationRecord = z.infer<typeof generationRecordSchema>;
 export interface AgentResponse<T = AgentData> {
   promptTemplateVersion?: string;
   promptVersion?: string;
-  provider: "mock" | "openai";
+  provider: "mock" | "openai" | "writer";
   model?: string;
   data: T;
   generatedAt: string;
@@ -898,7 +926,7 @@ export interface AgentResponse<T = AgentData> {
 export interface AIStatus {
   model?: string;
   mode: "mock" | "live";
-  provider: "mock" | "openai";
+  provider: "mock" | "openai" | "writer";
   configured: boolean;
   error?: string;
 }

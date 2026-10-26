@@ -50,7 +50,7 @@ Browser tests use Playwright and require Google Chrome. Keep AI_MODE=mock for th
 
 Mock mode simulates AI responses and needs no API credentials. Live mode uses server-side OpenAI; sample campaign content is still illustrative. Writer, research sources, and Workfront remain unconnected in both modes. Work is stored in browser session storage; there is no database, authentication, or shared session storage.
 
-The primary Insight Discovery input pack imports PDF, PowerPoint (.pptx), Word (.docx), text, Markdown and CSV files, for the brief and supporting evidence. Extraction runs in the browser without an AI call; review the staged text before applying it. Limits are 15 MiB per file and 60,000 extracted characters. Scanned/image-only content is flagged, not OCR-transcribed. Older .ppt/.doc files must be saved as .pptx/.docx or searchable PDF. The preserved creative workspace retains its existing text importer. See [document-upload details](docs/document-upload.md).
+The primary Insight Discovery input pack imports PDF, PowerPoint (.pptx), Word (.docx), text, Markdown and CSV files, for the brief and supporting evidence. The importer has no app-defined file-size, extracted-text, or page-count ceiling; extraction runs in the browser without an AI call, and staged text should be reviewed before applying it. Extremely large files can still exceed available device/browser memory or hosting request limits, and later AI generation remains subject to the configured provider's context and request limits. Scanned/image-only content is flagged, not OCR-transcribed. Older .ppt/.doc files must be saved as .pptx/.docx or searchable PDF. The preserved creative workspace retains its existing text importer. See [document-upload details](docs/document-upload.md).
 
 Final briefs download as designed PDFs or editable Word documents (.docx). The preview and both exports use one document model, with Xfinity-style typography and the purple palette from the supplied leadership reference. This is a styled XC brief, not a verified official corporate template.
 
@@ -64,20 +64,24 @@ Explicit approval saves the selected foundation and source perspectives in the A
 
 The final brief highlights the approved strategy and groups the complete content into campaign foundation, strategy and messaging, execution and deliverables, evidence and inspiration, and mandatories and approvals. Unknown and duplicate headings from older saved briefs are retained. Both downloads include page numbers and retain source wording, exclusion statuses, disclaimers, and approval notes. Word content is editable text. PDF fonts are embedded; export happens in the browser without sending the brief to an external conversion service or making another AI call. Document libraries load only when downloading. Browser printing remains available.
 
-## OpenAI configuration and Vercel
+## AI provider configuration and Vercel
 
-The integration uses the official OpenAI SDK and [Responses structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses). Next.js 16.3.8 uses the App Router. No custom Vercel config existed or is required: the internal endpoint runs as a Node.js route, not a static export.
+Writer is the default provider; the server-only adapter uses Writer's [chat structured outputs](https://dev.writer.com/home/structured-output). OpenAI remains an explicit alternative. Next.js 16.3.8 uses the App Router. The internal endpoint runs as a Node.js route, not a static export.
 
 Edit `.env.local` privately for local live mode, or add these exact environment variables to the Vercel project's settings for each deployment environment you intend to use:
 
 ```dotenv
-OPENAI_API_KEY=<your private OpenAI API key>
-AI_PROVIDER=openai
+WRITER_API_KEY=<your private Writer API key>
+AI_PROVIDER=writer
 AI_MODE=live
-OPENAI_MODEL=gpt-5.5
+WRITER_MODEL=palmyra-x5
 ```
 
-`OPENAI_MODEL` is optional; its sole code default is in `lib/ai/config.ts`. The existing GPT-5.5 model stays the default. Changing models requires a verified capability registration in `lib/ai/capabilities.ts`; unknown models fail explicitly instead of receiving assumed parameters. Restart the development server after environment changes; redeploy Vercel after changing deployment variables. Never prefix the key with `NEXT_PUBLIC_`. `.env.local` is ignored by Git; `.env.example` contains no credential.
+`WRITER_MODEL` is optional; its default is `palmyra-x5` in `lib/ai/config.ts`. Writer documents structured outputs for this model. Writer currently announces X5 deprecation on December 14, 2026; verify replacement capabilities and organization access before switching. The family name `palmyra` is not an API model ID. Unknown models fail explicitly rather than receiving guessed parameters.
+
+To use OpenAI instead, explicitly set `AI_PROVIDER=openai`, `OPENAI_API_KEY` and optionally `OPENAI_MODEL` (default `gpt-5.5`). An explicit provider setting overrides the default. There is no cross-provider fallback. Never prefix a key with `NEXT_PUBLIC_`. `.env.local` is ignored by Git; `.env.example` contains no credential. Restart development processes when deliberately applying environment changes; this integration does not restart an existing server.
+
+Adding an API key does **not** establish unlimited API entitlement. Confirm API billing, model access, quotas and rate limits with your Writer administrator. Writer requests have an output-token cap and a timeout, with no hidden HTTP retries. Existing bounded content-repair attempts can add calls. Live tests require explicit authorization and a test budget; automated regression tests remain network-blocked with `AI_MODE=mock`, `XC_OFFLINE_TEST=1` and empty provider keys. No paid agent runs are triggered just by opening or refreshing the application.
 
 For demo mode, set `AI_MODE=mock` or leave it unset. No key is required, even if one exists in your environment. Explicit `AI_MODE=live` with a missing key returns a clear 503 configuration error; it never silently substitutes mock results. Unsupported providers or modes also return configuration errors.
 

@@ -24,12 +24,6 @@ export default function TextFileImport({
       );
       return;
     }
-    if (file.size > 250_000) {
-      setError(
-        "Choose a file smaller than 250 KB, or paste the relevant excerpt.",
-      );
-      return;
-    }
     setReading(true);
     try {
       const text = await file.text();
@@ -78,7 +72,7 @@ export default function TextFileImport({
         <Upload size={13} /> {reading ? "Reading file…" : "Import text"}
       </button>
       <small>
-        TXT, MD or CSV · up to 250 KB
+        TXT, MD or CSV
         <br />
         Adds to your text · read in this browser
       </small>

@@ -63,7 +63,6 @@ export default function CampaignIdentityPanel({
         <input
           id="confirmed-campaign-name"
           value={value}
-          maxLength={300}
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
           onBlur={onCommit}
@@ -82,7 +81,9 @@ export default function CampaignIdentityPanel({
           data-testid="campaign-identity"
         >
           {unresolved
-            ? "The current valid name will be applied when you build the Input Pack."
+            ? candidate
+              ? "This document title is a suggestion, not a confirmed campaign name. Review or edit it above; Build Input Pack will confirm your choice."
+              : "No campaign name was explicitly identified. Enter the campaign name above; Build Input Pack will confirm your choice."
             : `Campaign: ${identity.displayName} · ${identity.origin === "human_confirmed" ? "Human-confirmed; not source-extracted" : "Source-extracted · confirmed against the campaign field"}`}
         </p>
       </div>

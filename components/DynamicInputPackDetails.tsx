@@ -162,6 +162,9 @@ export default function DynamicInputPackDetails({
             <p className="studio-jtbd-value">
               {framing.text || "Generate a JTBD to continue."}
             </p>
+            {pack.proposedJTBD && (
+              <small>Agent-proposed JTBD · not original or approved</small>
+            )}
             {framing.versionId && (
               <small>Selected version: {framing.versionId}</small>
             )}
@@ -182,6 +185,13 @@ export default function DynamicInputPackDetails({
           </dd>
           <dt>Reasons to Believe (RTBs)</dt>
           <dd>
+            {pack.proposedJTBD && pack.proposedRTB && (
+              <p>
+                <strong>Selected XC RTB adaptation · not approved</strong>
+                <br />
+                {pack.proposedRTB}
+              </p>
+            )}
             {presentation.rtbs.length ? (
               <ul>
                 {presentation.rtbs.map((rtb, index) => (

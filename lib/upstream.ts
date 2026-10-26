@@ -1,4 +1,4 @@
-import { imcSchema, parseIMCBrief } from "./imc-parser";
+import { IMC_PARSER_VERSION, imcSchema, parseIMCBrief } from "./imc-parser";
 import type {
   PreparationState,
   ParsedIMCBrief,
@@ -55,7 +55,7 @@ export const upstreamFields: {
     key: "originalRTB",
     label: "Original upstream RTB",
     group: "Upstream RTB",
-    aliases: ["Reason to believe", "RTB"],
+    aliases: ["Reason to believe", "RTB", "RTBs"],
   },
   {
     key: "gtmApprovedRTB",
@@ -216,7 +216,7 @@ export function extractUpstream(
 }
 export function getParsedIMC(state: PreparationState): ParsedIMCBrief {
   return state.parsedIMC?.schemaVersion === 1 &&
-    state.parsedIMC.parserVersion === 5 &&
+    state.parsedIMC.parserVersion === IMC_PARSER_VERSION &&
     state.parsedIMC.sourceText === state.sourceSnapshot
     ? state.parsedIMC
     : parseIMCBrief(state.sourceSnapshot);

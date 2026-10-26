@@ -2,6 +2,7 @@ import { runAgent } from "./ai/client";
 import { preparationText } from "./ai/format";
 import { sparkSetIssue } from "./ai/spark-quality";
 import { outputSchemas } from "./ai/schemas";
+import { rtbOutputIssue } from "./ai/rtb-quality";
 import {
   getParsedIMC,
   getUpstream,
@@ -232,7 +233,7 @@ export function studioPreparationIssue(
       parsed.data.originalRtb !== original.sourceValue
     )
       return "The original RTB does not match the current IMC brief.";
-    return;
+    return rtbOutputIssue(parsed.data, getUpstream(state));
   }
   if (id === "research")
     return outputSchemas.research.safeParse(current.data).success

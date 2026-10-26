@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "playwright test",
     "format": "prettier --write app components lib tests *.ts *.mjs *.json",
-    "test:ai": "AI_MODE=mock OPENAI_API_KEY= XC_OFFLINE_TEST=1 NODE_OPTIONS=--conditions=react-server playwright test -c playwright.ai.config.ts",
+    "test:ai": "AI_MODE=mock OPENAI_API_KEY= XC_OFFLINE_TEST=1 NODE_OPTIONS='--conditions=react-server --require ./tests/helpers/phase1-no-api.cjs' playwright test -c playwright.ai.config.ts",
     "eval:agents": "XC_LIVE_EVAL=1 NODE_OPTIONS=--conditions=react-server playwright test -c playwright.evaluation.config.ts"
   },
   "dependencies": {

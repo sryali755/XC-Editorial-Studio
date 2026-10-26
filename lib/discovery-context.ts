@@ -54,10 +54,14 @@ function canonical(value: unknown): string {
 export function discoveryFoundationVersion(foundation: Foundation): string {
   // Display-name corrections are metadata, not different source evidence.
   // Retain the historical source-named hash basis for existing campaign runs.
-  let basis = foundation;
+  // This is a deterministic view of source/selection data already hashed below.
+  // Introducing the registry must not invalidate otherwise unchanged history.
+  const { canonicalCampaign: _canonical, ...versioned } = foundation;
+  void _canonical;
+  let basis: Foundation = versioned;
   const identity = foundation.campaignIdentity;
   if (identity?.id) {
-    const { campaignIdentity: _identity, ...content } = foundation;
+    const { campaignIdentity: _identity, ...content } = versioned;
     void _identity;
     basis = {
       ...content,
