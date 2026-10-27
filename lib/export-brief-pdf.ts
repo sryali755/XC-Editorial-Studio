@@ -81,16 +81,19 @@ export async function createBriefPdf(document: BriefDocument): Promise<Blob> {
       style: "group",
       headlineLevel: 1,
     });
-    group.sections.forEach((section) =>
+    group.sections.forEach((section) => {
+      const text = sectionContent(section);
       content.push(
         { text: section.title, style: "section", headlineLevel: 2 },
         {
-          text: sectionContent(section),
+          text,
           style: "body",
           id: `${section.id}-body`,
+          // Keep the short approval record intact at the end of the export.
+          unbreakable: section.title === "Approval Notes" && text.length < 900,
         },
-      ),
-    );
+      );
+    });
   });
   const definition: TDocumentDefinitions = {
     pageSize: "LETTER",

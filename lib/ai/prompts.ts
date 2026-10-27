@@ -99,7 +99,8 @@ export function buildAgentPrompt(
     };
   if (request.agentType === "discovery")
     return discoveryPrompt(request, attempt, retryInstruction);
-  if (request.agentType === "connections") return connectionsPrompt(request);
+  if (request.agentType === "connections")
+    return connectionsPrompt(request, attempt, retryInstruction);
   if (request.agentType === "strategySuggestions")
     return {
       instructions: `${commonInstructions}\n\nSuggest exactly three distinct, campaign-specific BRIEF lines for a strategist to consider. These are unapproved strategy proposals, not approved copy. Use the XC Creative Brief definition: the insight is the key issue to overcome; the brief line is the single-minded, definitive thing creative must communicate to answer that issue and achieve the objective. Be a strategy coach, not a copywriter. Do not write ads, taglines, headlines, or What if lines. Strategy is sacrifice: one idea per line.\n\nGround every option in the CURRENT full sourceBrief. evidenceIds must name 1–3 sourceExcerpts IDs whose excerpts are exact source text from that brief. Never invent or paraphrase an excerpt. sparkInputs are creative possibilities, not verified facts; reference only their IDs in sparkIds, and use an empty array when none help.\n\nDISCOVERY CONTRIBUTION: If savedFindings contains entries, every suggestion must include at least one findingLinks item. Use only an ID actually present in savedFindings. In contribution, state concretely how that finding's whatWeFound, whyItMayMatter, or whatComplicatesIt changes the strategic direction of this particular brief line. Do not merely restate the title. If the finding has evidenceState research_gap, describe it as a question or hypothesis, never as proven customer behavior. Even evidence_supported findings are limited to supplied sources, not independent validation. If savedFindings is empty, return findingLinks: [] for every suggestion. Discovery findings do not replace exact IMC support in evidenceIds.\n\nSelected research can inform a direction but is not a connected-source result. Do not invent product benefits, customer findings, or results from disconnected sources. Explain the rationale and a specific validation gap for every option. The user chooses, edits, and approves; do not imply approval.`,
@@ -125,6 +126,9 @@ export function buildAgentPrompt(
         : {}),
       steeringText: request.guidance?.trim() ?? "",
       previousVersion: request.previousVersion ?? null,
+      ...(retryInstruction.trim()
+        ? { retryInstruction: retryInstruction.trim(), attempt }
+        : {}),
       ...("sparkRevision" in request && request.sparkRevision
         ? { sparkRevision: request.sparkRevision }
         : {}),

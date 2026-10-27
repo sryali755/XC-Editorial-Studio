@@ -5,6 +5,7 @@ import { runAgent } from "@/lib/ai/client";
 import {
   strategySuggestionContext,
   strategySuggestionFingerprint,
+  strategySuggestionIssue,
 } from "@/lib/ai/strategy-suggestions";
 import { inputPackVersion } from "@/lib/discovery";
 import type { DiscoveryState, StrategyInputPack } from "@/lib/types";
@@ -35,7 +36,10 @@ export default function StrategySuggestions({
   const traceComplete =
     !currentRun?.context.savedFindings.length ||
     currentRun.options.every((option) => option.findingLinks?.length);
-  const current = currentRun?.fingerprint === fingerprint && traceComplete;
+  const outputIssue = currentRun
+    ? strategySuggestionIssue(currentRun.context, { suggestions: currentRun.options })
+    : "";
+  const current = currentRun?.fingerprint === fingerprint && traceComplete && !outputIssue;
   const unavailableMessage = !context.sourceBrief
     ? "Add an IMC brief in the Input Pack before exploring suggestions."
     : !context.sourceExcerpts.length
@@ -150,7 +154,9 @@ export default function StrategySuggestions({
           </div>
           {!current && (
             <p className="studio-suggestion-warning">
-              {!traceComplete
+              {outputIssue
+                ? "These saved suggestions need correction. Generate new suggestions before choosing a draft."
+                : !traceComplete
                 ? "This earlier run did not record how Discovery findings shaped its lines. Generate new suggestions to use a traceable line."
                 : "These suggestions use older inputs. Generate again to use a line with the current Input Pack and findings."}
             </p>

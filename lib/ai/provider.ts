@@ -358,15 +358,23 @@ export async function generateAgentResponse(
     if (
       mode !== "live" ||
       (!isPerspective(request.agentType) &&
-        !["sparks", "discovery", "connections"].includes(request.agentType)) ||
+        !["rtb", "research", "sparks", "discovery", "connections", "strategySuggestions"].includes(
+          request.agentType,
+        )) ||
       !(error instanceof AgentError) ||
-      !["model_output_invalid_json", "model_output_schema_invalid"].includes(
+      !["model_output_invalid_json", "model_output_schema_invalid", "writer_connection_error"].includes(
         error.code,
       )
     )
       throw error;
     generationAttempt = 1;
-    generated = await generateModel(request, offlineClient, 1, requestId);
+    generated = await generateModel(
+      request,
+      offlineClient,
+      1,
+      requestId,
+      `Correct the prior structured-output failure. ${error.message}`,
+    );
   }
   if (request.agentType === "sparks") {
     const merge = () => {
@@ -533,7 +541,21 @@ export async function generateAgentResponse(
       );
   }
   if (request.agentType === "strategySuggestions") {
-    const parsed = outputSchemas.strategySuggestions.safeParse(generated);
+    let parsed = outputSchemas.strategySuggestions.safeParse(generated);
+    let issue = parsed.success
+      ? strategySuggestionIssue(request.context, parsed.data)
+      : "The brief-line suggestions were malformed.";
+    if (issue && mode === "live" && generationAttempt === 0) {
+      generationAttempt = 1;
+      generated = await generateModel(
+        request, offlineClient, 1, requestId,
+        `Correct this brief-line validation failure: ${issue} Keep source references, saved-finding links and factual limits. Return exactly three distinct suggestions.`,
+      );
+      parsed = outputSchemas.strategySuggestions.safeParse(generated);
+      issue = parsed.success
+        ? strategySuggestionIssue(request.context, parsed.data)
+        : "The brief-line suggestions were malformed.";
+    }
     if (!parsed.success)
       throw new AgentError(
         "The brief-line suggestions were malformed. Your current draft is unchanged; retry suggestions.",
@@ -541,7 +563,6 @@ export async function generateAgentResponse(
         "strategy_suggestions_invalid",
         true,
       );
-    const issue = strategySuggestionIssue(request.context, parsed.data);
     if (issue)
       throw new AgentError(
         `${issue} Your current draft is unchanged; retry suggestions.`,

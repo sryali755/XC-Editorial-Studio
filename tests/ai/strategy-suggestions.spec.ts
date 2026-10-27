@@ -15,6 +15,7 @@ import { requestSchema, outputSchemas } from "../../lib/ai/schemas";
 import { buildAgentPrompt } from "../../lib/ai/prompts";
 import { generateAgentResponse } from "../../lib/ai/provider";
 import { generateOpenAI } from "../../lib/ai/openai-provider";
+import { createOfflineModelClient } from "../../lib/ai/offline-model-client";
 
 const originalMode = process.env.AI_MODE;
 const originalProvider = process.env.AI_PROVIDER;
@@ -119,6 +120,23 @@ test("mock generation gives three distinct, source-supported, unapproved directi
   ).toHaveProperty("size", 3);
   expect(strategySuggestionIssue(context, output)).toBe("");
   expect(JSON.stringify(output)).toContain("More Life. Less Phone Drama.");
+});
+
+test("unsupported competitive claims are rejected and repaired once", async () => {
+  process.env.AI_MODE = "mock";
+  const { pack, discovery } = fixture();
+  const context = strategySuggestionContext(pack, discovery);
+  const request = requestSchema.parse({ agentType: "strategySuggestions", context });
+  const response = await generateAgentResponse(request);
+  const valid = outputSchemas.strategySuggestions.parse(response.data);
+  const invalid = structuredClone(valid);
+  invalid.suggestions[0].briefLine = "The box handles what every other router would choke on.";
+  expect(strategySuggestionIssue(context, invalid)).toContain("unsupported competitive");
+  const model = createOfflineModelClient([JSON.stringify(invalid), JSON.stringify(valid)]);
+  const repaired = await generateAgentResponse(request, model.sdk);
+  expect(repaired.data).toEqual(valid);
+  expect(model.calls()).toBe(2);
+  expect(String(model.requests()[1].input)).toContain("unsupported competitive");
 });
 
 test("unsupported excerpts, unselected Sparks, duplicate lines and malformed responses are rejected", () => {

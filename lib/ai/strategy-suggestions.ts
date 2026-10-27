@@ -121,6 +121,13 @@ export function strategySuggestionIssue(
   const findings = new Set(context.savedFindings.map((item) => item.id));
   const lines = new Set<string>();
   for (const option of data.suggestions) {
+    const unsupportedComparison =
+      /\b(?:(?:every|all|any) other (?:[\w-]+\s+){0,3}(?:router|network|provider|brand|product|competitor)s?|fastest|best-in-class|unmatched|unrivalled|unrivaled|outperform\w*|outclass\w*|(?:faster|better|more reliable) than)\b/i;
+    if (
+      unsupportedComparison.test(option.briefLine) &&
+      !context.sourceBrief.includes(option.briefLine)
+    )
+      return "A suggested line introduces an unsupported competitive superiority claim. Remove the comparison and ground the direction in the supplied capabilities.";
     const line = option.briefLine.trim().toLowerCase().replace(/\s+/g, " ");
     if (lines.has(line))
       return "The suggested brief lines repeat the same direction.";
@@ -134,10 +141,11 @@ export function strategySuggestionIssue(
     }
     if (option.sparkIds.some((id) => !sparks.has(id)))
       return "A suggested line cites a Spark that was not selected.";
-    if (findings.size && !option.findingLinks.length)
+    const findingLinks = option.findingLinks ?? [];
+    if (findings.size && !findingLinks.length)
       return "A suggested line does not explain how a saved Discovery finding shaped it.";
     const linked = new Set<string>();
-    for (const link of option.findingLinks) {
+    for (const link of findingLinks) {
       if (!findings.has(link.findingId))
         return "A suggested line cites a Discovery finding that was not saved.";
       if (linked.has(link.findingId))

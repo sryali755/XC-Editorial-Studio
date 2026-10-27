@@ -6,6 +6,10 @@ import { buildAgentPrompt } from "./prompts";
 import { modelCapabilities, validatedModelSettings } from "./capabilities";
 import { outputTokenBudget } from "./generation-settings";
 import {
+  discoverySourceDocuments,
+  resolveDiscoveryCitation,
+} from "../discovery-sources";
+import {
   outputSchemas,
   discoveryGenerationSchema,
   rtbGenerationSchema,
@@ -19,6 +23,180 @@ import {
 // https://dev.writer.com/api-reference/completion-api/chat-completion
 const WRITER_CHAT_URL = "https://api.writer.com/v1/chat";
 export const WRITER_REQUEST_TIMEOUT_MS = 120_000;
+
+function schemaIssueSummary(error: z.ZodError) {
+  const issues = error.issues.map((issue) => {
+    const path = issue.path.length ? issue.path.join(".") : "response";
+    return `${path} (${issue.code})`;
+  });
+  return [...new Set(issues)].slice(0, 12).join(", ");
+}
+
+function readableKey(key: string) {
+  return key
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function textValue(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean")
+    return String(value);
+  if (Array.isArray(value))
+    return value.map(textValue).filter(Boolean).join("; ");
+  if (value && typeof value === "object")
+    return Object.entries(value)
+      .map(([key, item]) => {
+        const text = textValue(item);
+        return text ? `${readableKey(key)}: ${text}` : "";
+      })
+      .filter(Boolean)
+      .join(" — ");
+  return "";
+}
+
+function stringList(value: unknown, max = 30) {
+  const values = Array.isArray(value) ? value : value == null ? [] : [value];
+  return values.map(textValue).filter(Boolean).slice(0, max);
+}
+
+function normalizeResearchQuestions(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (typeof entry === "string")
+        return { source: "Proposed source", question: entry.trim() };
+      if (!entry || typeof entry !== "object") return undefined;
+      const record = entry as Record<string, unknown>;
+      const source = textValue(
+        record.source ?? record.proposedSource ?? record.sourceName,
+      );
+      const question = textValue(
+        record.question ??
+          record.whatToFindOut ??
+          record.what_to_find_out ??
+          record.researchQuestion ??
+          record.query ??
+          Object.fromEntries(
+            Object.entries(record).filter(
+              ([key]) =>
+                !["source", "proposedSource", "sourceName"].includes(key),
+            ),
+          ),
+      );
+      return source && question ? { source, question } : undefined;
+    })
+    .filter((entry): entry is { source: string; question: string } => !!entry)
+    .slice(0, 15);
+}
+
+function normalizeWriterOutput(request: AgentRequest, value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const data = value as Record<string, unknown>;
+  const agentType = request.agentType;
+  if (agentType === "strategySuggestions") {
+    const container = data.suggestions ?? data.briefLineSuggestions ??
+      data.brief_line_suggestions ?? data.briefLines ?? data.directions ?? data.options;
+    const options = Array.isArray(container)
+      ? container
+      : container && typeof container === "object"
+        ? Object.values(container)
+        : container;
+    return {
+      suggestions: Array.isArray(options) ? options.map((option: unknown) => {
+        if (!option || typeof option !== "object" || Array.isArray(option)) return option;
+        const item = option as Record<string, unknown>;
+        const links = item.findingLinks ?? item.finding_links;
+        return {
+          briefLine: item.briefLine ?? item.brief_line ?? item.line,
+          rationale: textValue(item.rationale),
+          evidenceIds: stringList(item.evidenceIds ?? item.evidence_ids ?? item.sourceExcerptIds),
+          sparkIds: stringList(item.sparkIds ?? item.spark_ids),
+          findingLinks: Array.isArray(links) ? links.map((link: unknown) => {
+            if (!link || typeof link !== "object" || Array.isArray(link)) return link;
+            const entry = link as Record<string, unknown>;
+            return { findingId: entry.findingId ?? entry.finding_id, contribution: textValue(entry.contribution) };
+          }) : [],
+          validationGap: textValue(item.validationGap ?? item.validation_gap),
+        };
+      }) : options,
+    };
+  }
+  if (agentType === "connections")
+    return {
+      relationships: stringList(data.relationships),
+      tensions: stringList(data.tensions),
+      questions: stringList(data.questions ?? data.questionsToExplore ?? data.followUpQuestions),
+      note: typeof data.note === "string" ? data.note : textValue(data.note),
+    };
+  if (request.agentType === "discovery" && Array.isArray(data.findings)) {
+    const sources = discoverySourceDocuments(request.context.foundation);
+    const evidenceSchema = discoveryGenerationSchema.shape.findings.element
+      .shape.evidence.element.omit({ accessScope: true });
+    return {
+      ...data,
+      // The adapter has no retrieval tools. Access metadata belongs to the
+      // application, not the model's free-form representation of it.
+      retrievalNote:
+        "Only supplied Input Pack documents were analyzed. No external connector was searched.",
+      findings: data.findings.map((finding: unknown) => {
+        if (!finding || typeof finding !== "object" || Array.isArray(finding))
+          return finding;
+        const record = finding as Record<string, unknown>;
+        if (!Array.isArray(record.evidence)) return finding;
+        return {
+          ...record,
+          evidence: record.evidence.map((evidence: unknown) => {
+            if (!evidence || typeof evidence !== "object" || Array.isArray(evidence))
+              return evidence;
+            const { accessScope, ...citation } = evidence as Record<string, unknown>;
+            // Keep explicit external/restricted access claims for downstream rejection.
+            if (["supplied", "connected", "restricted"].includes(String(accessScope)))
+              return evidence;
+            const parsed = evidenceSchema.safeParse(citation);
+            const resolved = parsed.success
+              ? resolveDiscoveryCitation(sources, parsed.data)
+              : undefined;
+            // Scope comes from a uniquely matched supplied source, never a guessed alias.
+            return resolved
+              ? { ...citation, accessScope: resolved.source.accessScope }
+              : evidence;
+          }),
+        };
+      }),
+    };
+  }
+  if (agentType === "rtb")
+    return {
+      originalRtb: data.originalRtb,
+      originalRtbStatus: data.originalRtbStatus,
+      originalRtbApprovalStatus: data.originalRtbApprovalStatus,
+      xcAdaptation: data.xcAdaptation,
+      proposedJTBD: data.proposedJTBD,
+      adaptationStatus: data.adaptationStatus,
+      reviewNotes: stringList(data.reviewNotes),
+      evidenceGaps: stringList(data.evidenceGaps),
+    };
+  if (agentType === "research")
+    return {
+      campaignName: data.campaignName,
+      objectives: data.objectives,
+      audience: data.audience,
+      productInformation: data.productInformation,
+      suppliedEvidence: stringList(data.suppliedEvidence),
+      verifiedEvidence: stringList(data.verifiedEvidence),
+      illustrativeAssumptions: stringList(data.illustrativeAssumptions),
+      audienceContext: stringList(data.audienceContext),
+      historicalPerformance: stringList(data.historicalPerformance),
+      creativePerformance: stringList(data.creativePerformance),
+      marketContext: stringList(data.marketContext),
+      researchToValidate: normalizeResearchQuestions(data.researchToValidate),
+      evidenceGaps: stringList(data.evidenceGaps),
+      sourceNotes: stringList(data.sourceNotes),
+    };
+  return value;
+}
 
 export async function generateWriter(
   request: AgentRequest,
@@ -92,7 +270,14 @@ export async function generateWriter(
       body: JSON.stringify({
         model: config.model,
         messages: [
-          { role: "system", content: prompt.instructions },
+          {
+            role: "system",
+            content: prompt.instructions +
+              `\nOUTPUT CONTRACT: Return only one JSON object matching this exact schema. Use its property names and field types, with no wrapper or renamed keys.\n${JSON.stringify(schema)}` +
+              (request.agentType === "discovery"
+                ? '\nFor every evidence entry, accessScope must be exactly "supplied". This workflow only reads documents supplied in the input; no external source was accessed.'
+                : ""),
+          },
           { role: "user", content: prompt.input },
         ],
         stream: false,
@@ -172,10 +357,12 @@ export async function generateWriter(
         true,
       );
     }
-    const result = responseSchema.safeParse(decoded);
+    const result = responseSchema.safeParse(
+      normalizeWriterOutput(request, decoded),
+    );
     if (!result.success)
       throw new AgentError(
-        "Writer returned output that does not match this agent's schema. The previous version is preserved.",
+        `Writer returned output that does not match this agent's schema. Invalid fields: ${schemaIssueSummary(result.error)}. The previous version is preserved.`,
         502,
         "model_output_schema_invalid",
         true,
@@ -194,6 +381,13 @@ export async function generateWriter(
     return result.data as AgentData;
   } catch (error) {
     if (error instanceof AgentError) throw error;
+    const cause = error instanceof Error ? error.cause : undefined;
+    console.warn("[writer-transport]", JSON.stringify({
+      requestId, agent: request.agentType, attempt,
+      errorType: error instanceof Error ? error.name : "unknown",
+      causeCode: cause && typeof cause === "object" && "code" in cause
+        ? String(cause.code).slice(0, 50) : undefined,
+    }));
     if (
       error instanceof Error &&
       ["TimeoutError", "AbortError"].includes(error.name)

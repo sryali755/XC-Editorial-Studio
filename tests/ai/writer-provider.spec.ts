@@ -15,7 +15,8 @@ import {
   type AgentRequest,
 } from "../../lib/ai/schemas";
 import { phase1Fixture } from "../fixtures/phase1-input-pack";
-import { studioPack } from "../../lib/discovery-studio";
+import { studioPack, seedStudioDiscovery } from "../../lib/discovery-studio";
+import { strategySuggestionContext } from "../../lib/ai/strategy-suggestions";
 import { discoveryFoundation } from "../../lib/discovery-context";
 import { parseIMCBrief } from "../../lib/imc-parser";
 import { extractUpstream } from "../../lib/upstream";
@@ -183,11 +184,12 @@ for (const file of ["movers_source_text.txt", "xfinity_pro_source_text.txt"])
       expect(requests[0].url).toBe("https://api.writer.com/v1/chat");
       const body = JSON.parse(String(requests[0].init!.body));
       const prompt = buildAgentPrompt(request);
-      expect(body.messages).toEqual([
-        { role: "system", content: prompt.instructions },
-        { role: "user", content: prompt.input },
-      ]);
+      expect(body.messages[0].role).toBe("system");
+      expect(body.messages[0].content).toContain(prompt.instructions);
+      expect(body.messages[1]).toEqual({ role: "user", content: prompt.input });
       expect(body.response_format.type).toBe("json_schema");
+      expect(body.messages[0].content).toContain("OUTPUT CONTRACT");
+      expect(body.messages[0].content).toContain(JSON.stringify(body.response_format.json_schema.schema));
       expect(body.response_format.json_schema.schema.type).toBe("object");
       expect(body.max_tokens).toBeLessThanOrEqual(8192);
       expect(body).not.toHaveProperty("tools");
@@ -221,6 +223,198 @@ test("unknown Palmyra IDs and unsupported model controls are rejected before tra
   ).toThrow("reasoning effort");
   expect(requests).toHaveLength(0);
 });
+test("Writer normalizes RTB note containers before strict validation", async () => {
+  const request = preparation("rtb");
+  const data = await generateMock(request);
+  if (!("originalRtb" in data)) throw Error("Expected RTB output");
+  fakeWriter(
+    JSON.stringify({
+      ...data,
+      reviewNotes: Array.from({ length: 35 }, (_, index) => ({
+        note: `Review note ${index + 1}`,
+        owner: "GTM",
+      })),
+    }),
+  );
+  const result = await generateWriter(request);
+  if (!("originalRtb" in result)) throw Error("Expected RTB output");
+  expect(result.reviewNotes).toHaveLength(30);
+  expect(result.reviewNotes[0]).toContain("Review note 1");
+  expect(outputSchemas.rtb.safeParse(result).success).toBe(true);
+});
+test("Writer normalizes Research list items and strips question metadata", async () => {
+  const request = preparation("research");
+  const data = await generateMock(request);
+  if (!("suppliedEvidence" in data)) throw Error("Expected Research output");
+  fakeWriter(
+    JSON.stringify({
+      ...data,
+      suppliedEvidence: [{ source: "Brief", evidence: "Supplied proof" }],
+      historicalPerformance: "No connected history retrieved.",
+      researchToValidate: [
+        {
+          source: "Tableau",
+          question: "Which supplied KPI changed?",
+          decisionInformed: "Whether to reuse the approach",
+        },
+      ],
+    }),
+  );
+  const result = await generateWriter(request);
+  if (!("suppliedEvidence" in result)) throw Error("Expected Research output");
+  expect(result.suppliedEvidence[0]).toContain("Supplied proof");
+  expect(result.historicalPerformance).toEqual([
+    "No connected history retrieved.",
+  ]);
+  expect(result.researchToValidate).toEqual([
+    { source: "Tableau", question: "Which supplied KPI changed?" },
+  ]);
+  expect(outputSchemas.research.safeParse(result).success).toBe(true);
+});
+for (const agentType of ["rtb", "research"] as const)
+  test(`${agentType} receives one corrective Writer attempt after malformed output`, async () => {
+    const request = preparation(agentType);
+    const valid = await modelContent(request);
+    let calls = 0;
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), init });
+      return Response.json({
+        choices: [
+          {
+            finish_reason: "stop",
+            message: { content: calls++ ? valid : "not-json" },
+          },
+        ],
+      });
+    };
+    expect((await generateAgentResponse(request)).provider).toBe("writer");
+    expect(requests).toHaveLength(2);
+    const retry = JSON.parse(String(requests[1].init?.body));
+    expect(retry.messages[1].content).toContain(
+      "Correct the prior structured-output failure",
+    );
+  });
+for (const lens of ["consumer", "culture", "category", "brand", "analogous"])
+  test(`${lens}: derives malformed scope only from a verified supplied citation`, async () => {
+    const request = discovery(lens);
+    const data = await generateMock(discovery("consumer"));
+    if (!("findings" in data)) throw Error("Expected findings");
+    let changed = 0;
+    for (const finding of data.findings)
+      for (const evidence of finding.evidence) {
+        evidence.accessScope = "supplied_document" as "supplied";
+        changed++;
+      }
+    expect(changed).toBeGreaterThan(0);
+    fakeWriter(JSON.stringify(data));
+    const result = await generateWriter(request);
+    if (!("findings" in result)) throw Error("Expected findings");
+    expect(result.findings.flatMap((finding) => finding.evidence))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ accessScope: "supplied" })]));
+    expect(requests).toHaveLength(1);
+  });
+
+for (const defect of ["source", "locator", "excerpt"] as const)
+  test(`unverifiable ${defect} cannot acquire supplied access scope`, async () => {
+    const request = discovery();
+    const data = await generateMock(request);
+    if (!("findings" in data)) throw Error("Expected findings");
+    const evidence = data.findings.flatMap((finding) => finding.evidence);
+    expect(evidence.length).toBeGreaterThan(0);
+    for (const citation of evidence) {
+      citation.accessScope = "supplied_document" as "supplied";
+      citation[defect] = "unmatched private sentinel";
+    }
+    fakeWriter(JSON.stringify(data));
+    await expect(generateWriter(request)).rejects.toMatchObject({
+      code: "model_output_schema_invalid",
+    });
+  });
+
+for (const scope of ["connected", "restricted"] as const)
+  test(`explicit ${scope} scope is never relabeled as supplied`, async () => {
+    const request = discovery();
+    const data = await generateMock(request);
+    if (!("findings" in data)) throw Error("Expected findings");
+    data.findings = data.findings.filter((finding) => finding.evidence.length);
+    const evidence = data.findings.flatMap((finding) => finding.evidence);
+    expect(evidence.length).toBeGreaterThan(0);
+    for (const citation of evidence) citation.accessScope = scope;
+    fakeWriter(JSON.stringify(data));
+    const result = await generateWriter(request);
+    if (!("findings" in result)) throw Error("Expected findings");
+    expect(result.findings.flatMap((finding) => finding.evidence)
+      .every((citation) => citation.accessScope === scope)).toBe(true);
+    await expect(generateAgentResponse(request)).rejects.toMatchObject({
+      code: "discovery_evidence_validation_failed",
+    });
+  });
+
+test("Writer normalizes equivalent suggestion envelopes without inventing references", async () => {
+  const pack = studioPack(phase1Fixture().session);
+  const context = strategySuggestionContext(pack, seedStudioDiscovery(pack));
+  const request = requestSchema.parse({ agentType: "strategySuggestions", context });
+  const data = await generateMock(request);
+  if (!("suggestions" in data)) throw Error("Expected suggestions");
+  const directions = data.suggestions.map(item => ({
+    brief_line: item.briefLine,
+    rationale: item.rationale,
+    evidence_ids: item.evidenceIds,
+    spark_ids: item.sparkIds,
+    finding_links: item.findingLinks,
+    validation_gap: item.validationGap,
+  }));
+  for (const payload of [{ directions }, { suggestions: Object.fromEntries(directions.map((item, index) => [String(index), item])) }]) {
+    fakeWriter(JSON.stringify(payload));
+    expect(await generateWriter(request)).toEqual(data);
+  }
+  fakeWriter(JSON.stringify({ directions: directions.map(item => ({ ...item, evidence_ids: [] })) }));
+  await expect(generateWriter(request)).rejects.toMatchObject({ code: "model_output_schema_invalid" });
+});
+
+test("Writer normalizes comparison containers and excludes extra output metadata", async () => {
+  const foundation = discovery().context.foundation;
+  const generated = await generateMock(discovery());
+  if (!("findings" in generated)) throw Error("Expected findings");
+  const request = requestSchema.parse({
+    agentType: "connections", context: {
+      foundation,
+      findings: generated.findings.slice(0, 2).map((finding, index) => ({
+        ...finding, id: `fixture-${index}`, lensId: "consumer", inputPackVersion: "pack-test", runVersion: 1,
+      })),
+    },
+  });
+  fakeWriter(JSON.stringify({
+    relationships: { interpretation: "A shared source does not prove a shared cause." },
+    tensions: "A proposed explanation still needs validation.",
+    questionsToExplore: ["What evidence would distinguish the explanations?"],
+    note: "Comparison of supplied material only.",
+    outputMetadata: { generated: true },
+  }));
+  const result = await generateWriter(request);
+  expect(outputSchemas.connections.safeParse(result).success).toBe(true);
+  if (!("relationships" in result)) throw Error("Expected comparison");
+  expect(result.questions).toEqual(["What evidence would distinguish the explanations?"]);
+  expect(result.tensions).toEqual(["A proposed explanation still needs validation."]);
+  const retry = buildAgentPrompt(request, 1, "test", "questions: expected string array");
+  expect(retry.input).toContain("questions: expected string array");
+});
+
+test("Discovery retrieval metadata reflects the actual supplied-only adapter", async () => {
+  const request = discovery();
+  const data = await generateMock(request);
+  if (!("findings" in data)) throw Error("Expected findings");
+  for (const retrievalNote of [null, { sources: ["Supplied brief"] }, "Claimed external retrieval"]) {
+    fakeWriter(JSON.stringify({ ...data, retrievalNote }));
+    const result = await generateWriter(request);
+    if (!("findings" in result)) throw Error("Expected findings");
+    expect(result.retrievalNote).toBe(
+      "Only supplied Input Pack documents were analyzed. No external connector was searched.",
+    );
+    expect(result.findings).toEqual(data.findings);
+  }
+});
+
 test("malformed Discovery output is repaired on Writer, not a different provider", async () => {
   const request = discovery();
   let calls = 0;
@@ -275,6 +469,23 @@ test("conversation regeneration sends the human message and previous findings th
     JSON.parse(String(requests[0].init!.body)).messages[1].content,
   ).toContain("Investigate the supplied audience without inventing research.");
 });
+test("a Writer connection failure is retried once within the workflow repair budget", async () => {
+  const request = preparation("rtb");
+  const content = await modelContent(request);
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    if (calls === 1) throw new TypeError("fetch failed");
+    return Response.json({ choices: [{ finish_reason: "stop", message: { content } }] });
+  };
+  expect((await generateAgentResponse(request)).provider).toBe("writer");
+  expect(calls).toBe(2);
+  calls = 0;
+  globalThis.fetch = async () => { calls++; throw new TypeError("fetch failed"); };
+  await expect(generateAgentResponse(request)).rejects.toMatchObject({ code: "writer_connection_error" });
+  expect(calls).toBe(2);
+});
+
 test("timeout and refusal errors remain explicit without automatic billable retries", async () => {
   globalThis.fetch = async () => {
     throw new DOMException("Timed out", "TimeoutError");

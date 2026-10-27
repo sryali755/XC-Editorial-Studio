@@ -181,12 +181,24 @@ export function discoveryPrompt(
 
 export function connectionsPrompt(
   request: Extract<AgentRequest, { agentType: "connections" }>,
+  attempt = 0,
+  retryInstruction = "",
 ) {
   return {
     instructions: `You help an XC strategist connect user-selected discovery findings. Propose interpretations, not conclusions. Preserve contradictions, exact finding versions and provenance. Do not silently treat findings from different Input Pack versions as sharing current context; identify which context differs and what that limits. Earlier selected-finding source snapshots, when provided, are aligned by index with selectedFindings and exist only to inspect the original source behind each historical finding. They are not current evidence, new retrieval, or authorization to import one campaign's claim into another. Use only the supplied findings' eligible exact source references for supported relationships; if evidence is insufficient, connect the research questions and label the limitation. Do not declare a winning insight, strategy, campaign direction, or brief line. Do not introduce new facts. Return only JSON with relationships, tensions, questions, and an editable connection note.`,
     input: JSON.stringify({
       inputPack: request.context.foundation,
       selectedFindings: request.context.findings,
+      ...(attempt > 0
+        ? {
+            validationFeedback: {
+              attempt,
+              problem: retryInstruction.trim().slice(0, 800),
+              requiredCorrection:
+                "Return the requested JSON shape. relationships, tensions and questions must be arrays of strings; note must be a string. Preserve the original sources and evidence limits.",
+            },
+          }
+        : {}),
       earlierSelectedFindingSourceSnapshots:
         request.context.sourceFoundations ?? null,
       strategistGuidance: request.guidance?.trim() || "",
