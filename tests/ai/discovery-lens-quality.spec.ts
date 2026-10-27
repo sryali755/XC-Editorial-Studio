@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   crossLensIssue,
+  discoveryLensRoleIssue,
   currentPeerFindings,
   LENS_CONTRACT_VERSION,
   lensAssignments,
@@ -16,6 +17,9 @@ import {
 } from "../../lib/discovery-studio";
 import { emptyDiscoveryState, inputPackVersion } from "../../lib/discovery";
 import sample from "../../lib/samples/kevin-imc.json";
+import { mockDiscovery } from "../../lib/ai/mock-discovery";
+import { createOfflineModelClient } from "../../lib/ai/offline-model-client";
+import { generateAgentResponse } from "../../lib/ai/provider";
 import type {
   DiscoveryFinding,
   DiscoveryLensId,
@@ -79,6 +83,86 @@ for (const lens of [
     }
   });
 }
+
+test("an Analogous audience recap is repaired to a case-research gap without invented evidence", async () => {
+  const request = requestSchema.parse({
+    agentType: "discovery",
+    context: {
+      foundation: discoveryFoundation(
+        studioPack(applyStudioSource(emptyStudio(), sample.text)),
+      ),
+      lens: "analogous",
+      investigationType: "problem",
+      question: "What barriers need investigating?",
+      action: "initial",
+      previousFindings: [],
+    },
+  });
+  if (request.agentType !== "discovery") throw Error("Wrong agent");
+  const good = mockDiscovery(request);
+  const bad = structuredClone(good);
+  bad.findings = [
+    {
+      ...bad.findings[0],
+      title:
+        "Conductors need obvious, effortless proof; Bloomers need reassurance against disruption",
+      whatWeFound:
+        "The brief divides existing customers into two audience segments with different upgrade barriers.",
+    },
+  ];
+  expect(validateDiscoveryEvidence(request, bad)).toContain(
+    "campaign or audience recap",
+  );
+  const model = createOfflineModelClient([
+    JSON.stringify(bad),
+    JSON.stringify(good),
+  ]);
+  const result = await generateAgentResponse(request, model.sdk);
+  expect(result.data).toEqual(good);
+  expect(model.calls()).toBe(2);
+  expect(
+    JSON.parse(String(model.requests()[1].input)).validationFeedback.problem,
+  ).toContain("campaign or audience recap");
+});
+
+test("role checks keep invalid saved Analogous recaps from blocking Brand", () => {
+  const state = emptyDiscoveryState();
+  const pack = studioPack(applyStudioSource(emptyStudio(), sample.text));
+  const run = state.runs.find((item) => item.lensId === "analogous")!;
+  const finding = {
+    ...peer,
+    lensId: "analogous" as const,
+    title: "Conductors and Bloomers have different upgrade barriers",
+    whatWeFound: "The target audience values reliability and simplicity.",
+  };
+  run.versions = [
+    {
+      id: "bad-role",
+      number: 1,
+      inputPackVersion: inputPackVersion(pack),
+      question: "Current focus",
+      investigationType: "problem",
+      findings: [finding],
+      lensContractVersion: LENS_CONTRACT_VERSION,
+    } as DiscoveryRunVersion,
+  ];
+  run.currentVersionId = "bad-role";
+  expect(
+    currentPeerFindings(
+      state,
+      "brand",
+      inputPackVersion(pack),
+      "Current focus",
+    ),
+  ).toEqual([]);
+  expect(run.versions[0].findings).toEqual([finding]);
+  expect(
+    discoveryLensRoleIssue("analogous", {
+      title: "A documented onboarding case is needed",
+      whatWeFound: "Which comparable intervention reduced transition friction?",
+    }),
+  ).toBe("");
+});
 
 test("pasted paraphrased transfer answers are detected across lenses", () => {
   for (const title of [

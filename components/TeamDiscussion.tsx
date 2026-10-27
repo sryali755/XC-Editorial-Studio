@@ -21,6 +21,18 @@ type AgentJob = {
   status: TeamDiscussionProps["status"];
 };
 
+export type TeamDiscussionContext = {
+  contextVersion: string;
+  campaignName: string;
+  objective: string;
+  audience: string;
+  product: string;
+  channel: string;
+  constraints: string;
+  reasonToBelieve: string;
+  hasInputPack: boolean;
+};
+
 const initialMessages: TeamDiscussionMessage[] = [
   {
     id: "movers-question-stress",
@@ -82,18 +94,123 @@ const initialMessages: TeamDiscussionMessage[] = [
   },
 ];
 
-const mockReplies: Record<TeamAgentId, string> = {
-  consumer:
-    "From the consumer lens, the practical need may be a simpler move-in decision. Treat any effect on spend as unverified until mover-specific evidence supports it.",
-  culture:
-    "A move can signal a reset, yet time pressure and decision fatigue may shape how people evaluate offers. This is a hypothesis to test, not a verified trend.",
-  category:
-    "A useful category question is where comparison or switching creates avoidable effort. The opportunity may be clearer next steps rather than a higher-spend assumption.",
-  brand:
-    "Continuity and reliable connectivity could be relevant brand benefits if the supplied proof supports them. Avoid implying a guaranteed reduction in moving stress.",
-  analogous:
-    "Guided onboarding in other high-friction services offers a pattern to explore: reduce choices, explain the next step, and make progress visible. The analogy needs validation.",
-};
+function contextText(value: string, fallback: string, limit = 260) {
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  if (!cleaned) return fallback;
+  return cleaned.length > limit
+    ? `${cleaned.slice(0, limit).trimEnd()}…`
+    : cleaned;
+}
+
+function campaignMessages(context: TeamDiscussionContext) {
+  if (!context.hasInputPack) return initialMessages;
+
+  const questionId = "campaign-question-context";
+  const followupId = "campaign-question-category";
+  const campaign = contextText(context.campaignName, "this campaign", 120);
+  const audience = contextText(context.audience, "the intended audience");
+  const product = contextText(context.product, "the stated product");
+  const channel = contextText(
+    context.channel,
+    "no campaign channel was supplied",
+  );
+  const constraints = contextText(
+    context.constraints,
+    "No campaign constraints were supplied.",
+  );
+  const reasonToBelieve = contextText(
+    context.reasonToBelieve,
+    "No reason to believe was supplied in the active Input Pack.",
+  );
+  const objective = contextText(
+    context.objective,
+    "No campaign objective was supplied in the active Input Pack.",
+  );
+  return [
+    {
+      id: questionId,
+      author: "kevin",
+      text: `For ${campaign}, what should we investigate about this stated objective: “${objective}”?`,
+      threadId: questionId,
+    },
+    {
+      id: "campaign-consumer-context",
+      author: "consumer",
+      text: `The Input Pack identifies ${audience}. That is targeting context, not evidence about people's needs, behavior, or willingness to spend. Treat consumer motivations as questions to validate.`,
+      threadId: questionId,
+      replyTo: questionId,
+    },
+    {
+      id: "campaign-brand-context",
+      author: "brand",
+      text: `The supplied reason to believe is: ${reasonToBelieve} It is source context, not independently verified proof of a customer benefit.`,
+      threadId: questionId,
+      replyTo: "campaign-consumer-context",
+    },
+    {
+      id: "campaign-culture-context",
+      author: "culture",
+      text: `The Input Pack does not by itself establish cultural trends or current behavior for ${audience}. Any cultural interpretation remains a hypothesis to validate.`,
+      threadId: questionId,
+      replyTo: questionId,
+    },
+    {
+      id: followupId,
+      author: "kevin",
+      text: `@Category, what category questions should we investigate for ${product}, and how might they compare with @Consumer's audience context?`,
+      threadId: followupId,
+      replyTo: "campaign-consumer-context",
+      addressedTo: ["category"],
+      relatedTo: questionId,
+    },
+    {
+      id: "campaign-category-context",
+      author: "category",
+      text: `The Input Pack lists ${channel} for ${product}, but does not verify competitor activity or a category gap. Those comparisons need supporting evidence before we treat them as findings.`,
+      threadId: followupId,
+      replyTo: followupId,
+    },
+    {
+      id: "campaign-analogous-context",
+      author: "analogous",
+      text: "No analogous solution is verified by this mock discussion. Any pattern from another category would be an avenue to investigate, not evidence or a recommendation.",
+      threadId: followupId,
+      replyTo: "campaign-category-context",
+    },
+    {
+      id: "campaign-brand-group",
+      author: "brand",
+      text: `For the group: honor the supplied campaign constraints (${constraints}) and keep strategy grounded in the objective and proof. This prototype does not verify claims or approve a direction.`,
+      threadId: followupId,
+      replyToGroup: true,
+    },
+  ] satisfies TeamDiscussionMessage[];
+}
+
+function campaignMockReplies(context: TeamDiscussionContext) {
+  const campaign = contextText(context.campaignName, "this campaign", 120);
+  const audience = contextText(context.audience, "the intended audience");
+  const product = contextText(context.product, "the stated product");
+  const channel = contextText(
+    context.channel,
+    "no campaign channel was supplied",
+  );
+  const constraints = contextText(
+    context.constraints,
+    "no campaign constraints were supplied",
+  );
+  const reasonToBelieve = contextText(
+    context.reasonToBelieve,
+    "no reason to believe was supplied",
+  );
+  return {
+    consumer: `Mock perspective for ${campaign}: the Input Pack names ${audience}. That does not establish their needs or behavior; validate audience motivations before treating them as findings.`,
+    culture: `Mock perspective for ${campaign}: the Input Pack does not establish cultural trends or current behavior. Treat any cultural explanation as a hypothesis that needs evidence.`,
+    category: `Mock perspective for ${campaign}: the pack names ${product} and ${channel}, but does not verify competitor activity or category advantage. Treat comparisons as questions to research.`,
+    brand: `Mock perspective for ${campaign}: the supplied reason to believe is “${reasonToBelieve}”. Keep in view that ${constraints}; the claim still needs proof review before it is treated as a supported customer benefit.`,
+    analogous: `Mock perspective for ${campaign}: this discussion has not verified an analogous solution. Any pattern from another category should be researched before it informs strategy.`,
+  } satisfies Record<TeamAgentId, string>;
+}
 
 const layouts: { id: Layout; label: string }[] = [
   { id: "group-chat", label: "Group Chat" },
@@ -110,9 +227,15 @@ function mentionedAgents(text: string) {
   );
 }
 
-export default function TeamDiscussion() {
+export default function TeamDiscussion({
+  campaignContext,
+}: {
+  campaignContext: TeamDiscussionContext;
+}) {
   const [layout, setLayout] = useState<Layout>("group-chat");
-  const [messages, setMessages] = useState(initialMessages);
+  const [messages, setMessages] = useState(() =>
+    campaignMessages(campaignContext),
+  );
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [draft, setDraft] = useState("");
   const [replyTarget, setReplyTarget] = useState<TeamDiscussionMessage | null>(
@@ -148,7 +271,7 @@ export default function TeamDiscussion() {
       const responses = job.agentIds.map((agentId) => ({
         id: `${job.id}-${agentId}`,
         author: agentId,
-        text: mockReplies[agentId],
+        text: campaignMockReplies(campaignContext)[agentId],
         threadId: job.threadId,
         replyTo: job.messageId,
       }));
@@ -164,29 +287,29 @@ export default function TeamDiscussion() {
       );
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [job]);
+  }, [job, campaignContext]);
 
   useEffect(() => {
     if (deeperResearchStatus !== "generating") return;
     const timer = window.setTimeout(() => {
       setMessages((current) => {
-        const resultId = "movers-deeper-research-result";
+        const resultId = "campaign-deeper-research-result";
         if (current.some((message) => message.id === resultId)) return current;
         return [
           ...current,
           {
             id: resultId,
             author: "consumer",
-            text: "Mock follow-up: This prototype cannot access research sources, so it cannot confirm whether Movers spend more. Keep the spending claim unverified and validate it with approved mover-specific evidence before using it.",
-            threadId: "movers-question-stress",
-            replyTo: "movers-consumer-stress",
+            text: `Mock follow-up for ${contextText(campaignContext.campaignName, "this campaign")}: no research sources were queried, so the prototype cannot verify customer behavior or market claims. Validate any strategic assumption with approved evidence.`,
+            threadId: messages[0]?.threadId ?? "mock-follow-up",
+            ...(messages[1] ? { replyTo: messages[1].id } : {}),
           },
         ];
       });
       setDeeperResearchStatus("completed");
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [deeperResearchStatus]);
+  }, [deeperResearchStatus, campaignContext, messages]);
 
   function send(text: string, retryJob?: AgentJob) {
     if (retryJob) {
@@ -270,13 +393,52 @@ export default function TeamDiscussion() {
           <span className="eyebrow">EXPERIMENTAL · UI PROTOTYPES</span>
           <h2>Team Discussion</h2>
           <p>
-            Compare three ways Kevin Mercer and the five agents could explore
-            the Movers campaign together. Responses are fixed mock data, not AI
+            Compare three ways Kevin Mercer and the five agents could discuss
+            the active campaign. Responses are illustrative mock content, not AI
             output or verified research.
           </p>
         </div>
-        <span className="team-mock-badge">MOCK DATA · ISOLATED</span>
+        <span className="team-mock-badge">
+          {campaignContext.hasInputPack
+            ? "MOCK RESPONSES · INPUT-PACK CONTEXT"
+            : "MOCK SAMPLE · NO INPUT PACK"}
+        </span>
       </header>
+      {campaignContext.hasInputPack && (
+        <div className="team-campaign-context" role="note">
+          <b>Active Input Pack: {campaignContext.campaignName}</b>
+          <span>
+            Objective:{" "}
+            {contextText(
+              campaignContext.objective,
+              "Not supplied in this Input Pack.",
+            )}
+          </span>
+          <span>
+            Audience:{" "}
+            {contextText(
+              campaignContext.audience,
+              "Not supplied in this Input Pack.",
+            )}
+          </span>
+          {campaignContext.channel && (
+            <span>
+              Channel: {contextText(campaignContext.channel, "Not supplied.")}
+            </span>
+          )}
+          {campaignContext.constraints && (
+            <span>
+              Constraints:{" "}
+              {contextText(campaignContext.constraints, "Not supplied.")}
+            </span>
+          )}
+          <small>
+            Agent messages are local mock perspectives framed by these fields.
+            No AI or research source is queried, and mock saves do not enter
+            campaign findings or strategy.
+          </small>
+        </div>
+      )}
       <div
         className="team-layout-selector"
         role="tablist"

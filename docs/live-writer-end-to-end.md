@@ -8,7 +8,7 @@ user tab or approve a campaign for production.
 ```sh
 XC_LIVE_E2E=1 \
 XC_LIVE_BRIEF="/absolute/path/to/brief.docx" \
-npx playwright test -c playwright.live-writer.config.ts
+npx playwright test -c playwright.live-writer.config.ts end-to-end.spec.ts
 ```
 
 The explicit `XC_LIVE_E2E=1` opt-in permits billable model calls. Normal test
@@ -46,10 +46,18 @@ canonical validation. Evidence access scope can be recovered only from a
 uniquely verified supplied citation. Retrieval metadata comes from the actual
 supplied-only adapter. Invalid references, invented quotations, and explicit
 claims of external access are rejected.
+An invalid finding evidence-state label is derived only from independently
+verified citations (or an empty evidence array for a research gap). Explicit
+valid states remain subject to the existing evidence-consistency checks.
 
-Eligible generations share one corrective attempt for malformed output or a
-connection failure. Suggestions also use that allowance for validation
-failures, including unsupported competitive comparisons. Saved suggestion
+Eligible generations have one corrective attempt for malformed output.
+Suggestions also use that allowance for validation failures, including
+unsupported competitive comparisons. A separate connection-recovery attempt
+is shared across the entire workflow, including corrective generations.
+Writer requests use fresh connections and a process-wide limit of two active
+requests, held through response-body consumption. A 270-second workflow
+deadline includes queueing, correction, and recovery; individual calls have a
+120-second timeout. Saved suggestion
 history is revalidated before it can be chosen. Authentication, billing,
 quota, refusals, and timeouts remain explicit errors rather than hidden
 fallbacks. Upstream outages and entirely new output variations can still
@@ -80,3 +88,121 @@ competitive comparison in a suggestion, and a transient connection failure.
 The PDF export now keeps a short approval record together. The input source,
 original proof, citation checks, and explicit strategy-confirmation boundary
 remain preserved.
+
+### Connection stability follow-up
+
+Server logs showed `EPIPE` and `UND_ERR_SOCKET`, including during corrective
+generations. The separate transport allowance, fresh connections, concurrency
+gate, and shared deadline above address this recovery gap. A subsequent live
+check exposed invalid `evidenceState` labels; citation-derived metadata now
+handles these without accepting unverifiable evidence.
+
+After the fixes, two five-agent live bursts using the actual Gateway brief
+completed with 10 successful application responses and zero failed responses.
+The complete AI regression suite passed 442 tests, with two skipped. TypeScript,
+changed-code ESLint, whitespace checks, and the production build passed. This
+follow-up exercised Round Table generation; the complete browser/export journey
+described above was verified earlier. These are observed results, not a
+guarantee against future upstream outages or new model-output variations.
+
+### Mobile citation metadata follow-up
+
+A subsequent user screenshot exposed a separate Analogous Solutions citation
+failure: a non-string `audience` and unexpected citation keys. Successful Writer
+HTTP responses were being rejected by the application's strict schema. The
+adapter now locates the citation by source identity, locator, and unchanged
+excerpt before selecting canonical fields and normalizing string-list or null
+metadata. Unlocatable citations and explicit external access claims remain
+subject to rejection. Correction feedback includes expected types and unknown
+keys rather than only issue codes.
+
+The corrected adapter passed 67 focused tests. The complete AI regression suite
+passed 446 tests with two skipped; TypeScript, changed-code ESLint, whitespace
+checks, and the production build passed. The local
+`Black_Friday_Informative_IMC_Brief.docx` matched the screenshot's campaign text
+and was used for live follow-up verification. The first diagnostic burst caught
+an adapter implementation error, which was corrected before the passing checks;
+it is not counted as successful verification.
+After that correction, all five agents passed in two successive bursts (10/10
+application responses). The final confirmation burst completed in 77 seconds
+with zero failed responses. A socket disconnect during corrective generation
+in the preceding burst was recovered automatically. These API tests used the
+matching local document, not the user's existing browser session; the saved UI
+error requires a new generation to be replaced.
+
+### Parallel overlap and lens-role follow-up
+
+A later Gateway screenshot showed a different failure: Brand was rejected by
+the browser's post-response overlap check after another parallel lens finished.
+Analogous Solutions also displayed a campaign-audience recap instead of a case
+or case-research gap. Independent API bursts did not exercise that browser race.
+
+The browser now gives a newly detected overlap one correction using current
+peer findings, preserving the same turn, version number, cancellation scope,
+and context checks. A repeated overlap still fails explicitly. Off-role saved
+Analogous recaps remain in history but are excluded from peer validation. A
+bounded role check rejects obvious Analogous audience recaps and feeds the
+existing server correction; it does not certify the semantics of every analogy.
+
+Two intercepted browser tests verify automatic recovery and bounded failure,
+including manual recovery, saved selection persistence, and a single stored
+successful generation. The complete AI suite passed 448 tests with two skipped.
+
+The opt-in live browser regression below exercises the actual parallel UI,
+role and overlap checks, and persistence after reload:
+
+```sh
+XC_LIVE_E2E=1 \
+XC_LIVE_BRIEF="/absolute/path/to/brief.docx" \
+npx playwright test -c playwright.live-writer.config.ts roundtable.spec.ts
+```
+
+It uses a new session and real Writer requests. `XC_LIVE_CHECKPOINT` can restore
+an isolated prior test checkpoint for the same file to avoid regenerating prep
+agents; the document filename is checked against that checkpoint's source.
+`XC_LIVE_OUTPUT` stores its checkpoint outside the repository.
+`XC_LIVE_REUSE_FINDINGS=1` checks existing findings from that test checkpoint
+without generating new answers. Seed restoration runs only in an empty tab,
+so a reload cannot overwrite the updated test state.
+
+The live Gateway browser run completed all five lenses with six successful
+application requests: Culture received one automatic post-response correction.
+All current findings passed role and cross-peer overlap checks. The saved
+checkpoint also passed browser restoration and reload verification without
+additional model requests. The resulting screenshot shows a Brand proof
+boundary and an Analogous case-research gap, rather than a copied audience
+recap. TypeScript, changed-code ESLint, whitespace checks, and the production
+build passed. The existing application stayed on port 3000.
+
+### Repeated Gateway Spark 4 quote-repair failure
+
+Two subsequent Gateway builds returned successful Writer HTTP responses but
+failed the unchanged source-quote gate for Spark 4 even after its targeted
+repair (`excerpt_verbatim`, `retried=true`, `passed=false`). Recent committed
+model-selector and avatar changes did not change the Sparks validation or
+repair path. The selectors are demo UI and do not change provider routing.
+
+Writer's source-repair transport now supplies a bounded catalog of exact
+source slices and requests an `excerptId` instead of asking it to recopy the
+quotation. The model selects relevant support; the adapter resolves only a
+known ID to original text. IDs are scoped to the current source, excerpts
+retain original Unicode and punctuation, and unknown or contradictory
+references remain invalid. Saved Spark schemas and all other Spark slots
+remain unchanged. Initial generation still uses the existing excerpt contract;
+the ID-based transport applies to targeted source repair only. Selecting a
+source excerpt does not independently certify its relevance or source claims.
+
+Two isolated live Writer tests deliberately corrupted Spark 4's quotation
+after initial generation. Both repairs selected valid IDs, all six excerpts
+verified against the Gateway source, and the other five ideas were preserved.
+A fresh browser upload and Build Input Pack also passed with all three agents
+and six verified Sparks. The AI suite passed 453 tests with two skipped;
+TypeScript, changed-code ESLint, whitespace checks, and production build passed.
+
+Run the focused browser check with the same explicit paid-call opt-in:
+
+```sh
+XC_LIVE_E2E=1 \
+XC_LIVE_BRIEF="/absolute/path/to/brief.docx" \
+npx playwright test -c playwright.live-writer.config.ts input-pack.spec.ts
+```

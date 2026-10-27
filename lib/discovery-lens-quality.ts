@@ -21,6 +21,23 @@ export const lensAssignments: Record<DiscoveryLensId, string> = {
 
 type FindingText = Pick<DiscoveryFinding, "title" | "whatWeFound">;
 
+// Catch an obvious off-role recap; this is a bounded role check, not a
+// semantic guarantee that a claimed case or its interpretation is correct.
+export function discoveryLensRoleIssue(
+  lens: DiscoveryLensId,
+  finding: FindingText,
+) {
+  if (lens !== "analogous") return "";
+  const lead = `${finding.title} ${finding.whatWeFound}`;
+  if (
+    !/\b(?:case(?:s| study)?|analog(?:y|ies|ous)|comparable|another (?:industry|context|sector)|outside.category|cross.industry|transfer(?:ring|ability)? (?:a |the )?(?:mechanism|approach|learning))\b/i.test(
+      lead,
+    )
+  )
+    return "The analogous lens returned a campaign or audience recap instead of a documented comparable case or a precise case-research gap. Identify the separate case, its intervention and transfer limits; if no case is supplied, return a focused research_gap with empty evidence. Do not repeat the Consumer answer.";
+  return "";
+}
+
 function words(text: string) {
   return new Set(
     text
@@ -155,7 +172,9 @@ export function currentPeerFindings(
         version.inputPackVersion === packVersion &&
         version.question === question &&
         version.investigationType === state.investigationType
-        ? version.findings
+        ? version.findings.filter(
+            (finding) => !discoveryLensRoleIssue(run.lensId, finding),
+          )
         : [];
     })
     .slice(0, 20);

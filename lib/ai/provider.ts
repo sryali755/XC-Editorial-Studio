@@ -23,6 +23,7 @@ import { AgentError } from "./errors";
 import { generateMock } from "./mock-provider";
 import { generateOpenAI as generateOpenAIResponse } from "./openai-provider";
 import { generateWriter } from "./writer-provider";
+import { createWriterTransportContext } from "./writer-transport";
 import { isOfflineModelClient } from "./offline-model-client";
 import type OpenAI from "openai";
 import {
@@ -264,6 +265,7 @@ export async function generateAgentResponse(
   // Exercise the real parsing, validation and retry path without selecting or
   // constructing a network-connected model client.
   const mode = simulatedModel ? "live" : config.mode;
+  const writerTransport = createWriterTransportContext();
   // Route every initial request and corrective attempt to the same provider.
   // Registered offline OpenAI stubs remain local, even with Writer as default.
   const generateModel = (
@@ -275,7 +277,7 @@ export async function generateAgentResponse(
   ) =>
     simulatedModel || config.provider === "openai"
       ? generateOpenAIResponse(value, sdk, attempt, id, instruction)
-      : generateWriter(value, attempt, id, instruction);
+      : generateWriter(value, attempt, id, instruction, writerTransport);
   sparkRevisionPlan(request);
   // Re-parse at the trust boundary, never trusting missing/changed parsed values from a client.
   if (
@@ -362,7 +364,7 @@ export async function generateAgentResponse(
           request.agentType,
         )) ||
       !(error instanceof AgentError) ||
-      !["model_output_invalid_json", "model_output_schema_invalid", "writer_connection_error"].includes(
+      !["model_output_invalid_json", "model_output_schema_invalid"].includes(
         error.code,
       )
     )
@@ -373,7 +375,7 @@ export async function generateAgentResponse(
       offlineClient,
       1,
       requestId,
-      `Correct the prior structured-output failure. ${error.message}`,
+      `Correct the prior structured-output failure in structured-output parsing or schema validation. ${error.message}`,
     );
   }
   if (request.agentType === "sparks") {

@@ -20,6 +20,7 @@ import {
   failDiscoveryRequest,
   recoverDiscoveryState,
 } from "@/lib/discovery-state";
+import { campaignDisplayLabel } from "@/lib/campaign-naming";
 import type {
   DiscoveryRetryRequest,
   DiscoveryState,
@@ -27,7 +28,7 @@ import type {
 } from "@/lib/types";
 import InsightDiscoveryWorkspace from "./InsightDiscoveryWorkspace";
 import DiscoveryRoundTableV2 from "./DiscoveryRoundTableV2";
-import TeamDiscussion from "./TeamDiscussion";
+import TeamDiscussion, { type TeamDiscussionContext } from "./TeamDiscussion";
 import { useDiscoveryDialog } from "./useDiscoveryDialog";
 import {
   crossLensIssue,
@@ -124,6 +125,25 @@ export default function InsightDiscoveryFeature({
 }) {
   const [discussionView, setDiscussionView] = useState<"individual" | "team">(
     "individual",
+  );
+  const teamDiscussionContext = useMemo<TeamDiscussionContext>(
+    () => ({
+      contextVersion: pack.workspaceBuildId ?? inputPackVersion(pack),
+      campaignName: campaignDisplayLabel(pack),
+      objective: pack.objective,
+      audience: pack.audience,
+      product: pack.product,
+      channel: pack.channel,
+      constraints: pack.constraints,
+      reasonToBelieve: pack.reasonToBelieve,
+      hasInputPack: Boolean(
+        pack.workspaceBuildId ||
+        pack.parsedIMC ||
+        pack.preparationSource?.trim() ||
+        pack.campaignName.trim(),
+      ),
+    }),
+    [pack],
   );
   const seeded = useMemo(() => seededState(pack), [pack]);
   const [draft, setDraft] = useState(() => {
@@ -377,69 +397,75 @@ export default function InsightDiscoveryFeature({
       );
     };
     try {
-      const result = await generateDiscoveryVersion({
-        ...boundRequest,
-        threadMessages,
-        turnId: boundRequest.turnId,
-        threadId: boundRequest.threadId,
-        pack: requestPack,
-        question,
-        investigationType: snapshot.investigationType,
-        peerFindings: currentPeerFindings(
-          snapshot,
-          request.lensId,
-          requestPackVersion,
+      // A peer can finish after dispatch. Give that newly detected overlap one
+      // correction with current peers, under the same turn and cancellation scope.
+      for (let qualityAttempt = 0; qualityAttempt < 2; qualityAttempt++) {
+        const result = await generateDiscoveryVersion({
+          ...boundRequest,
+          threadMessages,
+          turnId: boundRequest.turnId,
+          threadId: boundRequest.threadId,
+          pack: requestPack,
           question,
-        ),
-        nextVersionNumber:
-          Math.max(
-            0,
-            ...(snapshot.runs
+          investigationType: snapshot.investigationType,
+          peerFindings: currentPeerFindings(
+            qualityAttempt === 0 ? snapshot : draftRef.current,
+            request.lensId,
+            requestPackVersion,
+            question,
+          ),
+          nextVersionNumber:
+            Math.max(
+              0,
+              ...(snapshot.runs
+                .find((run) => run.lensId === request.lensId)
+                ?.versions.map((version) => version.number) ?? []),
+            ) + 1,
+          previous:
+            snapshot.runs
               .find((run) => run.lensId === request.lensId)
-              ?.versions.map((version) => version.number) ?? []),
-          ) + 1,
-        previous:
-          snapshot.runs
-            .find((run) => run.lensId === request.lensId)
-            ?.versions.filter(
-              (version) =>
-                version.question === question &&
-                version.inputPackVersion === requestPackVersion &&
-                version.investigationType === snapshot.investigationType,
-            ) ?? [],
-        signal: controller.signal,
-      });
-      if (controller.signal.aborted) return false;
-      if (contextChanged()) {
-        if (
-          discoveryStorageKey(getCurrentPack?.() ?? currentPack.current) !==
-          campaignKey
-        )
+              ?.versions.filter(
+                (version) =>
+                  version.question === question &&
+                  version.inputPackVersion === requestPackVersion &&
+                  version.investigationType === snapshot.investigationType,
+              ) ?? [],
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return false;
+        if (contextChanged()) {
+          if (
+            discoveryStorageKey(getCurrentPack?.() ?? currentPack.current) !==
+            campaignKey
+          )
+            return false;
+          update((current) =>
+            archiveOutdatedDiscoveryResponse(current, boundRequest, result),
+          );
           return false;
-        update((current) =>
-          archiveOutdatedDiscoveryResponse(current, boundRequest, result),
-        );
-        return false;
-      }
-      // Re-check after the response: parallel agents may have completed since dispatch.
-      const overlap =
-        request.operation === "conversation"
-          ? undefined
-          : crossLensIssue(
-              request.lensId,
-              result.findings,
-              currentPeerFindings(
-                draftRef.current,
+        }
+        // Re-check after the response: parallel agents may have completed since dispatch.
+        const overlap =
+          request.operation === "conversation"
+            ? undefined
+            : crossLensIssue(
                 request.lensId,
-                requestPackVersion,
-                question,
-              ),
-            );
-      if (overlap) throw new Error(overlap);
-      update((current) =>
-        completeDiscoveryRequest(current, boundRequest, result),
-      );
-      return true;
+                result.findings,
+                currentPeerFindings(
+                  draftRef.current,
+                  request.lensId,
+                  requestPackVersion,
+                  question,
+                ),
+              );
+        if (overlap && qualityAttempt === 0) continue;
+        if (overlap) throw new Error(overlap);
+        update((current) =>
+          completeDiscoveryRequest(current, boundRequest, result),
+        );
+        return true;
+      }
+      return false;
     } catch (failure) {
       if (
         discoveryStorageKey(getCurrentPack?.() ?? currentPack.current) !==
@@ -776,7 +802,10 @@ export default function InsightDiscoveryFeature({
         aria-labelledby="team-discussion-tab"
         hidden={discussionView !== "team"}
       >
-        <TeamDiscussion />
+        <TeamDiscussion
+          key={JSON.stringify(teamDiscussionContext)}
+          campaignContext={teamDiscussionContext}
+        />
       </div>
     </>
   );

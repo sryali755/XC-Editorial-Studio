@@ -6,7 +6,10 @@ import {
 } from "../discovery-sources";
 import { originalSourceExcerpt } from "../source-registry";
 import type { AgentData, AgentRequest } from "./schemas";
-import { crossLensIssue } from "../discovery-lens-quality";
+import {
+  crossLensIssue,
+  discoveryLensRoleIssue,
+} from "../discovery-lens-quality";
 
 export function unsupportedDiscoveryFactualAssertion(
   finding: Extract<AgentData, { findings: unknown }>["findings"][number],
@@ -145,6 +148,10 @@ export function validateDiscoveryEvidence(
   }
   const sources = discoverySourceDocuments(request.context.foundation);
   for (const [index, finding] of data.findings.entries()) {
+    if (!request.context.preparationRole) {
+      const roleIssue = discoveryLensRoleIssue(request.context.lens, finding);
+      if (roleIssue) return `Finding ${index + 1}: ${roleIssue}`;
+    }
     if (
       finding.evidenceState === "evidence_supported" &&
       !finding.evidence.length

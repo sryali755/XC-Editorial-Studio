@@ -43,9 +43,14 @@ for (const lens of [
     const data: AgentDataMap["discovery"] = {
       findings: [
         {
-          title: "A precise open question",
+          title:
+            lens === "analogous"
+              ? "A comparable transfer-effort case is needed"
+              : "A precise open question",
           whatWeFound:
-            "The supplied brief does not establish the role of transfer effort.",
+            lens === "analogous"
+              ? "The supplied brief does not document another case that reduced transfer effort."
+              : "The supplied brief does not establish the role of transfer effort.",
           evidence: [],
           whyItMayMatter: "Effort may be relevant, not proven.",
           whatComplicatesIt: "No observed behavior supplied.",
@@ -81,9 +86,14 @@ for (const lens of [
         findings: [
           {
             ...data.findings[0],
-            title: "Offer eligibility needs a separate check",
+            title:
+              lens === "analogous"
+                ? "A comparable eligibility-friction case needs a separate check"
+                : "Offer eligibility needs a separate check",
             whatWeFound:
-              "Which source documents confirm eligibility differences between prospect and customer executions?",
+              lens === "analogous"
+                ? "Which original case documents show how another context handled eligibility differences and the limits of transfer?"
+                : "Which source documents confirm eligibility differences between prospect and customer executions?",
           },
         ],
       }),

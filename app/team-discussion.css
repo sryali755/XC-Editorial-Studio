@@ -77,6 +77,28 @@
   font-size: 12px;
   line-height: 1.55;
 }
+.team-campaign-context {
+  display: grid;
+  gap: 5px;
+  margin: 0 0 14px;
+  border: 1px solid #e6e1f1;
+  border-radius: 9px;
+  background: #faf9fd;
+  padding: 10px 12px;
+  color: var(--team-ink);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.team-campaign-context b {
+  font-size: 12px;
+}
+.team-campaign-context span {
+  color: var(--muted);
+}
+.team-campaign-context small {
+  color: #77718a;
+  font-size: 10px;
+}
 .team-mock-badge,
 .team-participant-count {
   display: inline-flex;
@@ -449,6 +471,7 @@
 .team-avatar-kevin {
   position: relative;
   overflow: hidden;
+  clip-path: circle(50%);
   border-color: #d6d2e5;
   background: #eae8f4;
   color: #5d5285;
@@ -456,6 +479,7 @@
 }
 .team-avatar-kevin.is-small {
   border-radius: 50%;
+  clip-path: circle(50%);
 }
 .team-avatar-kevin img {
   position: absolute;
@@ -463,6 +487,7 @@
   width: 100%;
   height: 100%;
   border-radius: inherit;
+  clip-path: circle(50%);
   object-fit: cover;
 }
 .team-avatar-kevin .team-avatar-fallback {
