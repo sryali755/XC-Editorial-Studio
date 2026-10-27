@@ -320,6 +320,17 @@ test("source IDs survive filename and harmless formatting changes; canonical mat
   ).toBeUndefined();
 });
 
+test("format normalization matches the first occurrence when a phrase appears multiple times", () => {
+  const source =
+    "A\u00a0“supported” capability in section 1. Other context. A\u00a0“supported” capability in section 2.";
+  const match = originalSourceExcerpt(source, 'A "supported" capability');
+  expect(match).toMatchObject({
+    excerpt: "A\u00a0“supported” capability",
+    method: "format_normalized",
+    start: 0,
+  });
+});
+
 test("format normalization never changes attribution, source meaning or page", () => {
   const request = requestFor(pipelineCampaigns.wrappedPdf);
   const source = discoverySourceDocuments(request.context.foundation).find(

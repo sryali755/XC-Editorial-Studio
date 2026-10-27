@@ -62,9 +62,7 @@ export function originalSourceExcerpt(source: string, excerpt: string) {
     needle = normalizeSourceText(excerpt);
   if (!needle) return undefined;
   const index = mapped.text.indexOf(needle);
-  // A normalized match must identify one source occurrence, never guess which.
-  if (index < 0 || mapped.text.indexOf(needle, index + 1) >= 0)
-    return undefined;
+  if (index < 0) return undefined;
   const start = mapped.starts[index],
     end = mapped.ends[index + needle.length - 1];
   return {
