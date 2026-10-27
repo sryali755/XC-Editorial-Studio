@@ -170,6 +170,19 @@
   padding: 18px;
   background: #faf9fc;
 }
+.team-empty-conversation {
+  align-self: center;
+  justify-self: center;
+  max-width: 360px;
+  margin: 24px auto;
+  color: var(--team-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+.team-topics > .team-empty-conversation {
+  margin: 30px auto;
+}
 .team-feed-item + .team-feed-item {
   border-top: 1px solid #eeedf2;
 }

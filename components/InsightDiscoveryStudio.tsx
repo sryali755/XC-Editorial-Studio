@@ -664,6 +664,7 @@ export default function InsightDiscoveryStudio({
             resetInProgress.current = true;
             try {
               await workspaceStore.current.reset(localStorage);
+              window.location.hash = "team-discussion-reset";
               window.location.reload();
             } catch (failure) {
               resetInProgress.current = false;

@@ -135,3 +135,58 @@ test("team discussion is isolated and switching views preserves Individual Round
   ).toEqual(productionStorage);
   expect(aiRequests).toEqual([]);
 });
+
+test("workspace reset clears the experimental Team Discussion conversation", async ({
+  page,
+}) => {
+  test.skip(
+    process.env.NEXT_PUBLIC_INSIGHT_DISCOVERY === "false",
+    "Team Discussion is unavailable when Insight Discovery is disabled.",
+  );
+
+  await page.goto("/");
+  await page
+    .getByRole("navigation", { name: "Workspace" })
+    .getByRole("button", { name: "Insight Discovery", exact: true })
+    .click();
+
+  const teamTab = page.getByRole("tab", { name: /Team Discussion/ });
+  await teamTab.click();
+  const teamPanel = page.locator("#team-discussion-panel");
+  await expect(
+    teamPanel.getByText("For Movers, do we think stress changes", {
+      exact: false,
+    }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Reset Workspace", exact: true }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "Reset this workspace?",
+    exact: true,
+  });
+  await Promise.all([
+    page.waitForEvent("domcontentloaded"),
+    dialog.getByRole("button", { name: "Clear Workspace", exact: true }).click(),
+  ]);
+
+  await page
+    .getByRole("navigation", { name: "Workspace" })
+    .getByRole("button", { name: "Insight Discovery", exact: true })
+    .click();
+  await page.getByRole("tab", { name: /Team Discussion/ }).click();
+
+  await expect(
+    page.locator("#team-discussion-panel .team-empty-conversation"),
+  ).toBeVisible();
+  await expect(
+    page.locator("#team-discussion-panel [data-message-id]"),
+  ).toHaveCount(0);
+  await page.getByRole("tab", { name: "Threaded Discussion" }).click();
+  await expect(
+    page.locator("#team-discussion-panel .team-empty-conversation"),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: "Hybrid Roundtable" }).click();
+  await expect(
+    page.locator("#team-discussion-panel .team-empty-conversation"),
+  ).toBeVisible();
+});

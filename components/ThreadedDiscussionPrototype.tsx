@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Bookmark, ChevronDown, ChevronRight } from "lucide-react";
 import {
   GenerationStatus,
+  EmptyConversation,
   MessageCard,
   MessageComposer,
   SavedInsightsPanel,
@@ -44,6 +45,7 @@ export default function ThreadedDiscussionPrototype(
       </header>
       <div className={`team-threaded-grid ${showSaved ? "has-saved" : ""}`}>
         <div className="team-topics">
+          {!questions.length && <EmptyConversation />}
           {questions.map((question) => {
             const replies = props.messages.filter(
               (message) =>

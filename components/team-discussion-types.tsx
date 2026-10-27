@@ -153,6 +153,14 @@ export function AgentStrip() {
   );
 }
 
+export function EmptyConversation() {
+  return (
+    <p className="team-empty-conversation">
+      No messages yet. Ask the team a question to start a mock discussion.
+    </p>
+  );
+}
+
 export function MessageCard({
   message,
   saved,

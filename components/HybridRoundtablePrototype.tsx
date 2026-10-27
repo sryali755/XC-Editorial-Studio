@@ -3,6 +3,7 @@
 import {
   GenerationStatus,
   AgentStrip,
+  EmptyConversation,
   MessageCard,
   MessageComposer,
   SavedInsightsPanel,
@@ -35,6 +36,7 @@ export default function HybridRoundtablePrototype(props: TeamDiscussionProps) {
             className="team-chat-feed"
             aria-label="Shared roundtable discussion"
           >
+            {!props.messages.length && <EmptyConversation />}
             {props.messages.map((message) => (
               <MessageCard
                 key={message.id}

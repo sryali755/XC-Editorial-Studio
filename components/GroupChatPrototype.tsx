@@ -7,6 +7,7 @@ import {
   MessageCard,
   MessageComposer,
   SavedInsightsPanel,
+  EmptyConversation,
   authorName,
   getReplyContext,
   type TeamDiscussionProps,
@@ -46,6 +47,7 @@ export default function GroupChatPrototype(props: TeamDiscussionProps) {
       <div className={`team-group-grid ${showSaved ? "has-saved" : ""}`}>
         <div className="team-chat-column">
           <div className="team-chat-feed" aria-label="Shared conversation">
+            {!props.messages.length && <EmptyConversation />}
             {props.messages.map((message) => (
               <div key={message.id} className="team-feed-item">
                 {message.relatedTo && (

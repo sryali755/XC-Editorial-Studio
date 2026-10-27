@@ -124,6 +124,19 @@ export default function TeamDiscussion() {
     useState<TeamDiscussionProps["deeperResearchStatus"]>("offered");
 
   useEffect(() => {
+    if (window.location.hash !== "#team-discussion-reset") return;
+    const timer = window.setTimeout(() => {
+      setMessages([]);
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${window.location.search}`,
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
     if (!job || job.status !== "generating") return;
     const timer = window.setTimeout(() => {
       if (job.fail) {
