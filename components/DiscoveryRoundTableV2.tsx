@@ -32,6 +32,7 @@ import type {
 } from "@/lib/types";
 import type InsightDiscoveryWorkspace from "./InsightDiscoveryWorkspace";
 import DynamicInputPackDetails from "./DynamicInputPackDetails";
+import DemoModelSelector, { type DemoModel } from "./DemoModelSelector";
 import WorkingSpace from "./WorkingSpace";
 import { briefInvestigationQuestions } from "@/lib/discovery-questions";
 import { campaignDisplayLabel } from "@/lib/campaign-naming";
@@ -165,6 +166,15 @@ export default function DiscoveryRoundTableV2(props: Props) {
   } = props;
   const comparisonPanel = useRef<HTMLDetailsElement>(null);
   const [showPack, setShowPack] = useState(false);
+  const [demoModelsByLens, setDemoModelsByLens] = useState<
+    Record<DiscoveryLensId, DemoModel>
+  >({
+    consumer: "Palmyra X5",
+    culture: "Palmyra X5",
+    category: "Palmyra X5",
+    brand: "Palmyra X5",
+    analogous: "Palmyra X5",
+  });
   // Reading history is not activation. These references never change the
   // persisted current generation or Kevin's draft and are context-scoped.
   const [viewedGenerations, setViewedGenerations] = useState<
@@ -919,22 +929,34 @@ export default function DiscoveryRoundTableV2(props: Props) {
                             : status.label}
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        className="button small v2-regenerate"
-                        aria-label={`Regenerate ${name}`}
-                        disabled={!canRun || working}
-                        onClick={() =>
-                          void onRunLens({
-                            lensId: lens.id,
-                            operation: "generation",
-                            action: activeVersion ? "refresh" : "initial",
-                            guidance: steering.trim(),
-                          })
-                        }
-                      >
-                        <RefreshCw size={12} aria-hidden /> Regenerate
-                      </button>
+                      <div className="v2-agent-model-actions">
+                        <button
+                          type="button"
+                          className="button small v2-regenerate"
+                          aria-label={`Regenerate ${name}`}
+                          disabled={!canRun || working}
+                          onClick={() =>
+                            void onRunLens({
+                              lensId: lens.id,
+                              operation: "generation",
+                              action: activeVersion ? "refresh" : "initial",
+                              guidance: steering.trim(),
+                            })
+                          }
+                        >
+                          <RefreshCw size={12} aria-hidden /> Regenerate
+                        </button>
+                        <DemoModelSelector
+                          value={demoModelsByLens[lens.id]}
+                          onChange={(model) =>
+                            setDemoModelsByLens((current) => ({
+                              ...current,
+                              [lens.id]: model,
+                            }))
+                          }
+                          context={name}
+                        />
+                      </div>
                       {!expanded && (
                         <button
                           className="v2-expand"

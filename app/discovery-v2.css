@@ -168,11 +168,22 @@
   overflow-wrap: anywhere;
 }
 .insight-studio .v2-agent-top .v2-regenerate {
-  grid-column: 2;
-  grid-row: 2;
   padding: 5px 6px;
   gap: 4px;
   font-size: 11px;
+}
+.insight-studio .v2-agent-model-actions {
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.insight-studio .v2-agent-model-actions .demo-model-selector {
+  width: 122px;
+  max-width: 100%;
 }
 .insight-studio .v2-history-controls {
   padding: 0 14px 12px;

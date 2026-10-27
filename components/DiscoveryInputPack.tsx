@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type SetStateAction } from "react";
 import { Database, FileText, RefreshCw } from "lucide-react";
+import DemoModelSelector, { type DemoModel } from "./DemoModelSelector";
 import { rebuildWarning, stageCampaignRebuild } from "@/lib/campaign-rebuild";
 import {
   currentPreparation,
@@ -118,6 +119,7 @@ export default function DiscoveryInputPack({
     key: "",
     value: "",
   });
+  const [demoModel, setDemoModel] = useState<DemoModel>("Palmyra X5");
   const hasSource = !!session.preparation.sourceSnapshot.trim();
   const fullSource =
     session.sourceDocumentText || session.preparation.upstreamDraft;
@@ -671,15 +673,22 @@ export default function DiscoveryInputPack({
           onCommit={commitCampaignName}
         />
         <div className="studio-brief-actions">
-          <button
-            className="button primary"
-            disabled={
-              !session.preparation.upstreamDraft.trim() || busy.length > 0
-            }
-            onClick={applySource}
-          >
-            <FileText size={15} /> Build Input Pack
-          </button>
+          <div className="studio-build-controls">
+            <DemoModelSelector
+              value={demoModel}
+              onChange={setDemoModel}
+              context="Input Pack"
+            />
+            <button
+              className="button primary"
+              disabled={
+                !session.preparation.upstreamDraft.trim() || busy.length > 0
+              }
+              onClick={applySource}
+            >
+              <FileText size={15} /> Build Input Pack
+            </button>
+          </div>
         </div>
         {rebuilding && (
           <p className="context-note" role="status">
