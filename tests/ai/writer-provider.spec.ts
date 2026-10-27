@@ -186,7 +186,14 @@ for (const file of ["movers_source_text.txt", "xfinity_pro_source_text.txt"])
       const prompt = buildAgentPrompt(request);
       expect(body.messages[0].role).toBe("system");
       expect(body.messages[0].content).toContain(prompt.instructions);
-      expect(body.messages[1]).toEqual({ role: "user", content: prompt.input });
+      if (agent === "sparks") {
+        expect(body.messages[1].content).toContain(prompt.input);
+        expect(body.messages[1].content).toContain("sourceExcerptCatalog");
+      } else
+        expect(body.messages[1]).toEqual({
+          role: "user",
+          content: prompt.input,
+        });
       expect(body.response_format.type).toBe("json_schema");
       expect(body.messages[0].content).toContain("OUTPUT CONTRACT");
       expect(body.messages[0].content).toContain(
@@ -199,6 +206,49 @@ for (const file of ["movers_source_text.txt", "xfinity_pro_source_text.txt"])
       expect(requests[0].init!.redirect).toBe("error");
       if ("sparks" in result.data) expect(result.data.sparks).toHaveLength(6);
     });
+
+test("initial Sparks select source IDs and resolve to exact original passages", async () => {
+  const request = preparation("sparks");
+  const initial = JSON.parse(await modelContent(request));
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), init });
+    const body = JSON.parse(String(init?.body));
+    expect(
+      body.response_format.json_schema.schema.properties.sparks.items.required,
+    ).toContain("excerptId");
+    const catalog = JSON.parse(
+      body.messages[1].content.split(
+        "sourceExcerptCatalog (exact raw-source slices):\n",
+      )[1],
+    ) as { id: string; excerpt: string }[];
+    expect(catalog.length).toBeGreaterThanOrEqual(6);
+    return Response.json({
+      choices: [
+        {
+          finish_reason: "stop",
+          message: {
+            content: JSON.stringify({
+              sparks: initial.sparks.map(
+                (spark: Record<string, unknown>, index: number) => {
+                  const { excerpt: _excerpt, ...rest } = spark;
+                  void _excerpt;
+                  return { ...rest, excerptId: catalog[index].id };
+                },
+              ),
+            }),
+          },
+        },
+      ],
+    });
+  };
+  const result = await generateAgentResponse(request);
+  if (!("sparks" in result.data)) throw Error("Expected Sparks");
+  expect(result.data.sparks).toHaveLength(6);
+  expect(result.data.sparks.every((spark) => spark.excerpt_verified)).toBe(
+    true,
+  );
+  expect(requests).toHaveLength(1);
+});
 
 for (const status of [401, 402, 403, 429, 500])
   test(`Writer HTTP ${status} stays sanitized, without retries or OpenAI fallback`, async () => {

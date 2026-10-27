@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  batchCrossLensOverlaps,
   crossLensIssue,
   discoveryLensRoleIssue,
   currentPeerFindings,
@@ -177,6 +178,31 @@ test("pasted paraphrased transfer answers are detected across lenses", () => {
         [peer],
       ),
     ).toContain("overlaps");
+});
+
+test("batch overlap advice is independent of lens completion order", () => {
+  const state = emptyDiscoveryState();
+  const version = "same-pack";
+  const question = "Current focus";
+  for (const lensId of ["consumer", "culture"] as const) {
+    const run = state.runs.find((item) => item.lensId === lensId)!;
+    run.currentVersionId = `current-${lensId}`;
+    run.versions = [
+      {
+        id: run.currentVersionId,
+        number: 1,
+        inputPackVersion: version,
+        question,
+        investigationType: state.investigationType,
+        findings: [{ ...peer, id: `${lensId}-one`, lensId }],
+        lensContractVersion: LENS_CONTRACT_VERSION,
+      } as DiscoveryRunVersion,
+    ];
+  }
+  const expected = batchCrossLensOverlaps(state, version, question);
+  expect(expected).toEqual(["culture and consumer"]);
+  state.runs.reverse();
+  expect(batchCrossLensOverlaps(state, version, question)).toEqual(expected);
 });
 
 test("distinct roles can reuse a quotation without duplicating its interpretation", () => {

@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { readStudio } from "../../lib/discovery-studio";
 
-test("live DOCX build preserves the original source and verifies every Spark", async ({
+test("live brief build preserves the original source and verifies every Spark", async ({
   page,
   request,
 }) => {
@@ -55,6 +55,39 @@ test("live DOCX build preserves the original source and verifies every Spark", a
   });
   await expect(imported).not.toHaveValue("");
   const source = await imported.inputValue();
+  const campaignScope = page.getByRole("combobox", {
+    name: "Campaign in this document",
+  });
+  const multipleCampaigns = (await campaignScope.count()) > 0;
+  if (multipleCampaigns) {
+    const requestedScope = process.env.XC_LIVE_CAMPAIGN_SCOPE?.trim();
+    expect(
+      requestedScope,
+      "This document contains multiple campaigns. Set XC_LIVE_CAMPAIGN_SCOPE to the campaign to test.",
+    ).toBeTruthy();
+    const matches = (
+      await campaignScope.locator("option").allTextContents()
+    ).filter((label) =>
+      label.toLowerCase().includes(requestedScope!.toLowerCase()),
+    );
+    expect(
+      matches,
+      "Campaign scope must identify exactly one option",
+    ).toHaveLength(1);
+    await campaignScope.selectOption({ label: matches[0] });
+  }
+  const campaignName = page.getByRole("textbox", {
+    name: "Campaign name",
+    exact: true,
+  });
+  if (!(await campaignName.inputValue()).trim()) {
+    const suppliedName = process.env.XC_LIVE_CAMPAIGN_NAME?.trim();
+    expect(
+      suppliedName,
+      "This brief has no unambiguous campaign name. Set XC_LIVE_CAMPAIGN_NAME to an explicitly chosen test name.",
+    ).toBeTruthy();
+    await campaignName.fill(suppliedName!);
+  }
   await page
     .getByRole("button", { name: "Build Input Pack", exact: true })
     .click();
@@ -81,14 +114,22 @@ test("live DOCX build preserves the original source and verifies every Spark", a
     JSON.stringify({ storage, calls }),
   );
   const { session } = readStudio({ getItem: (key) => storage[key] ?? null });
-  expect(session.preparation.sourceSnapshot).toBe(source);
+  if (multipleCampaigns) {
+    expect(session.sourceDocumentText).toBe(source);
+    expect(session.selectedCampaignScope).toBeTruthy();
+    expect(session.preparation.sourceSnapshot).toContain(
+      process.env.XC_LIVE_CAMPAIGN_SCOPE!,
+    );
+  } else expect(session.preparation.sourceSnapshot).toBe(source);
   const sparks = session.preparation.outputs.find(
     (output) => output.agentId === "sparks",
   )!.versions[0].sparks;
   expect(sparks).toHaveLength(6);
   for (const spark of sparks) {
     expect(spark.excerpt_verified).toBe(true);
-    expect(source.includes(spark.excerpt!)).toBe(true);
+    expect(session.preparation.sourceSnapshot.includes(spark.excerpt!)).toBe(
+      true,
+    );
   }
   await page.screenshot({
     path: path.join(output, "input-pack.png"),

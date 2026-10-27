@@ -188,8 +188,9 @@ quotation. The model selects relevant support; the adapter resolves only a
 known ID to original text. IDs are scoped to the current source, excerpts
 retain original Unicode and punctuation, and unknown or contradictory
 references remain invalid. Saved Spark schemas and all other Spark slots
-remain unchanged. Initial generation still uses the existing excerpt contract;
-the ID-based transport applies to targeted source repair only. Selecting a
+remain unchanged. At that point initial generation still used the existing
+excerpt contract; the ID-based transport applied to targeted source repair
+only. The follow-up below extends IDs to initial generation. Selecting a
 source excerpt does not independently certify its relevance or source claims.
 
 Two isolated live Writer tests deliberately corrupted Spark 4's quotation
@@ -206,3 +207,51 @@ XC_LIVE_E2E=1 \
 XC_LIVE_BRIEF="/absolute/path/to/brief.docx" \
 npx playwright test -c playwright.live-writer.config.ts input-pack.spec.ts
 ```
+
+### Production readiness follow-up, October 27, 2026
+
+The initial six-Spark Writer request now selects `excerptId` values from exact
+raw-source slices. The catalog spreads its bounded 80 choices across a long
+brief when no Spark-specific focus exists; targeted repairs still rank source
+slices by the failed Spark. Only known IDs resolve to original text, followed
+by the existing structural and source checks. The model still chooses what
+support is relevant; source membership alone does not prove a strategic claim.
+
+Input Pack rebuilds keep successful preparation outputs staged in the active
+tab and retry only failed agents once when the failure is retryable. A later
+Build Input Pack action can reuse those staged outputs only if source, campaign
+name, selected inputs, guidance, supplied evidence, and mode are unchanged.
+The previous workspace is replaced only after all three outputs pass. A page
+reload clears the staged retry cache. The Round Table's five-lens batch now
+assesses cross-lens overlap after all five responses arrive, then shows a
+review advisory for similar perspectives instead of failing a card according
+to response arrival order. Individual lens regeneration retains its existing
+validation and correction behavior.
+
+Observed checks after these changes:
+
+- TypeScript, ESLint, and the optimized production build passed.
+- The complete offline AI suite passed 456 tests, with 2 skipped. Eight
+  campaign rebuild tests passed, including same-input reuse and cross-brief
+  cache isolation.
+- The Gateway IMC Brief KM DOCX passed a fresh Input Pack run with 3 successful
+  application responses and 6 verified Sparks. The initial Sparks call passed
+  without source repair. The same brief passed a separate five-lens Round Table
+  run and a nine-stage live journey through confirmed strategy and PDF/Word
+  export. The exported PDF had 7 pages; all 23 brief sections were checked in
+  both formats. The full journey made 11 successful application AI requests.
+- The Black Friday IMC DOCX, and the Movers and Xfinity Pro campaign scopes in
+  the same 12-page PDF, each passed a fresh live Input Pack run with 3
+  successful application responses and 6 source-verified Sparks.
+
+The live Input Pack test requires `XC_LIVE_CAMPAIGN_NAME` when a document has
+no unambiguous name. For a multi-campaign document, set
+`XC_LIVE_CAMPAIGN_SCOPE` to a unique option label fragment, then provide the
+name if needed. This models the application's required human campaign choice;
+the test does not infer that an ambiguous document name is approved.
+
+These checks establish functional coverage, not the reliability percentages
+in the technical review. Before a production release, measure at least 20
+consecutive live builds across the planned brief matrix, repeat five-lens
+bursts, exercise transport faults and quota responses, and review deployment
+security, persistence, monitoring, and recovery in the target environment.

@@ -31,6 +31,7 @@ import DiscoveryRoundTableV2 from "./DiscoveryRoundTableV2";
 import TeamDiscussion, { type TeamDiscussionContext } from "./TeamDiscussion";
 import { useDiscoveryDialog } from "./useDiscoveryDialog";
 import {
+  batchCrossLensOverlaps,
   crossLensIssue,
   currentPeerFindings,
 } from "@/lib/discovery-lens-quality";
@@ -168,6 +169,7 @@ export default function InsightDiscoveryFeature({
   currentPack.current = pack;
   const [busy, setBusy] = useState<string[]>([]);
   const [error, setError] = useState("");
+  const [overlapNotice, setOverlapNotice] = useState("");
   const attempted = useRef(false);
   const controllers = useRef(new Map<string, AbortController>());
   const dialogRef = useRef<HTMLElement>(null);
@@ -227,6 +229,7 @@ export default function InsightDiscoveryFeature({
       pack: StrategyInputPack;
       packVersion: string;
       question: string;
+      deferOverlap: true;
     },
   ): Promise<boolean> {
     if (controllers.current.has(request.lensId)) return false;
@@ -446,7 +449,7 @@ export default function InsightDiscoveryFeature({
         }
         // Re-check after the response: parallel agents may have completed since dispatch.
         const overlap =
-          request.operation === "conversation"
+          batch?.deferOverlap || request.operation === "conversation"
             ? undefined
             : crossLensIssue(
                 request.lensId,
@@ -492,6 +495,7 @@ export default function InsightDiscoveryFeature({
   }
 
   async function refreshAll() {
+    setOverlapNotice("");
     const snapshot = draftRef.current;
     const batchPack = structuredClone(
       getCurrentPack?.() ?? currentPack.current,
@@ -506,6 +510,7 @@ export default function InsightDiscoveryFeature({
       pack: batchPack,
       packVersion: batchVersion,
       question,
+      deferOverlap: true as const,
     };
     if (
       presentation === "page" &&
@@ -547,6 +552,19 @@ export default function InsightDiscoveryFeature({
           ),
         ),
     );
+    const current = draftRef.current;
+    if (
+      inputPackVersion(getCurrentPack?.() ?? currentPack.current) ===
+        batchVersion &&
+      current.investigationType === snapshot.investigationType &&
+      current.question === question
+    ) {
+      const pairs = batchCrossLensOverlaps(current, batchVersion, question);
+      if (pairs.length)
+        setOverlapNotice(
+          `Round Table completed. Review similar perspectives before saving: ${pairs.join(", ")}.`,
+        );
+    }
   }
 
   async function connect(guidance: string): Promise<boolean> {
@@ -629,8 +647,8 @@ export default function InsightDiscoveryFeature({
     }
   }
 
-  const runRef = useRef(runLens);
-  runRef.current = runLens;
+  const refreshRef = useRef(refreshAll);
+  refreshRef.current = refreshAll;
   useEffect(() => {
     if (!open || !autoStart) return;
     // Defer until mount effects settle. React development Strict Mode replays
@@ -645,12 +663,7 @@ export default function InsightDiscoveryFeature({
         )
       )
         return;
-      for (const lens of discoveryLenses)
-        void runRef.current({
-          lensId: lens.id,
-          action: "initial",
-          guidance: "",
-        });
+      void refreshRef.current();
     });
     return () => window.cancelAnimationFrame(frame);
   }, [open, autoStart]);
@@ -663,6 +676,11 @@ export default function InsightDiscoveryFeature({
       {error && (
         <div className="error" role="alert">
           {error}
+        </div>
+      )}
+      {overlapNotice && (
+        <div className="discovery-run-status" role="status">
+          {overlapNotice}
         </div>
       )}
       {approvalError && (

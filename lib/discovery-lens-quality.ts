@@ -179,3 +179,35 @@ export function currentPeerFindings(
     })
     .slice(0, 20);
 }
+
+export function batchCrossLensOverlaps(
+  state: DiscoveryState,
+  packVersion: string,
+  question: string,
+): string[] {
+  const overlaps: string[] = [];
+  for (const run of state.runs) {
+    const version = run.versions.find(
+      (item) => item.id === run.currentVersionId,
+    );
+    if (
+      !version ||
+      version.lensContractVersion !== LENS_CONTRACT_VERSION ||
+      version.inputPackVersion !== packVersion ||
+      version.question !== question ||
+      version.investigationType !== state.investigationType
+    )
+      continue;
+    for (const peer of currentPeerFindings(
+      state,
+      run.lensId,
+      packVersion,
+      question,
+    )) {
+      if (peer.lensId >= run.lensId) continue;
+      if (crossLensIssue(run.lensId, version.findings, [peer]))
+        overlaps.push(`${run.lensId} and ${peer.lensId}`);
+    }
+  }
+  return [...new Set(overlaps)];
+}

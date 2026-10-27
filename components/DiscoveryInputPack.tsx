@@ -3,7 +3,11 @@
 import { useEffect, useRef, useState, type SetStateAction } from "react";
 import { Database, FileText, RefreshCw } from "lucide-react";
 import DemoModelSelector, { type DemoModel } from "./DemoModelSelector";
-import { rebuildWarning, stageCampaignRebuild } from "@/lib/campaign-rebuild";
+import {
+  rebuildWarning,
+  stageCampaignRebuild,
+  type CampaignRebuildStaging,
+} from "@/lib/campaign-rebuild";
 import {
   currentPreparation,
   studioPreparationIssue,
@@ -98,6 +102,7 @@ export default function DiscoveryInputPack({
     latest.current = session;
   }, [session]);
   const locks = useRef(new Set<string>());
+  const buildStaging = useRef<CampaignRebuildStaging>({ key: "", outputs: {} });
   const [busy, setBusy] = useState<string[]>([]);
   const [rebuilding, setRebuilding] = useState(false);
   const [error, setError] = useState("");
@@ -252,6 +257,7 @@ export default function DiscoveryInputPack({
         preparationService.generate,
         aiMode,
         guidance,
+        buildStaging.current,
       );
       if (latest.current !== expected)
         throw Error(
@@ -264,10 +270,17 @@ export default function DiscoveryInputPack({
       setVersionPicker({});
       setGuidance({});
     } catch (failure) {
-      setError(
+      if (latest.current !== expected)
+        buildStaging.current = { key: "", outputs: {} };
+      const staged = Object.keys(buildStaging.current.outputs).length;
+      const message =
         failure instanceof Error
           ? failure.message
-          : "Build failed; previous workspace unchanged.",
+          : "Build failed; previous workspace unchanged.";
+      setError(
+        staged
+          ? `${message} ${staged} successful preparation output${staged === 1 ? " is" : "s are"} held for a targeted retry in this tab.`
+          : message,
       );
     } finally {
       locks.current.clear();

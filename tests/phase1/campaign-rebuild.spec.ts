@@ -1,6 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { phase1Fixture } from "../fixtures/phase1-input-pack";
-import { stageCampaignRebuild } from "../../lib/campaign-rebuild";
+import {
+  stageCampaignRebuild,
+  type CampaignRebuildStaging,
+} from "../../lib/campaign-rebuild";
+import { AgentRequestError } from "../../lib/ai/client";
 import {
   campaignStorageKey,
   discoveryStorageKey,
@@ -168,6 +172,116 @@ test("failed staging, stale same-campaign responses, and retry cannot mix old an
   );
   expect(retry.workspaceBuildId).toBeTruthy();
   expect(retry.preparation.outputs).toHaveLength(3);
+});
+
+test("a retryable Spark failure retries only Sparks and keeps successful sibling generations", async () => {
+  const fixture = phase1Fixture();
+  const calls: PreparationAgentId[] = [];
+  const next = await stageCampaignRebuild(
+    fixture.session,
+    async ({ agentId }) => {
+      calls.push(agentId);
+      if (
+        agentId === "sparks" &&
+        calls.filter((id) => id === "sparks").length === 1
+      )
+        throw new AgentRequestError(
+          "Transient Writer failure",
+          502,
+          "writer_request_failed",
+          true,
+        );
+      return fixture.versions[agentId];
+    },
+    "mock",
+  );
+  expect(calls.filter((id) => id === "reasonToBelieve")).toHaveLength(1);
+  expect(calls.filter((id) => id === "research")).toHaveLength(1);
+  expect(calls.filter((id) => id === "sparks")).toHaveLength(2);
+  expect(next.preparation.outputs).toHaveLength(3);
+});
+
+test("a later build reuses successful staged siblings for unchanged inputs", async () => {
+  const fixture = phase1Fixture();
+  const staging: CampaignRebuildStaging = { key: "", outputs: {} };
+  const calls: PreparationAgentId[] = [];
+  const generate = async ({ agentId }: { agentId: PreparationAgentId }) => {
+    calls.push(agentId);
+    if (
+      agentId === "sparks" &&
+      calls.filter((id) => id === "sparks").length < 3
+    )
+      throw new AgentRequestError(
+        "Transient Writer failure",
+        502,
+        "writer_request_failed",
+        true,
+      );
+    return fixture.versions[agentId];
+  };
+  await expect(
+    stageCampaignRebuild(fixture.session, generate, "mock", {}, staging),
+  ).rejects.toThrow("Build failed");
+  expect(Object.keys(staging.outputs).sort()).toEqual([
+    "reasonToBelieve",
+    "research",
+  ]);
+  const next = await stageCampaignRebuild(
+    fixture.session,
+    generate,
+    "mock",
+    {},
+    staging,
+  );
+  expect(next.preparation.outputs).toHaveLength(3);
+  expect(calls.filter((id) => id === "reasonToBelieve")).toHaveLength(1);
+  expect(calls.filter((id) => id === "research")).toHaveLength(1);
+  expect(calls.filter((id) => id === "sparks")).toHaveLength(3);
+  expect(staging.outputs).toEqual({});
+});
+
+test("staged outputs from one brief cannot be reused for another brief", async () => {
+  const first = phase1Fixture();
+  const second = phase1Fixture("xfinity_pro_source_text.txt");
+  const staging: CampaignRebuildStaging = { key: "", outputs: {} };
+  await expect(
+    stageCampaignRebuild(
+      first.session,
+      async ({ agentId }) => {
+        if (agentId === "sparks")
+          throw new AgentRequestError(
+            "Transient failure",
+            502,
+            "writer_request_failed",
+            true,
+          );
+        return first.versions[agentId];
+      },
+      "mock",
+      {},
+      staging,
+    ),
+  ).rejects.toThrow("Build failed");
+  expect(Object.keys(staging.outputs)).toHaveLength(2);
+  const calls: PreparationAgentId[] = [];
+  const next = await stageCampaignRebuild(
+    second.session,
+    async ({ agentId }) => {
+      calls.push(agentId);
+      return second.versions[agentId];
+    },
+    "mock",
+    {},
+    staging,
+  );
+  expect(calls.sort()).toEqual(["reasonToBelieve", "research", "sparks"]);
+  expect(
+    next.preparation.outputs.every(
+      (output) =>
+        output.versions[0].sourceBrief ===
+        second.session.preparation.sourceSnapshot,
+    ),
+  ).toBe(true);
 });
 
 test("a campaign change during staging discards every late replacement result", async () => {

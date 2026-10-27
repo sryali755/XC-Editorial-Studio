@@ -40,9 +40,18 @@ export function sparkSourceCatalog(
       });
     }
   }
-  return candidates
-    .sort((a, b) => b.score - a.score || a.start - b.start)
-    .slice(0, 80)
+  const selected = keywords.size
+    ? candidates
+        .sort((a, b) => b.score - a.score || a.start - b.start)
+        .slice(0, 80)
+    : candidates.length <= 80
+      ? candidates
+      : Array.from(
+          { length: 80 },
+          (_, index) =>
+            candidates[Math.floor((index * (candidates.length - 1)) / 79)],
+        );
+  return selected
     .sort((a, b) => a.start - b.start)
     .map(({ id, excerpt }) => ({ id, excerpt }));
 }
