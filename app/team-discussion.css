@@ -454,6 +454,9 @@
   color: #5d5285;
   border-radius: 50%;
 }
+.team-avatar-kevin.is-small {
+  border-radius: 50%;
+}
 .team-avatar-kevin img {
   position: absolute;
   inset: 0;
