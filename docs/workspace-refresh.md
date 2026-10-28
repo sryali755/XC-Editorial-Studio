@@ -1,8 +1,10 @@
 # Workspace refresh and restoration
 
-Browser refresh now restores the saved workspace. It does not delete campaigns or launch agent requests. This supersedes the earlier development clean-start behavior; no production/development startup path calls the automatic reset.
+Browser refresh during the same local server run restores the saved workspace. It does not delete campaigns or launch agent requests. Restarting the local development server starts a new run: the next page load clears XC workspace history before hydration, then opens an empty Input Pack. Production does not perform this automatic reset.
 
 Existing sessionStorage/IndexedDB restoration is retained. Source text, preparation outputs and versions, selections, conversations, saved considerations, strategy fields, intentional empty edits, human Brief Lines, approval histories/snapshots and generated briefs retain their prior values. This change does not add a cloud backup or recover data that was already erased by the previous clean-start mode. Persistence remains browser-local, with the existing “saved in this tab” status; cross-device or closed-tab recovery is not promised.
+
+The local restart reset removes only XC-owned sessionStorage, localStorage, and IndexedDB records, including saved projects. Unrelated browser data and credentials are left alone. It also runs on first load after this behavior is installed, so previously restored local history will not populate the workspace. No AI generation occurs during reset. The offline test server bypasses this local-development behavior so persistence regression fixtures remain meaningful.
 
 Restored preparation and Roundtable versions show **Saved results**. Newly generated versions are not labeled saved merely because an older version was restored. A notice explains that existing work was restored, not regenerated. Those labels are scoped to the restored campaign, so another campaign does not inherit them.
 

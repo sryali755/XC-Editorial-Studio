@@ -1,6 +1,6 @@
 # Development clean-start mode
 
-> **Superseded:** Automatic clean-start on reload has been removed at the user's request. Refresh now restores the saved workspace without generating agents. See [current refresh behavior](workspace-refresh.md). The material below records the earlier implementation and is historical, not the current operating instructions.
+> **Superseded:** Automatic clean-start on every reload was removed. Refresh within a local server run now restores the saved workspace, while restarting the local development server clears XC history on the next page load. See [current refresh and restart behavior](workspace-refresh.md). The material below records the earlier implementation and is historical, not the current operating instructions.
 
 ## Behavior
 

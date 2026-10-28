@@ -28,6 +28,10 @@ import {
   openWorkspaceStore,
   type WorkspaceStore,
 } from "@/lib/browser-workspace-store";
+import {
+  clearWorkspaceStorage,
+  developmentServerEpochKey,
+} from "@/lib/development-clean-start";
 import { approveDiscoveryCanvas } from "@/lib/discovery-handoff";
 import { reviewWorkspaceCampaignName } from "@/lib/campaign-identity";
 import { campaignDisplayLabel } from "@/lib/campaign-naming";
@@ -135,8 +139,10 @@ function ContextCheckbox({
 
 export default function InsightDiscoveryStudio({
   aiStatus,
+  serverEpoch,
 }: {
   aiStatus: AIStatus;
+  serverEpoch?: string;
 }) {
   const [session, setSession] = useState(emptyStudio);
   const sessionRef = useRef(session);
@@ -168,7 +174,23 @@ export default function InsightDiscoveryStudio({
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      void openWorkspaceStore(sessionStorage).then((store) => {
+      void (async () => {
+        let store = await openWorkspaceStore(sessionStorage);
+        if (serverEpoch) {
+          const tabEpoch = sessionStorage.getItem(developmentServerEpochKey);
+          const originEpoch = localStorage.getItem(developmentServerEpochKey);
+          if (tabEpoch !== serverEpoch && originEpoch !== serverEpoch) {
+            // Clear XC work before hydration. reset() also removes IndexedDB
+            // drafts and waits for any queued writes so history cannot return.
+            await store.reset(localStorage);
+            store = await openWorkspaceStore(sessionStorage);
+          } else if (tabEpoch !== serverEpoch) {
+            // Another tab already cleared the shared store after this restart.
+            clearWorkspaceStorage(sessionStorage);
+          }
+          sessionStorage.setItem(developmentServerEpochKey, serverEpoch);
+          localStorage.setItem(developmentServerEpochKey, serverEpoch);
+        }
         workspaceStore.current = store;
         compactStoredWorkspace(
           sessionStorage,
@@ -191,10 +213,14 @@ export default function InsightDiscoveryStudio({
         setSession(restored.session);
         setDiscovery(restored.discovery);
         setReady(true);
-      });
+      })().catch(() =>
+        setStorageError(
+          "The workspace could not be cleared after the server restart. Browser storage is unavailable; old history was not loaded.",
+        ),
+      );
     });
     return () => cancelAnimationFrame(frame);
-  }, []);
+  }, [serverEpoch]);
 
   function persist(key: string, value: unknown, failureMessage: string) {
     if (resetInProgress.current) return;

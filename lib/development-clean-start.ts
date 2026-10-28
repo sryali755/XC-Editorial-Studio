@@ -1,4 +1,5 @@
 // Deliberately narrow: never remove unrelated origin storage or credentials.
+export const developmentServerEpochKey = "xc-development-server-epoch-v1";
 export function isWorkspaceStorageKey(key: string): boolean {
   return (
     key === "xc-insight-studio-v1" ||

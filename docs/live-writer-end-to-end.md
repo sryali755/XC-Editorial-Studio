@@ -164,6 +164,9 @@ agents; the document filename is checked against that checkpoint's source.
 `XC_LIVE_REUSE_FINDINGS=1` checks existing findings from that test checkpoint
 without generating new answers. Seed restoration runs only in an empty tab,
 so a reload cannot overwrite the updated test state.
+Local development server restarts now clear XC workspace data on the next page
+load. Reuse a checkpoint only within the same server run; start a fresh live
+test after a restart.
 
 The live Gateway browser run completed all five lenses with six successful
 application requests: Culture received one automatic post-response correction.
