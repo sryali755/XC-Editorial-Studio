@@ -70,9 +70,17 @@ export type TeamDiscussionMessage = {
   addressedTo?: TeamAgentId[];
   relatedTo?: string;
   offersDeeperResearch?: boolean;
+  provider?: "mock" | "openai" | "writer";
+  evidenceState?: "evidence_supported" | "research_gap";
+  findings?: {
+    title: string;
+    text: string;
+    evidenceState: "evidence_supported" | "research_gap";
+    citations: { source: string; locator?: string; excerpt: string }[];
+  }[];
 };
 export type DeeperResearchStatus =
-  "offered" | "declined" | "generating" | "completed";
+  "offered" | "declined" | "generating" | "completed" | "failed";
 export type TeamDiscussionProps = {
   messages: TeamDiscussionMessage[];
   savedIds: Set<string>;
@@ -88,8 +96,11 @@ export type TeamDiscussionProps = {
   failNext: boolean;
   onFailNextChange: (value: boolean) => void;
   deeperResearchStatus: DeeperResearchStatus;
-  onApproveDeeperResearch: () => void;
+  onApproveDeeperResearch: (message: TeamDiscussionMessage) => void;
   onDeclineDeeperResearch: () => void;
+  live?: boolean;
+  error?: string;
+  canSend?: boolean;
 };
 
 export function authorName(author: TeamDiscussionMessage["author"]) {
@@ -156,7 +167,7 @@ export function AgentStrip() {
 export function EmptyConversation() {
   return (
     <p className="team-empty-conversation">
-      No messages yet. Ask the team a question to start a mock discussion.
+      No messages yet. Ask the team a question to start a discussion.
     </p>
   );
 }
@@ -172,6 +183,8 @@ export function MessageCard({
   onApproveDeeperResearch,
   onDeclineDeeperResearch,
   showResearchOffer = true,
+  live = false,
+  researchBusy = false,
 }: {
   message: TeamDiscussionMessage;
   saved: boolean;
@@ -180,9 +193,11 @@ export function MessageCard({
   replyContext: string;
   compact?: boolean;
   researchStatus?: DeeperResearchStatus;
-  onApproveDeeperResearch?: () => void;
+  onApproveDeeperResearch?: (message: TeamDiscussionMessage) => void;
   onDeclineDeeperResearch?: () => void;
   showResearchOffer?: boolean;
+  live?: boolean;
+  researchBusy?: boolean;
 }) {
   const avatar = (
     <AgentAvatar agentId={message.author} size={compact ? "small" : "normal"} />
@@ -201,12 +216,49 @@ export function MessageCard({
             <span className="team-question-tag">Question</span>
           )}
           {message.author !== "kevin" && (
-            <span className="team-agent-tag">Mock perspective</span>
+            <span className="team-agent-tag">
+              {message.provider && message.provider !== "mock"
+                ? message.evidenceState === "research_gap"
+                  ? "Research gap"
+                  : "Supplied-source analysis"
+                : "Mock perspective"}
+            </span>
           )}
         </header>
         <span className="team-message-context">{replyContext}</span>
         <div className="team-message-bubble">
-          <p className="team-message-text">{message.text}</p>
+          {message.findings?.length ? (
+            <div className="team-message-findings">
+              {message.findings.map((finding, index) => (
+                <section key={`${finding.title}-${index}`}>
+                  <b>{finding.title}</b>
+                  <p className="team-message-text">{finding.text}</p>
+                  {finding.citations.length ? (
+                    <details className="team-message-sources">
+                      <summary>Sources ({finding.citations.length})</summary>
+                      {finding.citations.map((citation, citationIndex) => (
+                        <p key={`${citation.source}-${citationIndex}`}>
+                          <b>
+                            {citation.source}
+                            {citation.locator ? ` · ${citation.locator}` : ""}
+                          </b>
+                          <br />
+                          {citation.excerpt}
+                        </p>
+                      ))}
+                    </details>
+                  ) : (
+                    <small className="team-message-gap">
+                      Research gap · No supporting source found in the supplied
+                      brief.
+                    </small>
+                  )}
+                </section>
+              ))}
+            </div>
+          ) : (
+            <p className="team-message-text">{message.text}</p>
+          )}
         </div>
         {message.offersDeeperResearch &&
           showResearchOffer &&
@@ -217,23 +269,28 @@ export function MessageCard({
             >
               <div className="team-research-offer-heading">
                 <Search size={14} />
-                <span>OPTIONAL DEEPER LOOK · MOCK</span>
+                <span>
+                  OPTIONAL DEEPER LOOK · {live ? "SUPPLIED BRIEF" : "MOCK"}
+                </span>
               </div>
               <p>
-                Want me to look for mover-specific evidence before we treat this
-                as a spending driver?
+                {live
+                  ? "Want the Consumer Agent to examine this question more deeply using the supplied brief?"
+                  : "Want me to look for mover-specific evidence before we treat this as a spending driver?"}
               </p>
               {researchStatus === "offered" && (
                 <>
                   <small>
-                    Approval only simulates a follow-up here. No research
-                    sources or AI models will be queried.
+                    {live
+                      ? "Approval starts another validated AI analysis of supplied sources. It does not search external sources."
+                      : "Approval only simulates a follow-up here. No research sources or AI models will be queried."}
                   </small>
                   <div className="team-research-actions">
                     <button
                       type="button"
                       className="team-research-approve"
-                      onClick={onApproveDeeperResearch}
+                      onClick={() => onApproveDeeperResearch?.(message)}
+                      disabled={researchBusy}
                     >
                       <Check size={13} />
                       Approve deeper look
@@ -256,13 +313,21 @@ export function MessageCard({
               )}
               {researchStatus === "generating" && (
                 <p className="team-research-outcome" role="status">
-                  Approved · preparing the illustrative mock follow-up…
+                  {live
+                    ? "Approved · analyzing the supplied brief…"
+                    : "Approved · preparing the illustrative mock follow-up…"}
                 </p>
               )}
               {researchStatus === "completed" && (
                 <p className="team-research-outcome" role="status">
-                  Mock follow-up added below. No sources were queried; this is
-                  not verified research.
+                  {live
+                    ? "Follow-up added below. Review its source citations and gaps."
+                    : "Mock follow-up added below. No sources were queried; this is not verified research."}
+                </p>
+              )}
+              {researchStatus === "failed" && (
+                <p className="team-research-outcome" role="alert">
+                  The deeper look failed. Retry the failed agent below.
                 </p>
               )}
             </div>
@@ -312,6 +377,8 @@ export function MessageComposer({
   failNext,
   onFailNextChange,
   disabled,
+  live = false,
+  canSend = true,
 }: {
   composerId: string;
   draft: string;
@@ -322,6 +389,8 @@ export function MessageComposer({
   failNext: boolean;
   onFailNextChange: (value: boolean) => void;
   disabled: boolean;
+  live?: boolean;
+  canSend?: boolean;
 }) {
   const [mention, setMention] = useState<{
     start: number;
@@ -416,20 +485,22 @@ export function MessageComposer({
             </div>
           )}
           <div className="team-composer-actions">
-            <label className="team-fail-toggle">
-              <input
-                type="checkbox"
-                checked={failNext}
-                onChange={(event) =>
-                  onFailNextChange(event.currentTarget.checked)
-                }
-              />
-              Simulate next response failure
-            </label>
+            {!live && (
+              <label className="team-fail-toggle">
+                <input
+                  type="checkbox"
+                  checked={failNext}
+                  onChange={(event) =>
+                    onFailNextChange(event.currentTarget.checked)
+                  }
+                />
+                Simulate next response failure
+              </label>
+            )}
             <button
               className="button primary"
               type="submit"
-              disabled={!draft.trim() || disabled}
+              disabled={!draft.trim() || disabled || !canSend}
             >
               <Send size={14} />
               Send to team
@@ -447,12 +518,14 @@ export function SavedInsightsPanel({
   onToggleSave,
   onReply,
   compact = false,
+  live = false,
 }: {
   messages: TeamDiscussionMessage[];
   savedIds: Set<string>;
   onToggleSave: (messageId: string) => void;
   onReply: (message: TeamDiscussionMessage) => void;
   compact?: boolean;
+  live?: boolean;
 }) {
   const saved = messages.filter((message) => savedIds.has(message.id));
   const byId = new Map(messages.map((message) => [message.id, message]));
@@ -462,8 +535,8 @@ export function SavedInsightsPanel({
         <span className="eyebrow">PRIVATE TO THIS PROTOTYPE</span>
         <h3>Saved strategic considerations</h3>
         <p>
-          {saved.length} saved mock{" "}
-          {saved.length === 1 ? "insight" : "insights"}
+          {saved.length} saved {live ? "brief" : "mock"}{" "}
+          {saved.length === 1 ? "response" : "responses"}
         </p>
       </header>
       {saved.length ? (
@@ -478,13 +551,14 @@ export function SavedInsightsPanel({
               onToggleSave={() => onToggleSave(message.id)}
               onReply={() => onReply(message)}
               showResearchOffer={false}
+              live={live}
             />
           ))}
         </div>
       ) : (
         <p className="team-empty-saved">
-          Save an agent response to keep it in view here. Prototype saves never
-          enter your real Input Pack or strategy.
+          Save an agent response to keep it in view here. Review its sources
+          before using it in strategy.
         </p>
       )}
     </aside>
@@ -512,9 +586,13 @@ export function getReplyContext(
 export function GenerationStatus({
   status,
   onRetry,
+  live = false,
+  error,
 }: {
   status: TeamDiscussionProps["status"];
   onRetry: () => void;
+  live?: boolean;
+  error?: string;
 }) {
   if (status === "idle") return null;
   return (
@@ -525,14 +603,21 @@ export function GenerationStatus({
     >
       <span className="team-status-dot" />
       <span>
-        {status === "generating" && "Mock agents are considering the question…"}
-        {status === "completed" && "Mock responses complete"}
+        {status === "generating" &&
+          (live
+            ? "Agents are researching the supplied brief…"
+            : "Mock agents are considering the question…")}
+        {status === "completed" &&
+          (live ? "Brief analysis complete" : "Mock responses complete")}
         {status === "failed" &&
-          "Mock response failed. Your question is still here."}
+          (error ||
+            (live
+              ? "Some agents could not complete the brief analysis. Successful replies are preserved."
+              : "Mock response failed. Your question is still here."))}
       </span>
       {status === "failed" && (
         <button type="button" className="team-action" onClick={onRetry}>
-          Retry mock response
+          {live ? "Retry failed agents" : "Retry mock response"}
         </button>
       )}
     </div>

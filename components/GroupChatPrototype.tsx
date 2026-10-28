@@ -70,10 +70,17 @@ export default function GroupChatPrototype(props: TeamDiscussionProps) {
                   researchStatus={props.deeperResearchStatus}
                   onApproveDeeperResearch={props.onApproveDeeperResearch}
                   onDeclineDeeperResearch={props.onDeclineDeeperResearch}
+                  live={props.live}
+                  researchBusy={props.status === "generating"}
                 />
               </div>
             ))}
-            <GenerationStatus status={props.status} onRetry={props.onRetry} />
+            <GenerationStatus
+              status={props.status}
+              onRetry={props.onRetry}
+              live={props.live}
+              error={props.error}
+            />
           </div>
           <MessageComposer
             composerId="team-discussion-group-message"
@@ -85,6 +92,8 @@ export default function GroupChatPrototype(props: TeamDiscussionProps) {
             failNext={props.failNext}
             onFailNextChange={props.onFailNextChange}
             disabled={props.status === "generating"}
+            live={props.live}
+            canSend={props.canSend}
           />
         </div>
         {showSaved && (
@@ -93,6 +102,7 @@ export default function GroupChatPrototype(props: TeamDiscussionProps) {
             savedIds={props.savedIds}
             onToggleSave={props.onToggleSave}
             onReply={props.onReply}
+            live={props.live}
           />
         )}
       </div>

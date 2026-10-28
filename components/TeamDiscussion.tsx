@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { generateDiscoveryVersion } from "@/lib/discovery";
+import type { StrategyInputPack } from "@/lib/types";
 import GroupChatPrototype from "./GroupChatPrototype";
 import HybridRoundtablePrototype from "./HybridRoundtablePrototype";
 import ThreadedDiscussionPrototype from "./ThreadedDiscussionPrototype";
@@ -19,7 +21,10 @@ type AgentJob = {
   agentIds: TeamAgentId[];
   fail: boolean;
   status: TeamDiscussionProps["status"];
+  question: string;
+  deeper?: boolean;
 };
+type ResearchMode = "checking" | "live" | "mock" | "unavailable";
 
 export type TeamDiscussionContext = {
   contextVersion: string;
@@ -100,6 +105,25 @@ function contextText(value: string, fallback: string, limit = 260) {
   return cleaned.length > limit
     ? `${cleaned.slice(0, limit).trimEnd()}…`
     : cleaned;
+}
+
+function briefQuestions(context: TeamDiscussionContext) {
+  if (!context.hasInputPack) return [];
+  const objective = contextText(
+    context.objective,
+    "the campaign objective",
+    110,
+  );
+  const audience = contextText(context.audience, "the intended audience", 100);
+  const product = contextText(context.product, "the product", 80);
+  const channel = contextText(context.channel, "the planned channel", 80);
+  return [
+    `What does the brief support about the objective to ${objective}, and what still needs evidence?`,
+    `What needs or barriers might matter to ${audience}, and which are documented versus assumptions?`,
+    `Which benefits of ${product} have support in the brief, and which claims need proof or approval?`,
+    `What alternatives to adopting ${product} should we investigate, including doing nothing?`,
+    `How could ${channel} address this audience within the brief's constraints, and what should we validate first?`,
+  ];
 }
 
 function campaignMessages(context: TeamDiscussionContext) {
@@ -228,7 +252,11 @@ function mentionedAgents(text: string) {
   );
 }
 
-function useTeamConversation(campaignContext: TeamDiscussionContext) {
+function useTeamConversation(
+  campaignContext: TeamDiscussionContext,
+  pack: StrategyInputPack,
+  mode: ResearchMode,
+) {
   const [messages, setMessages] = useState<TeamDiscussionMessage[]>([]);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [draft, setDraft] = useState("");
@@ -236,11 +264,15 @@ function useTeamConversation(campaignContext: TeamDiscussionContext) {
     null,
   );
   const [job, setJob] = useState<AgentJob | null>(null);
+  const [error, setError] = useState("");
+  const [failedAgents, setFailedAgents] = useState<TeamAgentId[]>([]);
+  const controller = useRef<AbortController | null>(null);
   const [failNext, setFailNext] = useState(false);
   const [deeperResearchStatus, setDeeperResearchStatus] =
     useState<TeamDiscussionProps["deeperResearchStatus"]>("offered");
 
   useEffect(() => {
+    if (mode !== "mock") return;
     if (!job || job.status !== "generating") return;
     const timer = window.setTimeout(() => {
       if (job.fail) {
@@ -268,9 +300,113 @@ function useTeamConversation(campaignContext: TeamDiscussionContext) {
       );
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [job, campaignContext]);
+  }, [job, campaignContext, mode]);
+
+  useEffect(() => () => controller.current?.abort(), []);
+
+  async function runLive(nextJob: AgentJob) {
+    const requestController = new AbortController();
+    controller.current = requestController;
+    const failures: { agent: TeamAgentId; reason: string }[] = [];
+    let index = 0;
+    const workers = Array.from(
+      { length: Math.min(2, nextJob.agentIds.length) },
+      async () => {
+        while (
+          index < nextJob.agentIds.length &&
+          !requestController.signal.aborted
+        ) {
+          const agentId = nextJob.agentIds[index++];
+          try {
+            const version = await generateDiscoveryVersion({
+              lensId: agentId,
+              pack,
+              question: nextJob.question,
+              investigationType: "problem",
+              action: nextJob.deeper ? "explore_deeper" : "initial",
+              guidance: nextJob.question,
+              previous: [],
+              signal: requestController.signal,
+            });
+            if (requestController.signal.aborted) return;
+            if (version.provider === "mock")
+              throw new Error(
+                "The server returned mock output instead of live research. Check its AI mode and retry.",
+              );
+            const finding = version.findings[0];
+            if (!finding)
+              throw new Error("The agent returned no validated finding.");
+            const findings = version.findings.map((item) => ({
+              title: item.title,
+              text: item.whatWeFound,
+              evidenceState: item.evidenceState,
+              citations: item.evidence.map(({ source, locator, excerpt }) => ({
+                source,
+                locator,
+                excerpt,
+              })),
+            }));
+            setMessages((current) =>
+              current.some(
+                (message) => message.id === `${nextJob.id}-${agentId}`,
+              )
+                ? current
+                : [
+                    ...current,
+                    {
+                      id: `${nextJob.id}-${agentId}`,
+                      author: agentId,
+                      text: finding.whatWeFound,
+                      evidenceState: findings.every(
+                        (item) => item.evidenceState === "research_gap",
+                      )
+                        ? "research_gap"
+                        : "evidence_supported",
+                      findings,
+                      provider: version.provider,
+                      offersDeeperResearch:
+                        agentId === "consumer" && !nextJob.deeper,
+                      threadId: nextJob.threadId,
+                      replyTo: nextJob.messageId,
+                    },
+                  ],
+            );
+          } catch (failure) {
+            if (!requestController.signal.aborted)
+              failures.push({
+                agent: agentId,
+                reason:
+                  failure instanceof Error
+                    ? failure.message
+                    : "The agent failed.",
+              });
+          }
+        }
+      },
+    );
+    await Promise.all(workers);
+    if (requestController.signal.aborted) return;
+    setFailedAgents(failures.map(({ agent }) => agent));
+    setError(
+      failures
+        .map(
+          ({ agent, reason }) =>
+            `${teamAgents.find((item) => item.id === agent)?.name}: ${reason}`,
+        )
+        .join(" "),
+    );
+    setJob((current) =>
+      current?.id === nextJob.id
+        ? { ...current, status: failures.length ? "failed" : "completed" }
+        : current,
+    );
+    if (nextJob.deeper)
+      setDeeperResearchStatus(failures.length ? "failed" : "completed");
+    controller.current = null;
+  }
 
   useEffect(() => {
+    if (mode !== "mock") return;
     if (deeperResearchStatus !== "generating") return;
     const timer = window.setTimeout(() => {
       setMessages((current) => {
@@ -290,11 +426,20 @@ function useTeamConversation(campaignContext: TeamDiscussionContext) {
       setDeeperResearchStatus("completed");
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [deeperResearchStatus, campaignContext, messages]);
+  }, [deeperResearchStatus, campaignContext, messages, mode]);
 
-  function send(text: string, retryJob?: AgentJob) {
+  function send(text: string, retryJob?: AgentJob, deeper = false) {
     if (retryJob) {
-      setJob({ ...retryJob, status: "generating", fail: false });
+      const retry = {
+        ...retryJob,
+        agentIds: mode === "live" ? failedAgents : retryJob.agentIds,
+        status: "generating" as const,
+        fail: false,
+      };
+      setJob(retry);
+      setError("");
+      if (retry.deeper) setDeeperResearchStatus("generating");
+      if (mode === "live") void runLive(retry);
       return;
     }
     const id = `kevin-${crypto.randomUUID()}`;
@@ -323,12 +468,18 @@ function useTeamConversation(campaignContext: TeamDiscussionContext) {
       agentIds: targets.map((agent) => agent.id),
       fail: failNext,
       status: "generating",
+      question: text,
+      deeper,
     };
     setMessages((current) => [...current, message]);
     setJob(nextJob);
     setDraft("");
     setReplyTarget(null);
     setFailNext(false);
+    setError("");
+    setFailedAgents([]);
+    setDeeperResearchStatus(deeper ? "generating" : "offered");
+    if (mode === "live") void runLive(nextJob);
   }
 
   const prototypeProps: TeamDiscussionProps = {
@@ -354,14 +505,24 @@ function useTeamConversation(campaignContext: TeamDiscussionContext) {
     failNext,
     onFailNextChange: setFailNext,
     deeperResearchStatus,
-    onApproveDeeperResearch: () =>
-      setDeeperResearchStatus((current) =>
-        current === "offered" ? "generating" : current,
-      ),
+    onApproveDeeperResearch: (message) =>
+      mode === "live"
+        ? send(
+            `@Consumer Please investigate this question more deeply using the supplied brief: ${messages.find((item) => item.id === message.replyTo)?.text ?? campaignContext.objective}`,
+            undefined,
+            true,
+          )
+        : setDeeperResearchStatus((current) =>
+            current === "offered" ? "generating" : current,
+          ),
     onDeclineDeeperResearch: () =>
       setDeeperResearchStatus((current) =>
         current === "offered" ? "declined" : current,
       ),
+    live: mode === "live",
+    canSend:
+      (mode === "live" && campaignContext.hasInputPack) || mode === "mock",
+    error,
   };
 
   return {
@@ -373,6 +534,8 @@ function useTeamConversation(campaignContext: TeamDiscussionContext) {
       setDraft("");
       setReplyTarget(null);
       setJob(null);
+      setError("");
+      setFailedAgents([]);
       setFailNext(false);
       setDeeperResearchStatus("offered");
     },
@@ -381,15 +544,37 @@ function useTeamConversation(campaignContext: TeamDiscussionContext) {
 
 export default function TeamDiscussion({
   campaignContext,
+  pack,
 }: {
   campaignContext: TeamDiscussionContext;
+  pack: StrategyInputPack;
 }) {
   const [layout, setLayout] = useState<Layout>("group-chat");
+  const [mode, setMode] = useState<ResearchMode>("checking");
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/ai/agent", { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("AI status unavailable");
+        const status = await response.json();
+        setMode(
+          status.configured
+            ? status.mode === "live"
+              ? "live"
+              : "mock"
+            : "unavailable",
+        );
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setMode("unavailable");
+      });
+    return () => controller.abort();
+  }, []);
   // Each prototype owns its conversation, drafts, saved items, and mock jobs.
   // Keep all three state hooks mounted so switching layouts preserves each one's work.
-  const group = useTeamConversation(campaignContext);
-  const threaded = useTeamConversation(campaignContext);
-  const hybrid = useTeamConversation(campaignContext);
+  const group = useTeamConversation(campaignContext, pack, mode);
+  const threaded = useTeamConversation(campaignContext, pack, mode);
+  const hybrid = useTeamConversation(campaignContext, pack, mode);
   const active =
     layout === "group-chat"
       ? group
@@ -413,29 +598,46 @@ export default function TeamDiscussion({
     >
       <header className="team-discussion-intro">
         <div>
-          <span className="eyebrow">EXPERIMENTAL · UI PROTOTYPES</span>
+          <span className="eyebrow">TEAM DISCUSSION · BETA</span>
           <h2>Team Discussion</h2>
           <p>
             Compare three ways Kevin Mercer and the five agents could discuss
-            the active campaign. Responses are illustrative mock content, not AI
-            output or verified research.
+            the active campaign. Live responses analyze supplied brief sources;
+            source claims and agent interpretations still need human review.
           </p>
         </div>
         <span className="team-mock-badge">
-          {!active.messages.length
-            ? "NO CONVERSATION YET"
-            : campaignContext.hasInputPack
-              ? "MOCK RESPONSES · INPUT-PACK CONTEXT"
-              : "MOCK SAMPLE · NO INPUT PACK"}
+          {mode === "live"
+            ? "LIVE BRIEF ANALYSIS"
+            : mode === "checking"
+              ? "CHECKING AI CONNECTION"
+              : mode === "unavailable"
+                ? "AI UNAVAILABLE"
+                : !active.messages.length
+                  ? "NO CONVERSATION YET"
+                  : campaignContext.hasInputPack
+                    ? "MOCK RESPONSES · INPUT-PACK CONTEXT"
+                    : "MOCK SAMPLE · NO INPUT PACK"}
         </span>
       </header>
-      <button
-        type="button"
-        className="team-secondary-button"
-        onClick={active.loadSample}
-      >
-        Load sample conversation
-      </button>
+      {mode === "mock" && (
+        <button
+          type="button"
+          className="team-secondary-button"
+          onClick={active.loadSample}
+        >
+          Load sample conversation
+        </button>
+      )}
+      {mode === "unavailable" && (
+        <p role="alert">
+          The AI service is unavailable. Check the server configuration and
+          retry after it is restored.
+        </p>
+      )}
+      {mode === "live" && !campaignContext.hasInputPack && (
+        <p role="alert">Add an IMC brief before asking the live agents.</p>
+      )}
       {campaignContext.hasInputPack && (
         <div className="team-campaign-context" role="note">
           <b>Active Input Pack: {campaignContext.campaignName}</b>
@@ -465,9 +667,37 @@ export default function TeamDiscussion({
             </span>
           )}
           <small>
-            Agent messages are local mock perspectives framed by these fields.
-            No AI or research source is queried, and mock saves do not enter
-            campaign findings or strategy.
+            {mode === "live"
+              ? "Agents analyze supplied brief sources through the current AI provider. No external research source is connected. Review citations and gaps before using an answer in strategy."
+              : "In mock mode, replies are illustrative and no research source is queried."}
+          </small>
+        </div>
+      )}
+      {briefQuestions(campaignContext).length > 0 && (
+        <div
+          className="team-starter-questions"
+          aria-label="Questions from the active brief"
+        >
+          <b>Five questions Kevin can ask the team</b>
+          <div>
+            {briefQuestions(campaignContext).map((question, index) => (
+              <button
+                key={index}
+                type="button"
+                disabled={
+                  mode === "checking" ||
+                  mode === "unavailable" ||
+                  active.prototypeProps.status === "generating"
+                }
+                onClick={() => active.prototypeProps.onDraftChange(question)}
+              >
+                {index + 1}. {question}
+              </button>
+            ))}
+          </div>
+          <small>
+            Select a question, then press Send to team. An unaddressed question
+            goes to all five agents.
           </small>
         </div>
       )}

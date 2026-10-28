@@ -133,6 +133,9 @@ export function knownDiscoveryFindings(state: DiscoveryState) {
         // ID-only keys keep pre-Insight-Discovery browser sessions readable.
         if (!byId.has(finding.id)) byId.set(finding.id, finding);
       }
+  for (const version of state.teamChatVersions ?? [])
+    for (const finding of version.findings)
+      byId.set(discoveryFindingRef(finding), finding);
   return byId;
 }
 

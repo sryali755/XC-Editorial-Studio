@@ -22,13 +22,16 @@ import {
 } from "@/lib/discovery-state";
 import { campaignDisplayLabel } from "@/lib/campaign-naming";
 import type {
+  DiscoveryFinding,
   DiscoveryRetryRequest,
+  DiscoveryRunVersion,
   DiscoveryState,
   StrategyInputPack,
 } from "@/lib/types";
 import InsightDiscoveryWorkspace from "./InsightDiscoveryWorkspace";
 import DiscoveryRoundTableV2 from "./DiscoveryRoundTableV2";
 import TeamDiscussion, { type TeamDiscussionContext } from "./TeamDiscussion";
+import TeamChatV2 from "./TeamChatV2";
 import { useDiscoveryDialog } from "./useDiscoveryDialog";
 import {
   batchCrossLensOverlaps,
@@ -124,12 +127,12 @@ export default function InsightDiscoveryFeature({
   getCurrentPack?: () => StrategyInputPack;
   restoredVersionIds?: string[];
 }) {
-  const [discussionView, setDiscussionView] = useState<"individual" | "team">(
-    "individual",
-  );
+  const [discussionView, setDiscussionView] = useState<
+    "individual" | "team" | "chat"
+  >("individual");
   const teamDiscussionContext = useMemo<TeamDiscussionContext>(
     () => ({
-      contextVersion: pack.workspaceBuildId ?? inputPackVersion(pack),
+      contextVersion: inputPackVersion(pack),
       campaignName: campaignDisplayLabel(pack),
       objective: pack.objective,
       audience: pack.audience,
@@ -137,12 +140,7 @@ export default function InsightDiscoveryFeature({
       channel: pack.channel,
       constraints: pack.constraints,
       reasonToBelieve: pack.reasonToBelieve,
-      hasInputPack: Boolean(
-        pack.workspaceBuildId ||
-        pack.parsedIMC ||
-        pack.preparationSource?.trim() ||
-        pack.campaignName.trim(),
-      ),
+      hasInputPack: Boolean(pack.parsedIMC?.sourceText.trim()),
     }),
     [pack],
   );
@@ -184,6 +182,34 @@ export default function InsightDiscoveryFeature({
     // A parent tab may have edited the human-owned canvas before this mounted
     // research component receives its next render. Start from that latest state.
     commit(change(getCurrentState?.() ?? draftRef.current));
+  }
+
+  // Group Chat (test) saves join the shared saved-insight list, so they reach
+  // the Dynamic Input Pack and Finalize Strategy like Round Table saves.
+  function toggleTeamChatSave(
+    version: DiscoveryRunVersion,
+    finding: DiscoveryFinding,
+  ) {
+    const ref = discoveryFindingRef(finding);
+    const current = getCurrentState?.() ?? draftRef.current;
+    if (
+      version.provider !== "writer" &&
+      version.provider !== "openai" &&
+      !current.savedFindingIds.includes(ref)
+    )
+      return;
+    update((current) => {
+      const versions = current.teamChatVersions ?? [];
+      return {
+        ...current,
+        teamChatVersions: versions.some((item) => item.id === version.id)
+          ? versions
+          : [...versions, version],
+        savedFindingIds: current.savedFindingIds.includes(ref)
+          ? current.savedFindingIds.filter((id) => id !== ref)
+          : [...current.savedFindingIds, ref],
+      };
+    });
   }
 
   // The primary page stays mounted behind the other tabs. Strategy edits made
@@ -805,6 +831,17 @@ export default function InsightDiscoveryFeature({
         >
           Team Discussion <span>Experimental</span>
         </button>
+        <button
+          id="team-chat-v2-tab"
+          type="button"
+          role="tab"
+          aria-selected={discussionView === "chat"}
+          aria-controls="team-chat-v2-panel"
+          className={discussionView === "chat" ? "is-active" : ""}
+          onClick={() => setDiscussionView("chat")}
+        >
+          Group Chat <span>New design · Test</span>
+        </button>
       </div>
       <div
         id="individual-roundtable-panel"
@@ -823,6 +860,20 @@ export default function InsightDiscoveryFeature({
         <TeamDiscussion
           key={JSON.stringify(teamDiscussionContext)}
           campaignContext={teamDiscussionContext}
+          pack={pack}
+        />
+      </div>
+      <div
+        id="team-chat-v2-panel"
+        role="tabpanel"
+        aria-labelledby="team-chat-v2-tab"
+        hidden={discussionView !== "chat"}
+      >
+        <TeamChatV2
+          key={inputPackVersion(pack)}
+          pack={pack}
+          state={draft}
+          onToggleSave={toggleTeamChatSave}
         />
       </div>
     </>

@@ -406,6 +406,9 @@ export interface DiscoveryState {
   selectedLensId: DiscoveryLensId;
   runs: DiscoveryLensRun[];
   savedFindingIds: string[];
+  // Answers saved from Group Chat (test). Kept outside runs so the
+  // Individual Round Table's history is unchanged.
+  teamChatVersions?: DiscoveryRunVersion[];
   selectedFindingIds: string[];
   findingThreads: Record<string, DiscoveryThreadMessage[]>;
   connectionNotes: DiscoveryConnectionNote[];

@@ -234,9 +234,7 @@ for (const campaignIndex of [0, 1]) {
       });
       const first = agent.locator(".v2-finding").first();
       await expect(first.locator("h4")).toHaveText(expectedFinding.title);
-      await expect(first.locator(".v2-result-type")).toContainText(
-        "Agent interpretation · unverified",
-      );
+      await expect(first.locator(".v2-result-type")).toHaveCount(0);
       await expect(first.locator(".v2-evidence-source")).toContainText(
         expectedFinding.supported
           ? `IMC brief — source page ${scenario.sourcePage}`
@@ -247,9 +245,7 @@ for (const campaignIndex of [0, 1]) {
         await expect(agent.locator(".v2-finding")).toHaveCount(1);
         await agent.getByRole("button", { name: "Next finding" }).click();
         await expect(first.locator("h4")).toHaveText(expectedFinding.secondGap);
-        await expect(first.locator(".v2-result-type")).toContainText(
-          "Research gap · Agent interpretation · unverified",
-        );
+        await expect(first.locator(".v2-result-type")).toHaveCount(0);
         await agent.getByRole("button", { name: "Previous finding" }).click();
         await expect(first.locator("h4")).toHaveText(expectedFinding.title);
       }

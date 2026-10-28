@@ -342,13 +342,6 @@ export default function DiscoveryRoundTableV2(props: Props) {
     const sources = discoverySourceDocuments(discoveryFoundation(sourcePack));
     return (
       <article className="v2-finding" key={ref} aria-label={finding.title}>
-        <span className="v2-result-type">
-          {finding.evidenceState === "research_gap"
-            ? "Research gap · Agent interpretation · unverified"
-            : "Agent interpretation · unverified"}
-          {finding.provider === "mock" ? " · DEMO DATA" : ""} · V
-          {finding.runVersion - 1}
-        </span>
         <h4>{finding.title}</h4>
         <p>{finding.whatWeFound}</p>
         <p className="v2-evidence-source">

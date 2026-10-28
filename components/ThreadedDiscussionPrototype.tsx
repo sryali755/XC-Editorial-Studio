@@ -119,6 +119,8 @@ export default function ThreadedDiscussionPrototype(
                           onDeclineDeeperResearch={
                             props.onDeclineDeeperResearch
                           }
+                          live={props.live}
+                          researchBusy={props.status === "generating"}
                           compact
                         />
                       </div>
@@ -128,7 +130,12 @@ export default function ThreadedDiscussionPrototype(
               </article>
             );
           })}
-          <GenerationStatus status={props.status} onRetry={props.onRetry} />
+          <GenerationStatus
+            status={props.status}
+            onRetry={props.onRetry}
+            live={props.live}
+            error={props.error}
+          />
           {props.status === "generating" && (
             <p className="team-thread-generation">
               New question and agent perspectives will appear as a topic when
@@ -138,6 +145,7 @@ export default function ThreadedDiscussionPrototype(
         </div>
         {showSaved && (
           <SavedInsightsPanel
+            live={props.live}
             messages={props.messages}
             savedIds={props.savedIds}
             onToggleSave={props.onToggleSave}
@@ -146,6 +154,8 @@ export default function ThreadedDiscussionPrototype(
         )}
       </div>
       <MessageComposer
+        live={props.live}
+        canSend={props.canSend}
         composerId="team-discussion-threaded-message"
         draft={props.draft}
         onDraftChange={props.onDraftChange}

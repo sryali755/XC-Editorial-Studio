@@ -48,11 +48,20 @@ export default function HybridRoundtablePrototype(props: TeamDiscussionProps) {
                 researchStatus={props.deeperResearchStatus}
                 onApproveDeeperResearch={props.onApproveDeeperResearch}
                 onDeclineDeeperResearch={props.onDeclineDeeperResearch}
+                live={props.live}
+                researchBusy={props.status === "generating"}
               />
             ))}
-            <GenerationStatus status={props.status} onRetry={props.onRetry} />
+            <GenerationStatus
+              status={props.status}
+              onRetry={props.onRetry}
+              live={props.live}
+              error={props.error}
+            />
           </div>
           <MessageComposer
+            live={props.live}
+            canSend={props.canSend}
             composerId="team-discussion-hybrid-message"
             draft={props.draft}
             onDraftChange={props.onDraftChange}
@@ -65,6 +74,7 @@ export default function HybridRoundtablePrototype(props: TeamDiscussionProps) {
           />
         </div>
         <SavedInsightsPanel
+          live={props.live}
           messages={props.messages}
           savedIds={props.savedIds}
           onToggleSave={props.onToggleSave}

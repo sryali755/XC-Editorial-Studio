@@ -596,9 +596,7 @@ test("a failed agent retries alone while a research gap stays a completed result
   await expect(analogous.getByRole("button", { name: /^Retry/ })).toHaveCount(
     0,
   );
-  await expect(analogous.locator(".v2-result-type")).toContainText(
-    "Research gap · Agent interpretation · unverified",
-  );
+  await expect(analogous.locator(".v2-result-type")).toHaveCount(0);
   await expect(analogous.locator(".v2-evidence-source")).toHaveText(
     "Source citation · Research gap · source needed",
   );
