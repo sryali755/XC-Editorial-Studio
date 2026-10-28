@@ -303,6 +303,7 @@ function mentionAt(value: string, caret: number) {
 }
 
 export function MessageComposer({
+  composerId,
   draft,
   onDraftChange,
   onSend,
@@ -312,6 +313,7 @@ export function MessageComposer({
   onFailNextChange,
   disabled,
 }: {
+  composerId: string;
   draft: string;
   onDraftChange: (value: string) => void;
   onSend: (text: string) => void;
@@ -378,11 +380,11 @@ export function MessageComposer({
       <div className="team-composer-input">
         <AgentAvatar agentId="kevin" size="small" />
         <div className="team-composer-field">
-          <label className="sr-only" htmlFor="team-discussion-message">
+          <label className="sr-only" htmlFor={composerId}>
             Message the team
           </label>
           <textarea
-            id="team-discussion-message"
+            id={composerId}
             value={draft}
             onChange={change}
             onKeyDown={keyDown}

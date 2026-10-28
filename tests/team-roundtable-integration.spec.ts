@@ -8,7 +8,7 @@ import {
 import { compactStringify } from "../lib/discovery-persistence";
 import { mobileIMCBrief } from "./fixtures/mobile-imc-brief";
 
-test("team discussion is isolated and switching views preserves Individual Round Table state", async ({
+test("team discussion layouts keep separate conversations and preserve Individual Round Table state", async ({
   page,
 }) => {
   test.skip(
@@ -59,8 +59,9 @@ test("team discussion is isolated and switching views preserves Individual Round
 
   const group = teamPanel.locator('[data-team-prototype="group-chat"]');
   await expect(group).toBeVisible();
-  await expect(teamPanel.getByText(/MOCK (?:SAMPLE|RESPONSES)/)).toBeVisible();
-  await expect(group.locator(".team-message-text").first()).toBeVisible();
+  await expect(teamPanel.getByText("NO CONVERSATION YET")).toBeVisible();
+  await expect(group.locator("[data-message-id]")).toHaveCount(0);
+  await expect(group.locator(".team-empty-conversation")).toBeVisible();
 
   const composer = group.getByRole("textbox", { name: "Message the team" });
   await composer.fill("Can we compare that with the switching experience?");
@@ -89,16 +90,55 @@ test("team discussion is isolated and switching views preserves Individual Round
     '[data-team-prototype="threaded-discussion"]',
   );
   await expect(threaded).toBeVisible();
+  await expect(threaded.locator("[data-message-id]")).toHaveCount(0);
   await expect(
-    threaded
-      .locator(".team-message-text")
-      .getByText("Can we compare that with the switching experience?", {
-        exact: true,
-      }),
+    threaded.getByRole("button", { name: "Saved insights (0)" }),
   ).toBeVisible();
+  await threaded
+    .getByRole("textbox", { name: "Message the team" })
+    .fill("Threaded-only draft");
   await page.getByRole("tab", { name: "Hybrid Roundtable" }).click();
+  const hybrid = teamPanel.locator('[data-team-prototype="hybrid-roundtable"]');
+  await expect(hybrid).toBeVisible();
+  await expect(hybrid.locator("[data-message-id]")).toHaveCount(0);
+  await hybrid
+    .getByRole("textbox", { name: "Message the team" })
+    .fill("Hybrid-only question");
+  await hybrid.getByRole("button", { name: "Send to team" }).click();
   await expect(
-    teamPanel.locator('[data-team-prototype="hybrid-roundtable"]'),
+    hybrid.getByText("Hybrid-only question", { exact: true }),
+  ).toBeVisible();
+  await expect(hybrid.getByRole("status")).toContainText(
+    "Mock responses complete",
+  );
+
+  await page.getByRole("tab", { name: "Threaded Discussion" }).click();
+  await expect(threaded.locator("[data-message-id]")).toHaveCount(0);
+  await expect(
+    threaded.getByRole("textbox", { name: "Message the team" }),
+  ).toHaveValue("Threaded-only draft");
+  await threaded.getByRole("button", { name: "Send to team" }).click();
+  await expect(
+    threaded.getByText("Threaded-only draft", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(threaded.getByRole("status")).toContainText(
+    "Mock responses complete",
+  );
+
+  await page.getByRole("tab", { name: "Group Chat" }).click();
+  await expect(
+    group.getByText("Can we compare that with the switching experience?", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    group.getByText("Threaded-only draft", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    group.getByText("Hybrid-only question", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    group.getByRole("button", { name: "Saved insights (1)" }),
   ).toBeVisible();
 
   await individualTab.click();
@@ -108,6 +148,7 @@ test("team discussion is isolated and switching views preserves Individual Round
   );
   await expect(teamPanel).toBeHidden();
   await teamTab.click();
+  await expect(group).toBeVisible();
   await expect(
     teamPanel
       .getByRole("button", { name: "Unsave insight from Consumer Agent" })
@@ -148,11 +189,16 @@ test("team discussion uses active Input Pack context without saving mock data", 
     aiRequests.push(route.request().url());
     await route.abort();
   });
-  await page.addInitScript(
+  await page.goto("/");
+  const navigation = page.getByRole("navigation", { name: "Workspace" });
+  await expect(
+    navigation.getByRole("button", { name: "Input Pack", exact: true }),
+  ).toBeEnabled();
+  await page.evaluate(
     ({ key, value }) => window.sessionStorage.setItem(key, value),
     { key: studioStorageKey, value: compactStringify(inputSession) },
   );
-  await page.goto("/");
+  await page.reload();
   await page
     .getByRole("navigation", { name: "Workspace" })
     .getByRole("button", { name: "Insight Discovery", exact: true })
@@ -161,9 +207,7 @@ test("team discussion uses active Input Pack context without saving mock data", 
 
   const teamPanel = page.locator("#team-discussion-panel");
   const group = teamPanel.locator('[data-team-prototype="group-chat"]');
-  await expect(
-    teamPanel.getByText("MOCK RESPONSES · INPUT-PACK CONTEXT"),
-  ).toBeVisible();
+  await expect(teamPanel.getByText("NO CONVERSATION YET")).toBeVisible();
   await expect(teamPanel.getByRole("note")).toContainText(
     inputPack.campaignName,
   );
@@ -175,6 +219,13 @@ test("team discussion uses active Input Pack context without saving mock data", 
     await expect(teamPanel.getByRole("note")).toContainText(
       inputPack.constraints.slice(0, 260).trimEnd(),
     );
+  await expect(group.locator("[data-message-id]")).toHaveCount(0);
+  await teamPanel
+    .getByRole("button", { name: "Load sample conversation" })
+    .click();
+  await expect(
+    teamPanel.getByText("MOCK RESPONSES · INPUT-PACK CONTEXT"),
+  ).toBeVisible();
   await expect(
     group.locator('[data-message-id="campaign-question-context"]'),
   ).toBeVisible();
@@ -189,12 +240,28 @@ test("team discussion uses active Input Pack context without saving mock data", 
   await composer.fill("What should we validate for this audience?");
   await group.getByRole("button", { name: "Send to team" }).click();
   await expect(
-    group.getByText("Mock perspective", { exact: false }).last(),
+    group.getByText("Mock perspective", { exact: true }).last(),
   ).toBeVisible();
   await expect(
     group
-      .getByText(new RegExp(`Mock perspective for ${inputPack.campaignName}`))
+      .locator(".team-message-text")
+      .filter({ hasText: "The Input Pack names" })
       .first(),
+  ).toContainText(inputPack.audience.slice(0, 35));
+  await expect(
+    group
+      .locator(".team-message-text")
+      .filter({ hasText: "Mock perspective for" }),
+  ).toHaveCount(0);
+  await page.getByRole("tab", { name: "Threaded Discussion" }).click();
+  await expect(
+    teamPanel.locator(
+      '[data-team-prototype="threaded-discussion"] [data-message-id]',
+    ),
+  ).toHaveCount(0);
+  await page.getByRole("tab", { name: "Group Chat" }).click();
+  await expect(
+    group.locator('[data-message-id="campaign-question-context"]'),
   ).toBeVisible();
   expect(
     await page.evaluate(
@@ -222,6 +289,10 @@ test("workspace reset clears the experimental Team Discussion conversation", asy
   const teamTab = page.getByRole("tab", { name: /Team Discussion/ });
   await teamTab.click();
   const teamPanel = page.locator("#team-discussion-panel");
+  await expect(teamPanel.locator("[data-message-id]")).toHaveCount(0);
+  await teamPanel
+    .getByRole("button", { name: "Load sample conversation" })
+    .click();
   await expect(teamPanel.locator("[data-message-id]").first()).toBeVisible();
 
   await page
@@ -245,17 +316,21 @@ test("workspace reset clears the experimental Team Discussion conversation", asy
   await page.getByRole("tab", { name: /Team Discussion/ }).click();
 
   await expect(
-    page.locator("#team-discussion-panel .team-empty-conversation"),
+    page.locator('[data-team-prototype="group-chat"] .team-empty-conversation'),
   ).toBeVisible();
   await expect(
     page.locator("#team-discussion-panel [data-message-id]"),
   ).toHaveCount(0);
   await page.getByRole("tab", { name: "Threaded Discussion" }).click();
   await expect(
-    page.locator("#team-discussion-panel .team-empty-conversation"),
+    page.locator(
+      '[data-team-prototype="threaded-discussion"] .team-empty-conversation',
+    ),
   ).toBeVisible();
   await page.getByRole("tab", { name: "Hybrid Roundtable" }).click();
   await expect(
-    page.locator("#team-discussion-panel .team-empty-conversation"),
+    page.locator(
+      '[data-team-prototype="hybrid-roundtable"] .team-empty-conversation',
+    ),
   ).toBeVisible();
 });

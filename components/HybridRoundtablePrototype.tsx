@@ -53,6 +53,7 @@ export default function HybridRoundtablePrototype(props: TeamDiscussionProps) {
             <GenerationStatus status={props.status} onRetry={props.onRetry} />
           </div>
           <MessageComposer
+            composerId="team-discussion-hybrid-message"
             draft={props.draft}
             onDraftChange={props.onDraftChange}
             onSend={props.onSend}

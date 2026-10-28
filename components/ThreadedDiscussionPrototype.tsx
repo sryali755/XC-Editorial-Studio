@@ -146,6 +146,7 @@ export default function ThreadedDiscussionPrototype(
         )}
       </div>
       <MessageComposer
+        composerId="team-discussion-threaded-message"
         draft={props.draft}
         onDraftChange={props.onDraftChange}
         onSend={props.onSend}

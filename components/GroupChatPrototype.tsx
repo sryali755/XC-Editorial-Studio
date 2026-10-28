@@ -76,6 +76,7 @@ export default function GroupChatPrototype(props: TeamDiscussionProps) {
             <GenerationStatus status={props.status} onRetry={props.onRetry} />
           </div>
           <MessageComposer
+            composerId="team-discussion-group-message"
             draft={props.draft}
             onDraftChange={props.onDraftChange}
             onSend={props.onSend}

@@ -188,7 +188,6 @@ function campaignMessages(context: TeamDiscussionContext) {
 }
 
 function campaignMockReplies(context: TeamDiscussionContext) {
-  const campaign = contextText(context.campaignName, "this campaign", 120);
   const audience = contextText(context.audience, "the intended audience");
   const product = contextText(context.product, "the stated product");
   const channel = contextText(
@@ -204,11 +203,13 @@ function campaignMockReplies(context: TeamDiscussionContext) {
     "no reason to believe was supplied",
   );
   return {
-    consumer: `Mock perspective for ${campaign}: the Input Pack names ${audience}. That does not establish their needs or behavior; validate audience motivations before treating them as findings.`,
-    culture: `Mock perspective for ${campaign}: the Input Pack does not establish cultural trends or current behavior. Treat any cultural explanation as a hypothesis that needs evidence.`,
-    category: `Mock perspective for ${campaign}: the pack names ${product} and ${channel}, but does not verify competitor activity or category advantage. Treat comparisons as questions to research.`,
-    brand: `Mock perspective for ${campaign}: the supplied reason to believe is “${reasonToBelieve}”. Keep in view that ${constraints}; the claim still needs proof review before it is treated as a supported customer benefit.`,
-    analogous: `Mock perspective for ${campaign}: this discussion has not verified an analogous solution. Any pattern from another category should be researched before it informs strategy.`,
+    consumer: `The Input Pack names ${audience}. That does not establish their needs or behavior; validate audience motivations before treating them as findings.`,
+    culture:
+      "The Input Pack does not establish cultural trends or current behavior. Treat any cultural explanation as a hypothesis that needs evidence.",
+    category: `The pack names ${product} and ${channel}, but does not verify competitor activity or category advantage. Treat comparisons as questions to research.`,
+    brand: `The supplied reason to believe is “${reasonToBelieve}”. Keep in view that ${constraints}; the claim still needs proof review before it is treated as a supported customer benefit.`,
+    analogous:
+      "This discussion has not verified an analogous solution. Any pattern from another category should be researched before it informs strategy.",
   } satisfies Record<TeamAgentId, string>;
 }
 
@@ -227,15 +228,8 @@ function mentionedAgents(text: string) {
   );
 }
 
-export default function TeamDiscussion({
-  campaignContext,
-}: {
-  campaignContext: TeamDiscussionContext;
-}) {
-  const [layout, setLayout] = useState<Layout>("group-chat");
-  const [messages, setMessages] = useState(() =>
-    campaignMessages(campaignContext),
-  );
+function useTeamConversation(campaignContext: TeamDiscussionContext) {
+  const [messages, setMessages] = useState<TeamDiscussionMessage[]>([]);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [draft, setDraft] = useState("");
   const [replyTarget, setReplyTarget] = useState<TeamDiscussionMessage | null>(
@@ -245,19 +239,6 @@ export default function TeamDiscussion({
   const [failNext, setFailNext] = useState(false);
   const [deeperResearchStatus, setDeeperResearchStatus] =
     useState<TeamDiscussionProps["deeperResearchStatus"]>("offered");
-
-  useEffect(() => {
-    if (window.location.hash !== "#team-discussion-reset") return;
-    const timer = window.setTimeout(() => {
-      setMessages([]);
-      window.history.replaceState(
-        window.history.state,
-        "",
-        `${window.location.pathname}${window.location.search}`,
-      );
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     if (!job || job.status !== "generating") return;
@@ -300,7 +281,7 @@ export default function TeamDiscussion({
           {
             id: resultId,
             author: "consumer",
-            text: `Mock follow-up for ${contextText(campaignContext.campaignName, "this campaign")}: no research sources were queried, so the prototype cannot verify customer behavior or market claims. Validate any strategic assumption with approved evidence.`,
+            text: "No research sources were queried, so this prototype cannot verify customer behavior or market claims. Validate any strategic assumption with approved evidence.",
             threadId: messages[0]?.threadId ?? "mock-follow-up",
             ...(messages[1] ? { replyTo: messages[1].id } : {}),
           },
@@ -383,6 +364,48 @@ export default function TeamDiscussion({
       ),
   };
 
+  return {
+    messages,
+    prototypeProps,
+    loadSample: () => {
+      setMessages(campaignMessages(campaignContext));
+      setSavedIds(new Set());
+      setDraft("");
+      setReplyTarget(null);
+      setJob(null);
+      setFailNext(false);
+      setDeeperResearchStatus("offered");
+    },
+  };
+}
+
+export default function TeamDiscussion({
+  campaignContext,
+}: {
+  campaignContext: TeamDiscussionContext;
+}) {
+  const [layout, setLayout] = useState<Layout>("group-chat");
+  // Each prototype owns its conversation, drafts, saved items, and mock jobs.
+  // Keep all three state hooks mounted so switching layouts preserves each one's work.
+  const group = useTeamConversation(campaignContext);
+  const threaded = useTeamConversation(campaignContext);
+  const hybrid = useTeamConversation(campaignContext);
+  const active =
+    layout === "group-chat"
+      ? group
+      : layout === "threaded-discussion"
+        ? threaded
+        : hybrid;
+
+  useEffect(() => {
+    if (window.location.hash !== "#team-discussion-reset") return;
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${window.location.search}`,
+    );
+  }, []);
+
   return (
     <section
       className="team-discussion"
@@ -399,11 +422,20 @@ export default function TeamDiscussion({
           </p>
         </div>
         <span className="team-mock-badge">
-          {campaignContext.hasInputPack
-            ? "MOCK RESPONSES · INPUT-PACK CONTEXT"
-            : "MOCK SAMPLE · NO INPUT PACK"}
+          {!active.messages.length
+            ? "NO CONVERSATION YET"
+            : campaignContext.hasInputPack
+              ? "MOCK RESPONSES · INPUT-PACK CONTEXT"
+              : "MOCK SAMPLE · NO INPUT PACK"}
         </span>
       </header>
+      <button
+        type="button"
+        className="team-secondary-button"
+        onClick={active.loadSample}
+      >
+        Load sample conversation
+      </button>
       {campaignContext.hasInputPack && (
         <div className="team-campaign-context" role="note">
           <b>Active Input Pack: {campaignContext.campaignName}</b>
@@ -466,14 +498,13 @@ export default function TeamDiscussion({
           aria-labelledby={`team-tab-${option.id}`}
           hidden={layout !== option.id}
         >
-          {layout === option.id &&
-            (option.id === "group-chat" ? (
-              <GroupChatPrototype {...prototypeProps} />
-            ) : option.id === "threaded-discussion" ? (
-              <ThreadedDiscussionPrototype {...prototypeProps} />
-            ) : (
-              <HybridRoundtablePrototype {...prototypeProps} />
-            ))}
+          {option.id === "group-chat" ? (
+            <GroupChatPrototype {...group.prototypeProps} />
+          ) : option.id === "threaded-discussion" ? (
+            <ThreadedDiscussionPrototype {...threaded.prototypeProps} />
+          ) : (
+            <HybridRoundtablePrototype {...hybrid.prototypeProps} />
+          )}
         </div>
       ))}
     </section>

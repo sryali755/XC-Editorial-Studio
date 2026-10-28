@@ -18,7 +18,7 @@ Choose **Load sample IMC brief**, then **Prepare XC Input Pack** to begin the de
 
 ## Experimental Team Discussion
 
-In **Insight Discovery**, use the **Individual Round Table / Team Discussion** selector to open the experimental Group Chat, Threaded Discussion, or Hybrid Roundtable. Individual Round Table remains the default and stays mounted when switching views, preserving its current draft and agent history. Team Discussion frames its local mock perspectives with the active Input Pack's campaign, objective, audience, product, channel, constraints, and reason-to-believe fields; without an Input Pack it shows the Movers sample. Messages and saves remain local prototype state, do not call AI or research APIs, and are not written to campaign findings or approved strategy.
+In **Insight Discovery**, use the **Individual Round Table / Team Discussion** selector to open the experimental Group Chat, Threaded Discussion, or Hybrid Roundtable. Individual Round Table remains the default and stays mounted when switching views, preserving its current draft and agent history. Each Team Discussion layout has its own empty conversation, draft, saved mock insights, reply state, and generation status; switching layouts preserves each one without copying messages between them. Team Discussion frames local mock perspectives with the active Input Pack's campaign, objective, audience, product, channel, constraints, and reason-to-believe fields. The optional sample conversation loads only when requested; without an Input Pack it uses the Movers sample. Messages and saves remain local prototype state, do not call AI or research APIs, and are not written to campaign findings or approved strategy.
 
 ## Checks
 
