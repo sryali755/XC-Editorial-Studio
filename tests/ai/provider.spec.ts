@@ -25,7 +25,11 @@ import {
 } from "../../lib/preparation";
 import { parseIMCBrief } from "../../lib/imc-parser";
 import { extractUpstream } from "../../lib/upstream";
-import { maxDuration, POST } from "../../app/api/ai/agent/route";
+import {
+  maxAgentRequestBytes,
+  maxDuration,
+  POST,
+} from "../../app/api/ai/agent/route";
 import { agentPromptVersion } from "../../lib/ai/prompts";
 
 const originalEnvironment = {
@@ -193,6 +197,12 @@ test("route validates shape, approval and origin while accepting large valid req
   largeRequest.context.parsedIMC.sourceText = "X".repeat(1_000_001);
   expect((await post(largeRequest)).status).toBe(200);
   expect((await post({ padding: "x".repeat(1_000_001) })).status).toBe(400);
+  const oversized = await post({ padding: "x".repeat(maxAgentRequestBytes) });
+  expect(oversized.status).toBe(413);
+  expect(await oversized.json()).toMatchObject({
+    code: "agent_request_too_large",
+    retryable: false,
+  });
   const unapproved = finalRequest();
   if (unapproved.agentType === "finalBrief")
     unapproved.context.approvedStrategy.approvalState =
